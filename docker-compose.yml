@@ -2,7 +2,7 @@
 # Produksi on-prem: pakai MySQL & Redis yang sudah ada, bukan file ini.
 services:
   mysql:
-    image: mysql:8.4
+    image: mysql:8.4  # samakan dengan server 172.18.3.75
     container_name: avicenna-mysql
     restart: unless-stopped
     environment:

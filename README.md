@@ -47,8 +47,13 @@ controller PHP dulu. Aturan yang dipegang di repo ini:
 
 ### Prasyarat
 
-Node 20+, pnpm 9, MySQL 8, Redis 7. Docker opsional (`docker-compose.yml`
+Node 20+, pnpm 9, **MySQL 8.4**, Redis 7. Docker opsional (`docker-compose.yml`
 menyediakan ketiganya untuk development).
+
+Versi MySQL sengaja dipatok 8.4 agar sama dengan server 172.18.3.75 (8.4.9).
+Di macOS: `brew install mysql@8.4` lalu `brew services start mysql@8.4`.
+Jangan memasang beberapa versi MySQL sekaligus sebagai layanan — semuanya
+memakai datadir default yang sama dan akan saling merusak.
 
 ### Catatan jaringan kantor
 

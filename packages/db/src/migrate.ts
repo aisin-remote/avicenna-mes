@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env';
 import { migrate } from 'drizzle-orm/mysql2/migrator';
 import { getDb, closeDb } from './client';
 
