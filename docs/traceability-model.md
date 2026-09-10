@@ -118,8 +118,14 @@ berapa, siapa yang memindahkan.
 
 ### 8. Pengiriman ke customer
 
-`deliveries` + `delivery_lines` sudah ada. Ditambah tautan ke unit/lot yang
-benar-benar dikirim, agar telusur tetap menyambung sampai ke customer.
+`deliveries` + `delivery_lines` — dokumen loading list, dihitung dalam kanban.
+Rencana dan aktual disimpan berdampingan; yang mengurangi stok adalah aktual.
+Selengkapnya di [loading-list.md](loading-list.md).
+
+Tautan ke unit/lot yang benar-benar dikirim belum dibuat: part ber-lot sudah
+dibagi FIFO saat berangkat, tetapi serial per kanban belum ditautkan ke
+`genealogy`. Itu potongan terakhir yang membuat telusur menyambung dari
+customer sampai ke lot raw material.
 
 ## Semua bermuara ke satu buku besar
 

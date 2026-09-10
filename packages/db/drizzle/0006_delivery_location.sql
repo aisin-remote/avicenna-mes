@@ -1,0 +1,2 @@
+ALTER TABLE `deliveries` ADD `location_id` bigint unsigned;--> statement-breakpoint
+ALTER TABLE `deliveries` ADD CONSTRAINT `deliveries_location_id_locations_id_fk` FOREIGN KEY (`location_id`) REFERENCES `locations`(`id`) ON DELETE no action ON UPDATE no action;

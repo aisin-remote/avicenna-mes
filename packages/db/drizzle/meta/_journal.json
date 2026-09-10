@@ -36,6 +36,20 @@
       "when": 1789044573369,
       "tag": "0004_decimal_qty",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1789051605154,
+      "tag": "0005_loading_list",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1789051923857,
+      "tag": "0006_delivery_location",
+      "breakpoints": true
     }
   ]
 }

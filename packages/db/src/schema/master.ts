@@ -48,6 +48,23 @@ export const customers = mysqlTable(
     name: varchar('name', { length: 128 }).notNull(),
     /** Dock tujuan pengiriman (TMMIN dsb). */
     dock: varchar('dock', { length: 32 }),
+    /**
+     * Aturan penulisan nomor part pada barcode customer.
+     *
+     * Di bella aturan ini dipilih berdasarkan ID customer yang di-hardcode
+     * (14 dan 22 untuk SUZUKI, 6/23/24/28 untuk MMKI). ID itu tidak akan sama
+     * setelah data dipindah, dan aturan yang bergantung pada nomor baris
+     * database akan diam-diam salah begitu urutannya berubah.
+     */
+    partNumberFormat: mysqlEnum('part_number_format', [
+      'TMMIN',
+      'SUZUKI',
+      'MMKI',
+      'TBINA',
+      'NONE',
+    ])
+      .notNull()
+      .default('NONE'),
     isActive: boolean('is_active').notNull().default(true),
     ...timestamps,
   },

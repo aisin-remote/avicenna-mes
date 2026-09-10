@@ -34,6 +34,7 @@ export const LOCATION_KINDS = ['WIP', 'FINISH_GOOD', 'CHUTE', 'NG', 'TRANSIT'] a
 export const PART_TYPES = ['RAW_MATERIAL', 'COMPONENT', 'WIP', 'FINISHED_GOOD'] as const;
 export const SOURCE_TYPES = ['PURCHASED', 'MANUFACTURED'] as const;
 export const TRACKING_MODES = ['SERIAL', 'LOT', 'QUANTITY'] as const;
+export const PART_NUMBER_FORMATS = ['TMMIN', 'SUZUKI', 'MMKI', 'TBINA', 'NONE'] as const;
 
 export type FieldKind = 'text' | 'number' | 'decimal' | 'date' | 'boolean' | 'select' | 'reference';
 
@@ -229,6 +230,15 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       { name: 'code', label: 'Kode', kind: 'text', required: true, max: 32, inList: true },
       { name: 'name', label: 'Nama', kind: 'text', required: true, max: 128, inList: true },
       { name: 'dock', label: 'Dock', kind: 'text', max: 32, inList: true },
+      {
+        name: 'partNumberFormat',
+        label: 'Format Part Number',
+        kind: 'select',
+        options: PART_NUMBER_FORMATS,
+        required: true,
+        inList: true,
+        hint: 'Aturan penulisan nomor part pada barcode customer. Menentukan bagaimana barcode saat muat dicocokkan ke master.',
+      },
       activeField,
     ],
   },

@@ -11,6 +11,7 @@ import { MasterModule } from './master/master.module';
 import { ReceivingModule } from './receiving/receiving.module';
 import { TraceModule } from './trace/trace.module';
 import { TransferModule } from './transfer/transfer.module';
+import { LoadingModule } from './loading/loading.module';
 import { MqttModule } from './mqtt/mqtt.module';
 import { SyncModule } from './sync/sync.module';
 import { HealthController } from './health/health.controller';
@@ -33,6 +34,7 @@ import { loadEnv } from './config/env';
     ReceivingModule,
     TraceModule,
     TransferModule,
+    LoadingModule,
     MqttModule,
     SyncModule,
   ],

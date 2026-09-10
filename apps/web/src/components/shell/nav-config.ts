@@ -22,7 +22,7 @@ export interface NavGroup {
  * kedua yang bisa ketinggalan.
  *
  * Modul operasional dari sistem lama (production plan, kanban, pulling,
- * delivery, quality, opname, andon) belum dicantumkan karena halamannya belum
+ * quality, opname, andon) belum dicantumkan karena halamannya belum
  * ada. Menu yang menjanjikan halaman kosong membuat operator berhenti
  * mempercayai navigasi.
  */
@@ -40,6 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/receiving', label: 'Penerimaan Barang', icon: 'Truck' },
       { href: '/transfer', label: 'Transfer Antar Line', icon: 'MoveRight' },
+      { href: '/delivery', label: 'Pengiriman', icon: 'PackageCheck' },
       { href: '/trace', label: 'Telusur Silsilah', icon: 'GitBranch' },
     ],
   },
