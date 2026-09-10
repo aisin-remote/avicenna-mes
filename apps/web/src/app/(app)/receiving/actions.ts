@@ -51,3 +51,57 @@ export async function submitReceiptAction(
     return { error: 'Tidak bisa menghubungi server.' };
   }
 }
+
+export interface UpdateReceiptInput {
+  id: number;
+  supplierDocNumber?: string;
+  reason?: string;
+  lines: Array<{
+    id?: number;
+    partId: number;
+    qty: number;
+    uom?: string;
+    supplierLotNumber?: string;
+  }>;
+}
+
+/**
+ * Mengubah penerimaan yang sudah tercatat.
+ *
+ * Selisihnya dicatat API sebagai mutasi koreksi, bukan menimpa mutasi lama.
+ */
+export async function updateReceiptAction(
+  input: UpdateReceiptInput,
+): Promise<{ id: number; documentNumber: string } | { error: string }> {
+  const { id, ...body } = input;
+  try {
+    const res = await apiFetch<{ id: number; documentNumber: string }>(`/receiving/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    revalidatePath('/receiving');
+    revalidatePath(`/receiving/${id}`);
+    return res;
+  } catch (err) {
+    if (err instanceof ApiRequestError) {
+      const body = err.body as { details?: Array<{ field: string; message: string }> } | undefined;
+      if (body?.details?.length) return { error: body.details.map((d) => d.message).join(', ') };
+      return { error: err.message };
+    }
+    return { error: 'Tidak bisa menghubungi server.' };
+  }
+}
+
+/** Mencari banyak part sekaligus — dipakai saat impor tempelan. */
+export async function resolveBulkAction(
+  partNumbers: string[],
+): Promise<Record<string, ResolvedPart>> {
+  try {
+    return await apiFetch<Record<string, ResolvedPart>>('/receiving/resolve-bulk', {
+      method: 'POST',
+      body: JSON.stringify({ partNumbers }),
+    });
+  } catch {
+    return {};
+  }
+}

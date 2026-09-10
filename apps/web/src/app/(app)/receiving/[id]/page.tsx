@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
-import { Truck, Package } from 'lucide-react';
+import Link from 'next/link';
+import { Package, Pencil } from 'lucide-react';
 import { getReceipt } from '@/lib/receiving-api';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -34,7 +35,18 @@ export default async function ReceiptDetailPage({
         ]}
         title={receipt.documentNumber}
         description={`${receipt.supplierName ?? '—'} · surat jalan ${receipt.supplierDocNumber ?? '—'}`}
-        actions={<Chip value={receipt.status} />}
+        actions={
+          <div className="flex items-center gap-3">
+            <Chip value={receipt.status} />
+            <Link
+              href={`/receiving/${receipt.id}/edit`}
+              className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-card px-5 text-[14px] font-semibold transition-colors hover:border-line-strong hover:bg-surface"
+            >
+              <Pencil className="size-4" strokeWidth={1.9} aria-hidden />
+              Ubah
+            </Link>
+          </div>
+        }
       />
 
       <Reveal>

@@ -4,7 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { ScanLine, Trash2, Check, AlertCircle, PackagePlus } from 'lucide-react';
-import { resolveBarcodeAction, submitReceiptAction } from '@/app/(app)/receiving/actions';
+import {
+  resolveBarcodeAction,
+  submitReceiptAction,
+  updateReceiptAction,
+} from '@/app/(app)/receiving/actions';
+import { ImportPanel, type ImportedLine } from './import-panel';
 import { springSoft, durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
@@ -13,8 +18,27 @@ interface Option {
   label: string;
 }
 
+export interface ExistingReceipt {
+  id: number;
+  documentNumber: string;
+  supplierDocNumber: string | null;
+  supplierName: string | null;
+  lines: Array<{
+    id: number;
+    partId: number;
+    partNumber: string;
+    partName: string;
+    qty: string;
+    uom: string;
+    trackingMode: string;
+    supplierLotNumber: string | null;
+  }>;
+}
+
 interface Line {
   key: string;
+  /** Terisi untuk baris yang sudah tersimpan; kosong untuk baris baru. */
+  existingId?: number;
   partId: number;
   partNumber: string;
   partName: string;
@@ -39,15 +63,34 @@ interface Line {
 export function ReceivingForm({
   plants,
   suppliers,
+  existing,
 }: {
   plants: Option[];
   suppliers: Option[];
+  /** Diisi untuk mode ubah. Kosong berarti penerimaan baru. */
+  existing?: ExistingReceipt;
 }) {
+  const editing = Boolean(existing);
   const [plantId, setPlantId] = useState<number | ''>(plants[0]?.value ?? '');
   const [supplierId, setSupplierId] = useState<number | ''>('');
-  const [docNumber, setDocNumber] = useState('');
+  const [docNumber, setDocNumber] = useState(existing?.supplierDocNumber ?? '');
+  const [reason, setReason] = useState('');
   const [code, setCode] = useState('');
-  const [lines, setLines] = useState<Line[]>([]);
+  const [lines, setLines] = useState<Line[]>(
+    existing
+      ? existing.lines.map((l, i) => ({
+          key: `exist-${l.id}-${i}`,
+          existingId: l.id,
+          partId: l.partId,
+          partNumber: l.partNumber,
+          partName: l.partName,
+          uom: l.uom,
+          trackingMode: l.trackingMode,
+          qty: String(Number(l.qty)),
+          supplierLotNumber: l.supplierLotNumber ?? '',
+        }))
+      : [],
+  );
   const [message, setMessage] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -110,12 +153,49 @@ export function ReceivingForm({
     setMessage({ tone: 'ok', text: `${found.partNumber} ditambahkan` });
   }
 
+  /**
+   * Menambahkan hasil impor ke daftar.
+   *
+   * Part yang sudah ada di daftar ditambahkan jumlahnya, bukan dijadikan baris
+   * kedua — kecuali nomor lotnya berbeda, karena lot berbeda harus tetap
+   * terpisah agar ketertelusurannya tidak hilang.
+   */
+  function addImported(imported: ImportedLine[]) {
+    setLines((prev) => {
+      const next = [...prev];
+      for (const item of imported) {
+        const idx = next.findIndex(
+          (l) =>
+            l.partId === item.partId &&
+            (l.supplierLotNumber || '') === (item.supplierLotNumber || ''),
+        );
+        if (idx >= 0) {
+          next[idx] = { ...next[idx]!, qty: String(Number(next[idx]!.qty || 0) + item.qty) };
+          continue;
+        }
+        seq.current += 1;
+        next.unshift({
+          key: `${item.partId}-imp-${seq.current}`,
+          partId: item.partId,
+          partNumber: item.partNumber,
+          partName: item.partName,
+          uom: item.uom,
+          trackingMode: item.trackingMode,
+          qty: String(item.qty),
+          supplierLotNumber: item.supplierLotNumber ?? '',
+        });
+      }
+      return next;
+    });
+    setMessage({ tone: 'ok', text: `${imported.length} baris ditambahkan dari impor` });
+  }
+
   function updateLine(key: string, patch: Partial<Line>) {
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   }
 
   async function submit() {
-    if (!plantId || !supplierId) {
+    if (!editing && (!plantId || !supplierId)) {
       setMessage({ tone: 'bad', text: 'Pabrik dan supplier wajib dipilih.' });
       return;
     }
@@ -130,17 +210,27 @@ export function ReceivingForm({
     }
 
     setSaving(true);
-    const res = await submitReceiptAction({
-      plantId: Number(plantId),
-      supplierId: Number(supplierId),
-      supplierDocNumber: docNumber.trim() || undefined,
-      lines: lines.map((l) => ({
-        partId: l.partId,
-        qty: Number(l.qty),
-        uom: l.uom,
-        supplierLotNumber: l.supplierLotNumber.trim() || undefined,
-      })),
-    });
+    const payloadLines = lines.map((l) => ({
+      id: l.existingId,
+      partId: l.partId,
+      qty: Number(l.qty),
+      uom: l.uom,
+      supplierLotNumber: l.supplierLotNumber.trim() || undefined,
+    }));
+
+    const res = existing
+      ? await updateReceiptAction({
+          id: existing.id,
+          supplierDocNumber: docNumber.trim() || undefined,
+          reason: reason.trim() || undefined,
+          lines: payloadLines,
+        })
+      : await submitReceiptAction({
+          plantId: Number(plantId),
+          supplierId: Number(supplierId),
+          supplierDocNumber: docNumber.trim() || undefined,
+          lines: payloadLines.map(({ id: _id, ...rest }) => rest),
+        });
     setSaving(false);
 
     if ('error' in res) {
@@ -157,6 +247,36 @@ export function ReceivingForm({
       {/* ── Identitas kedatangan ─────────────────────────────────────────── */}
       <section className="rounded-card border border-line bg-card p-5">
         <h2 className="text-[15px] font-bold">Surat jalan</h2>
+
+        {editing ? (
+          <>
+            <p className="mt-2 text-[13px] text-ink-muted">
+              Dokumen {existing!.documentNumber} · {existing!.supplierName ?? '—'}. Pabrik dan
+              supplier tidak bisa diubah — buat dokumen baru bila keduanya keliru.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Field label="No. surat jalan supplier">
+                <input
+                  value={docNumber}
+                  onChange={(e) => setDocNumber(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Alasan perubahan">
+                <input
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="mis. salah hitung saat bongkar"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <p className="mt-3 text-[13px] text-ink-muted">
+              Perubahan dicatat sebagai koreksi. Mutasi stok yang lama tidak dihapus, dan
+              selisihnya bisa ditelusuri kapan saja.
+            </p>
+          </>
+        ) : (
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           <Field label="Pabrik" required>
             <select
@@ -195,7 +315,10 @@ export function ReceivingForm({
             />
           </Field>
         </div>
+        )}
       </section>
+
+      <ImportPanel onImport={addImported} />
 
       {/* ── Scan barang ──────────────────────────────────────────────────── */}
       <section className="rounded-card border border-line bg-card p-5">
@@ -357,7 +480,7 @@ export function ReceivingForm({
           className="inline-flex h-12 items-center gap-2 rounded-full bg-accent px-7 text-[15px] font-semibold text-white transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
         >
           <PackagePlus className="size-[18px]" strokeWidth={2.2} aria-hidden />
-          {saving ? 'Menyimpan…' : 'Simpan penerimaan'}
+          {saving ? 'Menyimpan…' : editing ? 'Simpan koreksi' : 'Simpan penerimaan'}
         </motion.button>
       </div>
     </div>

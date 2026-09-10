@@ -34,6 +34,29 @@ export const receiptCreateSchema = z.object({
 });
 export type ReceiptCreateInput = z.infer<typeof receiptCreateSchema>;
 
+/**
+ * Perubahan atas penerimaan yang sudah tercatat.
+ *
+ * Baris yang sudah ada dikenali lewat `id`. Baris tanpa `id` berarti tambahan
+ * baru. Baris lama yang tidak disebutkan berarti dihapus.
+ */
+export const receiptLineEditSchema = z.object({
+  id: z.coerce.number().int().positive().optional(),
+  partId: z.coerce.number().int().positive('Part wajib dipilih'),
+  qty: z.coerce.number().positive('Jumlah harus lebih dari nol'),
+  uom: z.string().trim().max(16).optional(),
+  supplierLotNumber: z.string().trim().max(64).optional(),
+});
+export type ReceiptLineEdit = z.infer<typeof receiptLineEditSchema>;
+
+export const receiptUpdateSchema = z.object({
+  supplierDocNumber: z.string().trim().max(64).optional(),
+  note: z.string().trim().max(255).optional(),
+  reason: z.string().trim().max(255).optional(),
+  lines: z.array(receiptLineEditSchema).min(1, 'Minimal satu baris barang'),
+});
+export type ReceiptUpdateInput = z.infer<typeof receiptUpdateSchema>;
+
 /** Hasil pemindaian barcode di meja penerimaan. */
 export interface ResolvedPart {
   found: boolean;

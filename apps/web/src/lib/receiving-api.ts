@@ -21,8 +21,10 @@ export interface ReceiptDetail {
   note: string | null;
   lines: Array<{
     id: number;
+    partId: number;
     partNumber: string | null;
     partName: string | null;
+    trackingMode: string | null;
     qty: string;
     uom: string;
     lotNumber: string | null;
