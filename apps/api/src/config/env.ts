@@ -1,6 +1,24 @@
 import { z } from 'zod';
 
 /**
+ * Boolean dari environment variable.
+ *
+ * JANGAN memakai `z.coerce.boolean()` untuk ini: fungsi itu memakai aturan
+ * truthy JavaScript, sehingga string "false" — dan juga "0" — menghasilkan
+ * `true`. Efeknya diperparah oleh @nestjs/config yang menulis hasil validasi
+ * kembali ke `process.env`, jadi MQTT_ENABLED=false berubah menjadi "true"
+ * dan servis yang seharusnya mati justru menyala.
+ */
+const envBoolean = (bawaan: boolean) =>
+  z
+    .union([z.boolean(), z.string()])
+    .default(bawaan)
+    .transform((v) => {
+      if (typeof v === 'boolean') return v;
+      return ['true', '1', 'yes', 'y', 'on'].includes(v.trim().toLowerCase());
+    });
+
+/**
  * Konfigurasi divalidasi saat proses start, bukan saat dipakai.
  *
  * Kalau ada yang salah, API gagal start dengan pesan jelas — bukan meledak
@@ -18,13 +36,13 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('8h'),
   DEVICE_JWT_EXPIRES_IN: z.string().default('365d'),
 
-  MQTT_ENABLED: z.coerce.boolean().default(false),
+  MQTT_ENABLED: envBoolean(false),
   MQTT_URL: z.string().default('mqtt://127.0.0.1:1883'),
   MQTT_USERNAME: z.string().optional(),
   MQTT_PASSWORD: z.string().optional(),
   MQTT_TOPIC_PREFIX: z.string().default('aiia/+/machine'),
 
-  MSSQL_SYNC_ENABLED: z.coerce.boolean().default(false),
+  MSSQL_SYNC_ENABLED: envBoolean(false),
   MSSQL_HOST: z.string().optional(),
   MSSQL_PORT: z.coerce.number().optional(),
   MSSQL_DATABASE: z.string().optional(),

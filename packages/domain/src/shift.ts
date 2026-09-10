@@ -50,3 +50,31 @@ export function productionDate(at: Date, dayStartHour = 7): Date {
   d.setHours(0, 0, 0, 0);
   return d;
 }
+
+/**
+ * Mengubah Date menjadi kunci "YYYY-MM-DD" memakai komponen waktu LOKAL.
+ *
+ * JANGAN memakai `toISOString().slice(0, 10)` untuk ini. Fungsi itu mengubah
+ * ke UTC lebih dulu, sehingga tengah malam waktu Jakarta (UTC+7) menjadi
+ * pukul 17:00 hari SEBELUMNYA dalam UTC — dan setiap tanggal produksi mundur
+ * satu hari. Kesalahan seperti itu tidak terlihat sampai laporan harian
+ * dibandingkan dengan hitungan manual orang lapangan.
+ */
+export function toLocalDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Tanggal produksi langsung sebagai kunci "YYYY-MM-DD" waktu lokal. */
+export function productionDateKey(at: Date, dayStartHour = 7): string {
+  return toLocalDateKey(productionDate(at, dayStartHour));
+}
+
+/** Kunci tanggal sehari sebelum `date` ("YYYY-MM-DD" lokal). */
+export function previousDateKey(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  d.setDate(d.getDate() - 1);
+  return toLocalDateKey(d);
+}

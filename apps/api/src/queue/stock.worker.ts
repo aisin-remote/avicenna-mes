@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/commo
 import { Worker, type Job } from 'bullmq';
 import { and, eq, gte, lte, type Database } from '@avicenna/db';
 import { mutations, stockBalances } from '@avicenna/db';
-import { summarizeMutations, type MutationRow } from '@avicenna/domain';
+import { summarizeMutations, previousDateKey, type MutationRow } from '@avicenna/domain';
 import { RedisService } from './redis.service';
 import { InjectDb } from '../db/db.module';
 import { QUEUES, JOBS } from './queue.constants';
@@ -66,7 +66,7 @@ export class StockWorker implements OnModuleInit, OnModuleDestroy {
       .where(
         and(
           eq(stockBalances.partId, payload.partId),
-          lte(stockBalances.balanceDate, previousDay(payload.date)),
+          lte(stockBalances.balanceDate, previousDateKey(payload.date)),
         ),
       )
       .orderBy(stockBalances.balanceDate)
@@ -122,8 +122,3 @@ export class StockWorker implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-function previousDay(date: string): string {
-  const d = new Date(`${date}T00:00:00`);
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}

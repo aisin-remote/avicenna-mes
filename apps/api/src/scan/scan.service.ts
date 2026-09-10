@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { eq, and, desc, type Database } from '@avicenna/db';
 import { scanEvents, lines, parts, machines, mutations } from '@avicenna/db';
-import { normalizeScan, parseBarcode, signedQty, productionDate } from '@avicenna/domain';
+import { normalizeScan, parseBarcode, signedQty, productionDateKey } from '@avicenna/domain';
 import type { ScanInput, ScanResult } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -107,7 +107,7 @@ export class ScanService {
       );
     }
 
-    const prodDate = productionDate(normalized.scannedAt).toISOString().slice(0, 10);
+    const prodDate = productionDateKey(normalized.scannedAt);
 
     try {
       await this.db.insert(scanEvents).values({
