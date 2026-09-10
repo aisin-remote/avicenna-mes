@@ -8,7 +8,15 @@ import {
   index,
 } from 'drizzle-orm/mysql-core';
 import { relations } from 'drizzle-orm';
-import { pk, fk, timestamps, PROCESS_TYPES } from './_shared';
+import {
+  pk,
+  fk,
+  timestamps,
+  PROCESS_TYPES,
+  PART_TYPES,
+  SOURCE_TYPES,
+  TRACKING_MODES,
+} from './_shared';
 import { plants } from './org';
 
 /** Line produksi. Satu line terikat pada satu pabrik dan satu jenis proses. */
@@ -74,6 +82,18 @@ export const parts = mysqlTable(
     backNumber: varchar('back_number', { length: 64 }),
     name: varchar('name', { length: 191 }).notNull(),
     processType: mysqlEnum('process_type', PROCESS_TYPES).notNull(),
+    /** Posisi part di rantai pasok — menentukan aturan apa yang berlaku baginya. */
+    partType: mysqlEnum('part_type', PART_TYPES).notNull().default('FINISHED_GOOD'),
+    /** Dibeli atau diproduksi sendiri. */
+    sourceType: mysqlEnum('source_type', SOURCE_TYPES).notNull().default('MANUFACTURED'),
+    /**
+     * Cara part ini ditelusuri. Lihat docs/traceability-model.md.
+     * Raw material yang dilebur tidak mungkin berseri; part casting justru
+     * sudah discan satu per satu.
+     */
+    trackingMode: mysqlEnum('tracking_mode', TRACKING_MODES).notNull().default('SERIAL'),
+    /** Satuan. Raw material sering kilogram, bukan pcs. */
+    uom: varchar('uom', { length: 16 }).notNull().default('pcs'),
     /** Jumlah pcs per kanban standar (bisa dioverride per customer di customer_parts). */
     qtyPerKanban: int('qty_per_kanban'),
     standardStock: int('standard_stock').notNull().default(0),

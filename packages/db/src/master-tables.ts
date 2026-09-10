@@ -9,6 +9,7 @@ import {
   toolings,
   locations,
   ngMasters,
+  bomLines,
 } from './schema/index';
 
 /**
@@ -28,6 +29,7 @@ export const MASTER_TABLES = {
   toolings,
   locations,
   'ng-masters': ngMasters,
+  bom: bomLines,
 } as const;
 
 export type MasterTable = (typeof MASTER_TABLES)[MasterEntity];

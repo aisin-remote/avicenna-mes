@@ -20,3 +20,4 @@ export * from './inventory';
 export * from './quality';
 export * from './delivery';
 export * from './machine';
+export * from './supply';

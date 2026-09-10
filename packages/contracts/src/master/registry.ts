@@ -23,6 +23,7 @@ export const MASTER_ENTITIES = [
   'toolings',
   'locations',
   'ng-masters',
+  'bom',
 ] as const;
 
 export type MasterEntity = (typeof MASTER_ENTITIES)[number];
@@ -30,8 +31,11 @@ export type MasterEntity = (typeof MASTER_ENTITIES)[number];
 export const PROCESS_TYPES = ['CASTING', 'MACHINING', 'ASSEMBLING', 'INJECTION'] as const;
 export const TOOLING_KINDS = ['MOLD', 'DIES', 'JIG'] as const;
 export const LOCATION_KINDS = ['WIP', 'FINISH_GOOD', 'CHUTE', 'NG', 'TRANSIT'] as const;
+export const PART_TYPES = ['RAW_MATERIAL', 'COMPONENT', 'WIP', 'FINISHED_GOOD'] as const;
+export const SOURCE_TYPES = ['PURCHASED', 'MANUFACTURED'] as const;
+export const TRACKING_MODES = ['SERIAL', 'LOT', 'QUANTITY'] as const;
 
-export type FieldKind = 'text' | 'number' | 'boolean' | 'select' | 'reference';
+export type FieldKind = 'text' | 'number' | 'decimal' | 'date' | 'boolean' | 'select' | 'reference';
 
 export interface FieldDef {
   name: string;
@@ -165,6 +169,33 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         required: true,
         inList: true,
       },
+      {
+        name: 'partType',
+        label: 'Jenis Part',
+        kind: 'select',
+        options: PART_TYPES,
+        required: true,
+        inList: true,
+        hint: 'Posisi part di rantai pasok. Raw material tidak punya BOM; barang jadi tidak dibeli.',
+      },
+      {
+        name: 'sourceType',
+        label: 'Asal',
+        kind: 'select',
+        options: SOURCE_TYPES,
+        required: true,
+        hint: 'Dibeli dari supplier, atau diproduksi sendiri.',
+      },
+      {
+        name: 'trackingMode',
+        label: 'Cara Telusur',
+        kind: 'select',
+        options: TRACKING_MODES,
+        required: true,
+        inList: true,
+        hint: 'SERIAL untuk part berbarcode satuan. LOT untuk raw material dan komponen beli yang datang per batch.',
+      },
+      { name: 'uom', label: 'Satuan', kind: 'text', max: 16, hint: 'pcs, kg, liter, …' },
       {
         name: 'qtyPerKanban',
         label: 'Qty per Kanban',
@@ -322,6 +353,72 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       activeField,
     ],
   },
+
+  bom: {
+    key: 'bom',
+    label: 'BOM',
+    singular: 'Baris BOM',
+    icon: 'Network',
+    description: 'Komposisi part — apa membutuhkan apa',
+    searchFields: ['note'],
+    defaultSort: 'parentPartId',
+    fields: [
+      plantRef,
+      {
+        name: 'parentPartId',
+        label: 'Part Induk',
+        kind: 'reference',
+        refEntity: 'parts',
+        required: true,
+        inList: true,
+        hint: 'Part yang dibuat.',
+      },
+      {
+        name: 'componentPartId',
+        label: 'Komponen',
+        kind: 'reference',
+        refEntity: 'parts',
+        required: true,
+        inList: true,
+        hint: 'Part yang dibutuhkan untuk membuat induk.',
+      },
+      {
+        name: 'qtyPer',
+        label: 'Qty per Induk',
+        kind: 'decimal',
+        min: 0,
+        required: true,
+        numeric: true,
+        inList: true,
+        hint: 'Boleh desimal — raw material sering dipakai dalam kilogram.',
+      },
+      { name: 'uom', label: 'Satuan', kind: 'text', max: 16, inList: true },
+      {
+        name: 'scrapPct',
+        label: 'Susut (%)',
+        kind: 'decimal',
+        min: 0,
+        numeric: true,
+        hint: 'Persentase susut wajar, ikut diperhitungkan saat menghitung kebutuhan material.',
+      },
+      { name: 'sequence', label: 'Urutan', kind: 'number', min: 0, numeric: true },
+      {
+        name: 'effectiveFrom',
+        label: 'Berlaku Dari',
+        kind: 'date',
+        required: true,
+        inList: true,
+        hint: 'BOM berversi: telusur produksi lama tetap memakai komposisi yang berlaku saat itu.',
+      },
+      {
+        name: 'effectiveTo',
+        label: 'Berlaku Sampai',
+        kind: 'date',
+        hint: 'Kosongkan bila masih berlaku.',
+      },
+      { name: 'note', label: 'Catatan', kind: 'text', max: 255 },
+    ],
+  },
 };
 
 export function isMasterEntity(value: string): value is MasterEntity {
@@ -367,6 +464,35 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
       return z.preprocess((v) => (v === '' ? undefined : v), s.optional());
     }
 
+    case 'decimal': {
+      // Desimal disimpan MySQL sebagai string agar presisinya utuh; angka
+      // pecahan pada float bisa bergeser, dan untuk kebutuhan material
+      // pergeseran sekecil apa pun terkumpul menjadi selisih stok.
+      // .finite() dipakai, bukan .refine(): refine mengubah tipe menjadi
+      // ZodEffects yang kehilangan .min(), sedangkan .finite() tetap ZodNumber.
+      const base = z
+        .number({
+          required_error: `${f.label} wajib diisi`,
+          invalid_type_error: `${f.label} harus berupa angka`,
+        })
+        .finite(`${f.label} harus berupa angka`);
+      const withRange = f.min !== undefined ? base.min(f.min, `${f.label} minimal ${f.min}`) : base;
+      const target = f.required && mode === 'create' ? withRange : withRange.optional();
+      // Dikembalikan sebagai string: kolom DECIMAL di MySQL menerima string,
+      // dan itu menghindari pembulatan float di tengah jalan.
+      return z.preprocess(toNumberOrUndefined, target.transform((v: number | undefined) =>
+        v === undefined ? undefined : String(v),
+      ));
+    }
+
+    case 'date': {
+      const base = z
+        .string({ required_error: `${f.label} wajib diisi` })
+        .regex(/^\d{4}-\d{2}-\d{2}$/, `${f.label} harus berformat YYYY-MM-DD`);
+      if (f.required && mode === 'create') return base;
+      return z.preprocess((v) => (v === '' ? undefined : v), base.optional());
+    }
+
     case 'number': {
       // Konversi dilakukan di preprocess, BUKAN dengan z.coerce.number().
       // z.coerce mengubah undefined menjadi NaN, sehingga required_error tidak
@@ -383,13 +509,30 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
       return z.preprocess(toNumberOrUndefined, target);
     }
 
-    case 'boolean':
-      // Checkbox HTML mengirim 'on' saat dicentang dan tidak mengirim apa pun
-      // saat tidak. Karena itu nilainya diturunkan dari keberadaan, bukan isi.
+    case 'boolean': {
+      /*
+       * Nilai yang TIDAK dikirim sama sekali memakai defaultValue, bukan false.
+       *
+       * Checkbox HTML memang tidak mengirim apa pun saat tidak dicentang, tapi
+       * server action di web selalu mengirim boolean eksplisit, jadi formulir
+       * tidak pernah bergantung pada ketiadaan nilai. Yang benar-benar mengirim
+       * payload tanpa field adalah pemanggilan API langsung — dan di situ yang
+       * dimaksud adalah "pakai bawaannya".
+       *
+       * Sebelum diperbaiki, membuat part lewat API tanpa menyebut isActive
+       * menghasilkan baris non-aktif yang tidak muncul di dropdown mana pun.
+       * Impor master data akan menghasilkan ratusan baris tak terlihat tanpa
+       * ada yang menyadarinya.
+       */
+      const fallback = f.defaultValue === undefined ? false : Boolean(f.defaultValue);
       return z.preprocess(
-        (v) => (v === undefined || v === null || v === '' ? false : v === 'on' || v === 'true' || v === true),
+        (v) =>
+          v === undefined || v === null
+            ? fallback
+            : v === '' ? false : v === 'on' || v === 'true' || v === true,
         z.boolean(),
       );
+    }
 
     case 'select': {
       const s = z.enum((f.options ?? ['']) as [string, ...string[]], {

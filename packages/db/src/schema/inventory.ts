@@ -38,6 +38,8 @@ export const MUTATION_TYPES = [
   'TRANSFER_IN',
   'TRANSFER_OUT',
   'RECEIVING_IN',
+  // Material terpakai saat produksi — lihat tabel consumptions.
+  'CONSUMPTION_OUT',
 ] as const;
 
 /**
