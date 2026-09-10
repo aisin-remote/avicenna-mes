@@ -1,24 +1,48 @@
 import { config } from 'dotenv';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 
 /**
- * Memuat .env dari root repo, bukan dari direktori kerja.
+ * Memuat .env dari root monorepo, dari mana pun proses dijalankan.
  *
- * Script di paket ini (migrate, seed, drizzle-kit) dijalankan pnpm dengan cwd
- * di packages/db, sementara .env hanya ada satu di root dan dipakai bersama
- * web maupun api. `import 'dotenv/config'` saja akan mencari di cwd dan
- * diam-diam tidak menemukan apa-apa.
+ * Repo ini memakai SATU .env di root, dipakai bersama web, api, dan script
+ * database. Tapi setiap konsumen mencarinya di tempat berbeda:
+ *   - script db  -> cwd ada di packages/db
+ *   - Next.js    -> hanya memuat .env di apps/web
+ *   - NestJS     -> sudah diarahkan lewat envFilePath
+ * Akibatnya web gagal dengan "DATABASE_URL belum diset" walau file-nya ada.
+ *
+ * Root ditemukan dengan menelusuri ke atas mencari pnpm-workspace.yaml, bukan
+ * lewat import.meta.url — supaya tetap benar pada build CJS maupun ESM.
+ *
+ * dotenv tidak menimpa variabel yang sudah ada, jadi ini aman di produksi
+ * (docker, systemd, CI) tempat nilainya datang dari environment sungguhan.
  */
-const here = dirname(fileURLToPath(import.meta.url));
-const rootEnv = resolve(here, '../../../.env');
-
-if (existsSync(rootEnv)) {
-  config({ path: rootEnv });
-} else {
-  // Jalan juga saat variabel di-set langsung dari luar (CI, docker, systemd).
-  config();
+function findRepoRoot(start: string): string | undefined {
+  let dir = start;
+  for (let depth = 0; depth < 10; depth += 1) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+  return undefined;
 }
 
-export { rootEnv };
+let sudahDimuat = false;
+
+export function loadRootEnv(): void {
+  if (sudahDimuat) return;
+  sudahDimuat = true;
+
+  const root = findRepoRoot(process.cwd());
+  const envPath = root ? join(root, '.env') : undefined;
+
+  if (envPath && existsSync(envPath)) {
+    config({ path: envPath });
+  } else {
+    config();
+  }
+}
+
+loadRootEnv();

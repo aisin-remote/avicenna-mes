@@ -1,3 +1,4 @@
+import './load-env';
 import mysql from 'mysql2/promise';
 import { drizzle, type MySql2Database } from 'drizzle-orm/mysql2';
 import * as schema from './schema/index';
