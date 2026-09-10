@@ -47,13 +47,27 @@ controller PHP dulu. Aturan yang dipegang di repo ini:
 
 ### Prasyarat
 
-Node 20+, pnpm 9, **MySQL 8.4**, Redis 7. Docker opsional (`docker-compose.yml`
-menyediakan ketiganya untuk development).
+Node 20+, pnpm 9, **MySQL 8.4**, **Valkey 8+**. Docker opsional
+(`docker-compose.yml` menyediakan ketiganya untuk development).
 
 Versi MySQL sengaja dipatok 8.4 agar sama dengan server 172.18.3.75 (8.4.9).
 Di macOS: `brew install mysql@8.4` lalu `brew services start mysql@8.4`.
 Jangan memasang beberapa versi MySQL sekaligus sebagai layanan — semuanya
 memakai datadir default yang sama dan akan saling merusak.
+
+**Valkey, bukan Redis.** Valkey adalah fork Redis berlisensi BSD di bawah
+Linux Foundation, dibuat setelah Redis mengubah lisensinya pada 2024 — jalur
+yang juga diambil Debian, Ubuntu, dan AWS. Protokolnya identik, jadi BullMQ
+dan ioredis jalan tanpa satu baris pun perubahan kode; variabelnya tetap
+bernama `REDIS_URL` dengan skema `redis://`. Redis asli tetap bisa dipakai
+kalau nanti diperlukan.
+
+    brew install valkey && brew services start valkey
+
+Kompatibilitas sudah diverifikasi langsung di Valkey 9.1.2: job sederhana,
+retry dengan exponential backoff, delayed job, prioritas, job scheduler
+(pengganti cron artisan), concurrency, dan pencatatan job gagal — semuanya
+lulus.
 
 ### Catatan jaringan kantor
 

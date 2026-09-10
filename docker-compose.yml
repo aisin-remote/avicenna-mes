@@ -25,17 +25,19 @@ services:
       timeout: 5s
       retries: 10
 
-  redis:
-    image: redis:7-alpine
-    container_name: avicenna-redis
+  # Valkey: fork Redis berlisensi BSD (Linux Foundation), protokol sama persis.
+  # BullMQ dan ioredis jalan tanpa perubahan kode apa pun.
+  valkey:
+    image: valkey/valkey:9-alpine
+    container_name: avicenna-valkey
     restart: unless-stopped
-    command: redis-server --appendonly yes
+    command: valkey-server --appendonly yes
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - valkey_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -51,4 +53,4 @@ services:
 
 volumes:
   mysql_data:
-  redis_data:
+  valkey_data:
