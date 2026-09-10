@@ -39,6 +39,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'Logistik',
     items: [
       { href: '/receiving', label: 'Penerimaan Barang', icon: 'Truck' },
+      { href: '/transfer', label: 'Transfer Antar Line', icon: 'MoveRight' },
       { href: '/trace', label: 'Telusur Silsilah', icon: 'GitBranch' },
     ],
   },

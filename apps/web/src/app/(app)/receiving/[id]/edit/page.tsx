@@ -22,9 +22,10 @@ export default async function EditReceiptPage({
     notFound();
   }
 
-  const [plants, suppliers] = await Promise.all([
+  const [plants, suppliers, locations] = await Promise.all([
     getMasterOptions('plants'),
     getMasterOptions('suppliers'),
+    getMasterOptions('locations'),
   ]);
 
   return (
@@ -41,6 +42,7 @@ export default async function EditReceiptPage({
       <ReceivingForm
         plants={plants.map((p) => ({ value: p.value, label: p.label }))}
         suppliers={suppliers.map((s) => ({ value: s.value, label: s.label }))}
+        locations={locations.map((l) => ({ value: l.value, label: l.label }))}
         existing={{
           id: receipt.id,
           documentNumber: receipt.documentNumber,

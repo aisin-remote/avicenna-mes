@@ -13,6 +13,7 @@ import {
   Database,
   ScanLine,
   Network,
+  MoveRight,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -37,6 +38,7 @@ const ICONS: Record<string, LucideIcon> = {
   Activity,
   ScanLine,
   Network,
+  MoveRight,
 };
 
 /** Mengembalikan ikon Database sebagai cadangan agar UI tidak pernah kosong. */

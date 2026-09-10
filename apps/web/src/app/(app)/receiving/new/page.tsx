@@ -5,9 +5,10 @@ import { ReceivingForm } from '@/components/receiving/receiving-form';
 export const dynamic = 'force-dynamic';
 
 export default async function NewReceiptPage() {
-  const [plants, suppliers] = await Promise.all([
+  const [plants, suppliers, locations] = await Promise.all([
     getMasterOptions('plants'),
     getMasterOptions('suppliers'),
+    getMasterOptions('locations'),
   ]);
 
   return (
@@ -20,6 +21,7 @@ export default async function NewReceiptPage() {
       <ReceivingForm
         plants={plants.map((p) => ({ value: p.value, label: p.label }))}
         suppliers={suppliers.map((s) => ({ value: s.value, label: s.label }))}
+        locations={locations.map((l) => ({ value: l.value, label: l.label }))}
       />
     </>
   );

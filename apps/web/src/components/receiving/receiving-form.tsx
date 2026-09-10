@@ -63,10 +63,12 @@ interface Line {
 export function ReceivingForm({
   plants,
   suppliers,
+  locations,
   existing,
 }: {
   plants: Option[];
   suppliers: Option[];
+  locations: Option[];
   /** Diisi untuk mode ubah. Kosong berarti penerimaan baru. */
   existing?: ExistingReceipt;
 }) {
@@ -74,6 +76,14 @@ export function ReceivingForm({
   const [plantId, setPlantId] = useState<number | ''>(plants[0]?.value ?? '');
   const [supplierId, setSupplierId] = useState<number | ''>('');
   const [docNumber, setDocNumber] = useState(existing?.supplierDocNumber ?? '');
+  /**
+   * Lokasi penyimpanan.
+   *
+   * Tanpa ini barang masuk tanpa tempat, dan saldo per lokasi tidak pernah
+   * bertambah — pemindahan dari gudang lalu terlihat minus padahal barangnya
+   * memang ada di sana.
+   */
+  const [locationId, setLocationId] = useState<number | ''>('');
   const [reason, setReason] = useState('');
   const [code, setCode] = useState('');
   const [lines, setLines] = useState<Line[]>(
@@ -228,6 +238,7 @@ export function ReceivingForm({
       : await submitReceiptAction({
           plantId: Number(plantId),
           supplierId: Number(supplierId),
+          locationId: locationId ? Number(locationId) : undefined,
           supplierDocNumber: docNumber.trim() || undefined,
           lines: payloadLines.map(({ id: _id, ...rest }) => rest),
         });
@@ -277,7 +288,7 @@ export function ReceivingForm({
             </p>
           </>
         ) : (
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Pabrik" required>
             <select
               value={plantId}
@@ -313,6 +324,21 @@ export function ReceivingForm({
               placeholder="mis. SJ-2026-0912"
               className={inputClass}
             />
+          </Field>
+          <Field label="Disimpan di">
+            <select
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value ? Number(e.target.value) : '')}
+              aria-label="Lokasi penyimpanan"
+              className={inputClass}
+            >
+              <option value="">— pilih lokasi —</option>
+              {locations.map((l) => (
+                <option key={l.value} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
         )}

@@ -25,6 +25,7 @@ export async function resolveBarcodeAction(code: string): Promise<ResolvedPart> 
 export interface SubmitReceiptInput {
   plantId: number;
   supplierId: number;
+  locationId?: number;
   supplierDocNumber?: string;
   note?: string;
   lines: Array<{ partId: number; qty: number; uom?: string; supplierLotNumber?: string }>;

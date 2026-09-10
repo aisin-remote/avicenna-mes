@@ -15,13 +15,23 @@ function dateStamp(at: Date): string {
 }
 
 /**
- * Nomor dokumen penerimaan: RCV-YYYYMMDD-NNNN
+ * Nomor dokumen logistik: PREFIX-YYYYMMDD-NNNN
  *
  * Urutan direset tiap hari. Nomor yang memuat tanggal jauh lebih mudah dicari
- * saat menelusuri kedatangan tertentu daripada urutan berjalan tanpa konteks.
+ * saat menelusuri kejadian tertentu daripada urutan berjalan tanpa konteks.
  */
+export function buildDocumentNumber(prefix: string, at: Date, sequenceToday: number): string {
+  return `${prefix}-${dateStamp(at)}-${String(sequenceToday).padStart(4, '0')}`;
+}
+
+/** Nomor dokumen penerimaan: RCV-YYYYMMDD-NNNN */
 export function buildReceiptNumber(at: Date, sequenceToday: number): string {
-  return `RCV-${dateStamp(at)}-${String(sequenceToday).padStart(4, '0')}`;
+  return buildDocumentNumber('RCV', at, sequenceToday);
+}
+
+/** Nomor dokumen transfer: TRF-YYYYMMDD-NNNN */
+export function buildTransferNumber(at: Date, sequenceToday: number): string {
+  return buildDocumentNumber('TRF', at, sequenceToday);
 }
 
 /**

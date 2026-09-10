@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildReceiptNumber, buildLotNumber, needsLot } from './receiving';
+import {
+  buildReceiptNumber,
+  buildTransferNumber,
+  buildDocumentNumber,
+  buildLotNumber,
+  needsLot,
+} from './receiving';
 
 const at = (y: number, m: number, d: number) => new Date(y, m - 1, d, 10, 0, 0);
 
@@ -16,6 +22,16 @@ describe('buildReceiptNumber', () => {
   it('memakai tanggal lokal, bukan UTC', () => {
     // Jam 10 pagi WIB tanggal 10 tetap tanggal 10, tidak mundur ke 9.
     expect(buildReceiptNumber(at(2026, 9, 10), 1)).toContain('20260910');
+  });
+});
+
+describe('buildTransferNumber', () => {
+  it('memakai awalan TRF agar dokumen transfer terbedakan dari penerimaan', () => {
+    expect(buildTransferNumber(at(2026, 9, 10), 3)).toBe('TRF-20260910-0003');
+  });
+
+  it('berbagi format dengan dokumen lain lewat buildDocumentNumber', () => {
+    expect(buildDocumentNumber('XYZ', at(2026, 12, 31), 7)).toBe('XYZ-20261231-0007');
   });
 });
 
