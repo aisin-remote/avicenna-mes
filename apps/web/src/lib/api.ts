@@ -31,7 +31,13 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new ApiRequestError(body?.message ?? `Permintaan gagal (${res.status})`, res.status);
+    // Body ikut dibawa: galat validasi memuat rincian per kolom yang perlu
+    // ditampilkan tepat di bawah input yang bersangkutan.
+    throw new ApiRequestError(
+      body?.message ?? `Permintaan gagal (${res.status})`,
+      res.status,
+      body,
+    );
   }
 
   return res.json() as Promise<T>;
@@ -41,6 +47,7 @@ export class ApiRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly body?: unknown,
   ) {
     super(message);
     this.name = 'ApiRequestError';

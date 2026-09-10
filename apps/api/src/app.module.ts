@@ -7,6 +7,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { ScanModule } from './scan/scan.module';
+import { MasterModule } from './master/master.module';
 import { MqttModule } from './mqtt/mqtt.module';
 import { SyncModule } from './sync/sync.module';
 import { HealthController } from './health/health.controller';
@@ -25,6 +26,7 @@ import { loadEnv } from './config/env';
     RealtimeModule,
     AuthModule,
     ScanModule,
+    MasterModule,
     MqttModule,
     SyncModule,
   ],

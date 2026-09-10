@@ -170,6 +170,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@avicenna/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       bcryptjs:
         specifier: 2.4.3
         version: 2.4.3

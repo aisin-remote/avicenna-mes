@@ -1,6 +1,7 @@
 export * as schema from './schema/index';
 export * from './schema/index';
 export { getDb, getPool, closeDb, type Database } from './client';
+export { MASTER_TABLES, getMasterTable, type MasterTable } from './master-tables';
 
 // Helper query Drizzle yang sering dipakai, di-reexport supaya app tidak perlu
 // menambahkan drizzle-orm sebagai dependency langsung.
