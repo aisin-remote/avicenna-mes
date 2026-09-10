@@ -130,10 +130,15 @@ export class BackflushService {
   }
 
   /**
-   * Sisa tiap lot = jumlah awal + seluruh mutasi yang menyentuh lot itu.
+   * Sisa tiap lot = JUMLAH SELURUH MUTASI yang menyentuh lot itu.
    *
-   * Dihitung dari buku besar, bukan dari kolom saldo tersimpan — konsisten
-   * dengan aturan bahwa saldo selalu turunan dan bisa dibangun ulang.
+   * `lots.initialQty` TIDAK ikut dijumlahkan. Kolom itu hanya catatan berapa
+   * yang tertulis saat barang datang; jumlah yang benar-benar masuk dicatat
+   * sebagai mutasi RECEIVING_IN. Menjumlahkan keduanya menghitung barang yang
+   * sama dua kali — dan akibatnya FIFO akan mengalokasikan dari stok yang
+   * sebenarnya tidak ada.
+   *
+   * Aturannya tetap satu: saldo selalu turunan dari buku besar, tanpa kecuali.
    */
   private async lotsFor(partIds: number[]): Promise<AvailableLot[]> {
     const rows = await this.db
@@ -154,7 +159,7 @@ export class BackflushService {
       .map((r) => ({
         lotId: r.lotId,
         partId: r.partId,
-        remainingQty: Number(r.initialQty) + Number(r.moved),
+        remainingQty: Number(r.moved),
         receivedAt: r.receivedAt ?? r.createdAt,
       }))
       .filter((l) => l.remainingQty > 0);

@@ -36,6 +36,10 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    title: 'Logistik',
+    items: [{ href: '/receiving', label: 'Penerimaan Barang', icon: 'Truck' }],
+  },
+  {
     title: 'Master Data',
     collapsible: true,
     items: MASTER_ENTITIES.map((key) => ({

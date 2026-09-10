@@ -92,6 +92,13 @@ export const lots = mysqlTable(
     supplierId: fk('supplier_id').references(() => suppliers.id),
     receivedAt: timestamp('received_at'),
     expiresAt: date('expires_at', { mode: 'string' }),
+    /**
+     * Jumlah yang tertulis saat barang datang. CATATAN SAJA, BUKAN SALDO.
+     *
+     * Sisa lot selalu dihitung sebagai jumlah seluruh mutasi yang menyentuh
+     * lot ini. Menjumlahkan kolom ini dengan mutasi akan menghitung barang
+     * yang sama dua kali.
+     */
     initialQty: decimal('initial_qty', { precision: 14, scale: 4 }).notNull().default('0'),
     status: mysqlEnum('status', ['OPEN', 'CONSUMED', 'BLOCKED', 'RETURNED'])
       .notNull()
