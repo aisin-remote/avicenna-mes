@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, AlertCircle, Check } from 'lucide-react';
@@ -23,6 +24,13 @@ const initial: FormState = {};
  * Panel geser dipilih daripada halaman terpisah supaya konteks daftar tetap
  * terlihat di belakangnya — operator tidak kehilangan tempatnya saat menyunting
  * satu baris di antara puluhan.
+ *
+ * Dirender lewat portal ke document.body. position:fixed mengacu pada
+ * containing block terdekat, dan leluhur mana pun yang punya transform, filter,
+ * atau perspective akan menjadi containing block itu — membuat panel terkurung
+ * di dalam kotak leluhur alih-alih memenuhi layar. Portal melepaskannya dari
+ * seluruh pohon DOM halaman sehingga masalah itu tidak bisa terjadi lagi,
+ * termasuk oleh pembungkus yang ditambahkan di kemudian hari.
  */
 export function MasterForm({
   def,
@@ -42,6 +50,10 @@ export function MasterForm({
   const [state, formAction, pending] = useActionState(saveMasterAction, initial);
   const router = useRouter();
   const titleId = useId();
+  // Portal hanya bisa dibuat setelah komponen hidup di browser; saat render
+  // di server document belum ada.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (state.ok) {
@@ -60,9 +72,22 @@ export function MasterForm({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // Kunci gulir halaman selama panel terbuka, supaya latar tidak ikut bergeser
+  // saat pengguna menggulir isi formulir.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   const isEdit = Boolean(row);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open ? (
         <div className="fixed inset-0 z-50 flex justify-end">
@@ -161,7 +186,8 @@ export function MasterForm({
           </motion.aside>
         </div>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
 

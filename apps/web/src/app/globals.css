@@ -117,8 +117,18 @@
  * yang memang mustahil tanpa JavaScript: pil navigasi yang meluncur, umpan
  * balik sentuh, dropdown, dan baris realtime yang masuk.
  *
- * `both` pada shorthand menahan keadaan akhir, sehingga elemen tetap terlihat
- * setelah animasi selesai.
+ * PENTING — memakai `backwards`, BUKAN `both`.
+ *
+ * `both` menahan keyframe akhir setelah animasi selesai, sehingga computed
+ * transform menjadi matrix(1,0,0,1,0,0) — identitas, tapi bukan `none`.
+ * Transform apa pun selain `none` menjadikan elemen sebagai containing block
+ * untuk position:fixed, dan semua overlay di dalamnya (panel geser, dialog,
+ * dropdown) ikut terkurung di dalam kotak elemen itu alih-alih memenuhi layar.
+ *
+ * `backwards` menerapkan keadaan awal sebelum animasi mulai — cukup untuk
+ * mencegah kedipan — lalu melepas seluruhnya begitu selesai. Karena keadaan
+ * akhir keyframe memang sama dengan keadaan alami elemen (opacity 1,
+ * tanpa transform), hasil akhirnya identik tanpa efek samping tersebut.
  */
 @keyframes avi-rise {
   from {
@@ -142,11 +152,11 @@
 
 @layer utilities {
   .a-rise {
-    animation: avi-rise 0.38s var(--ease-out-soft) both;
+    animation: avi-rise 0.38s var(--ease-out-soft) backwards;
   }
 
   .a-fade {
-    animation: avi-fade 0.26s var(--ease-out-soft) both;
+    animation: avi-fade 0.26s var(--ease-out-soft) backwards;
   }
 
   /*
@@ -156,7 +166,7 @@
    * membuat baris terakhir muncul terlalu lama.
    */
   .a-stagger > * {
-    animation: avi-rise 0.38s var(--ease-out-soft) both;
+    animation: avi-rise 0.38s var(--ease-out-soft) backwards;
   }
   .a-stagger > *:nth-child(1) { animation-delay: 0ms; }
   .a-stagger > *:nth-child(2) { animation-delay: 45ms; }
