@@ -1,0 +1,44 @@
+{
+  "name": "@avicenna/db",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "db:generate": "drizzle-kit generate && tsx src/check-names.ts",
+    "db:migrate": "tsx src/migrate.ts",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo",
+    "db:check-names": "tsx src/check-names.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "mysql2": "3.12.0",
+    "dotenv": "16.4.7",
+    "bcryptjs": "2.4.3"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.10",
+    "tsx": "4.19.2",
+    "typescript": "5.9.3",
+    "@types/node": "22.10.5",
+    "@types/bcryptjs": "2.4.6",
+    "tsup": "8.3.5"
+  },
+  "module": "./dist/index.mjs",
+  "files": [
+    "dist"
+  ]
+}

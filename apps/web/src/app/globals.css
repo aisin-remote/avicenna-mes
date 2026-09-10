@@ -1,0 +1,52 @@
+@import 'tailwindcss';
+
+/*
+ * Palet dibuat netral dan kontras tinggi.
+ * Layar di lantai produksi sering terkena cahaya langsung dan monitornya tua,
+ * jadi abu-abu tipis ala dashboard SaaS tidak terbaca di sana.
+ */
+@theme {
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #d9e6ff;
+  --color-brand-500: #2563eb;
+  --color-brand-600: #1d4ed8;
+  --color-brand-700: #1e40af;
+
+  --color-ok: #16a34a;
+  --color-warn: #d97706;
+  --color-ng: #dc2626;
+}
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #e2e5ea;
+  --text: #14181f;
+  --muted: #5b6472;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116;
+    --surface: #161b22;
+    --border: #262d38;
+    --text: #e6edf3;
+    --muted: #8b949e;
+  }
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.surface {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+/* Angka pada tabel & kartu metrik harus rata kolom supaya mudah dibandingkan. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

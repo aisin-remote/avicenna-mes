@@ -1,0 +1,41 @@
+{
+  "name": "@avicenna/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"(belum ada test di api)\" && exit 0",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@avicenna/contracts": "workspace:*",
+    "@avicenna/db": "workspace:*",
+    "@avicenna/domain": "workspace:*",
+    "@nestjs/common": "11.2.3",
+    "@nestjs/config": "4.0.2",
+    "@nestjs/core": "11.2.3",
+    "@nestjs/jwt": "11.0.2",
+    "@nestjs/platform-express": "11.2.3",
+    "bcryptjs": "2.4.3",
+    "bullmq": "6.3.4",
+    "drizzle-orm": "0.45.2",
+    "ioredis": "5.4.2",
+    "mqtt": "5.10.3",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.1",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "11.0.24",
+    "@nestjs/schematics": "11.1.0",
+    "@types/bcryptjs": "2.4.6",
+    "@types/express": "5.0.0",
+    "@types/node": "22.10.5",
+    "ts-node": "10.9.2",
+    "tsconfig-paths": "4.2.0",
+    "typescript": "5.9.3"
+  }
+}
