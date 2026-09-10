@@ -1,13 +1,38 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { eq, and, desc, type Database } from '@avicenna/db';
-import { scanEvents, lines, parts, machines, mutations } from '@avicenna/db';
-import { normalizeScan, parseBarcode, signedQty, productionDateKey } from '@avicenna/domain';
-import type { ScanInput, ScanResult } from '@avicenna/contracts';
+import { eq, and, desc, gte, lte, count, type Database } from '@avicenna/db';
+import { scanEvents, lines, parts, machines, mutations, plants } from '@avicenna/db';
+import {
+  normalizeScan,
+  parseBarcode,
+  signedQty,
+  productionDateKey,
+  requiredPreviousProcess,
+  programCodeOf,
+  REJECT_MESSAGES,
+  type ScanRejectReason,
+} from '@avicenna/domain';
+import type { ScanInput, ScanResult, StationResult } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
 import { RealtimeService } from '../realtime/realtime.service';
 import { QueueService } from '../queue/queue.service';
 import { QUEUES, JOBS } from '../queue/queue.constants';
 import type { Principal } from '../auth/auth.types';
+
+/**
+ * Penolakan scan yang punya alasan jelas, bukan kegagalan teknis.
+ *
+ * Dibedakan dari Error biasa supaya layar operator bisa menampilkan pesan yang
+ * tepat beserta warnanya, bukan "terjadi kesalahan pada server".
+ */
+export class ScanRejected extends Error {
+  constructor(
+    readonly reason: ScanRejectReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ScanRejected';
+  }
+}
 
 /** MySQL: pelanggaran UNIQUE index. */
 const ER_DUP_ENTRY = 'ER_DUP_ENTRY';
@@ -86,7 +111,7 @@ export class ScanService {
   private async ingestOne(
     input: ScanInput,
     principal?: Principal,
-  ): Promise<{ duplicated: boolean; partId?: number; productionDate: string }> {
+  ): Promise<{ duplicated: boolean; partId?: number; productionDate: string; qty: number }> {
     const normalized = normalizeScan(input);
     const parsed = parseBarcode(normalized.rawCode);
 
@@ -108,12 +133,43 @@ export class ScanService {
     }
 
     const prodDate = productionDateKey(normalized.scannedAt);
+    const processType = normalized.processType ?? part?.processType ?? line?.processType ?? null;
+
+    /*
+     * Pemeriksaan rantai proses.
+     *
+     * Diambil dari perilaku avicenna: getAjaxmachining() menolak barcode yang
+     * belum pernah discan di casting. Aturannya sekarang ada di
+     * @avicenna/domain dan bisa ditest tanpa database.
+     */
+    if (processType) {
+      const previous = requiredPreviousProcess(processType);
+      if (previous) {
+        const seenBefore = await this.db
+          .select({ id: scanEvents.id })
+          .from(scanEvents)
+          .where(
+            and(
+              eq(scanEvents.rawCode, normalized.rawCode),
+              eq(scanEvents.processType, previous),
+            ),
+          )
+          .limit(1);
+
+        if (seenBefore.length === 0) {
+          throw new ScanRejected(
+            'MISSING_PREVIOUS_PROCESS',
+            `${REJECT_MESSAGES.MISSING_PREVIOUS_PROCESS} (belum ada scan ${previous})`,
+          );
+        }
+      }
+    }
 
     try {
       await this.db.insert(scanEvents).values({
         plantId,
         kind: normalized.kind,
-        processType: normalized.processType ?? part?.processType ?? null,
+        processType,
         lineId: line?.id ?? null,
         partId: part?.id ?? null,
         machineId: machine?.id ?? null,
@@ -128,7 +184,7 @@ export class ScanService {
       });
     } catch (err) {
       if (isDuplicateKey(err)) {
-        return { duplicated: true, productionDate: prodDate };
+        return { duplicated: true, productionDate: prodDate, qty: 0 };
       }
       throw err;
     }
@@ -167,7 +223,12 @@ export class ScanService {
       }
     }
 
-    return { duplicated: false, partId: part?.id, productionDate: prodDate };
+    return {
+      duplicated: false,
+      partId: part?.id,
+      productionDate: prodDate,
+      qty: parsed.qty ?? normalized.qty,
+    };
   }
 
   private async findLine(code: string) {
@@ -209,6 +270,191 @@ export class ScanService {
     }
 
     return undefined;
+  }
+
+  /**
+   * Satu scan dari layar stasiun operator.
+   *
+   * Berbeda dari ingest() yang melayani device dan mengembalikan ringkasan
+   * batch, method ini mengembalikan satu hasil yang lengkap: status, pesan
+   * untuk ditampilkan besar di layar, identitas part, dan penghitung hari ini.
+   * Layar operator butuh semuanya sekaligus — satu panggilan, satu jawaban.
+   */
+  async station(input: ScanInput, principal?: Principal): Promise<StationResult> {
+    const now = new Date();
+
+    if (!programCodeOf(input.rawCode)) {
+      return this.stationReject(input, 'UNKNOWN_PROGRAM', now);
+    }
+
+    /*
+     * Pemeriksaan duplikat sebagai ATURAN BISNIS.
+     *
+     * Ini berbeda dari idempotensi request. dedupe_key mencegah satu kiriman
+     * yang sama diproses dua kali (device mengulang saat jaringan tersendat),
+     * sedangkan yang dimaksud di sini adalah: barcode ini SUDAH PERNAH discan
+     * di proses ini, sekalipun oleh orang lain, hari lain, dan request yang
+     * sama sekali berbeda.
+     *
+     * Avicenna melakukannya dengan `where('code', $number)` pada tabel proses
+     * masing-masing. Di skema terpadu, padanannya adalah scan_events yang
+     * disaring menurut processType.
+     */
+    const processType = await this.processTypeFor(input);
+    if (processType) {
+      const already = await this.db
+        .select({ id: scanEvents.id })
+        .from(scanEvents)
+        .where(
+          and(eq(scanEvents.rawCode, input.rawCode), eq(scanEvents.processType, processType)),
+        )
+        .limit(1);
+
+      if (already.length > 0) {
+        return {
+          status: 'DUPLICATE',
+          reason: 'DUPLICATE',
+          message: REJECT_MESSAGES.DUPLICATE,
+          rawCode: input.rawCode,
+          partNumber: null,
+          partName: null,
+          qty: 0,
+          counterToday: await this.countToday(input.lineCode),
+          scannedAt: now.toISOString(),
+        };
+      }
+    }
+
+    try {
+      const outcome = await this.ingestOne(input, principal);
+
+      if (outcome.duplicated) {
+        return {
+          status: 'DUPLICATE',
+          reason: 'DUPLICATE',
+          message: REJECT_MESSAGES.DUPLICATE,
+          rawCode: input.rawCode,
+          partNumber: null,
+          partName: null,
+          qty: 0,
+          counterToday: await this.countToday(input.lineCode),
+          scannedAt: now.toISOString(),
+        };
+      }
+
+      // Hitung ulang saldo di luar request; kegagalan tidak menggagalkan scan.
+      if (outcome.partId) {
+        try {
+          await this.queue.add(QUEUES.STOCK, JOBS.RECALC_STOCK_BALANCE, {
+            partId: outcome.partId,
+            date: outcome.productionDate,
+          });
+        } catch (err) {
+          this.logger.error(`gagal menjadwalkan hitung ulang saldo: ${String(err)}`);
+        }
+      }
+
+      const part = outcome.partId ? await this.partById(outcome.partId) : undefined;
+
+      return {
+        status: 'ACCEPTED',
+        message: 'OK',
+        rawCode: input.rawCode,
+        partNumber: part?.partNumber ?? null,
+        partName: part?.name ?? null,
+        qty: outcome.qty,
+        counterToday: await this.countToday(input.lineCode),
+        scannedAt: now.toISOString(),
+      };
+    } catch (err) {
+      if (err instanceof ScanRejected) {
+        return this.stationReject(input, err.reason, now, err.message);
+      }
+      if (err instanceof BadRequestException) {
+        const msg = (err.getResponse() as { message?: string })?.message ?? err.message;
+        return this.stationReject(input, 'LINE_NOT_FOUND', now, msg);
+      }
+      throw err;
+    }
+  }
+
+  private async stationReject(
+    input: ScanInput,
+    reason: ScanRejectReason,
+    at: Date,
+    message?: string,
+  ): Promise<StationResult> {
+    return {
+      status: 'REJECTED',
+      reason,
+      message: message ?? REJECT_MESSAGES[reason],
+      rawCode: input.rawCode,
+      partNumber: null,
+      partName: null,
+      qty: 0,
+      counterToday: await this.countToday(input.lineCode),
+      scannedAt: at.toISOString(),
+    };
+  }
+
+  /** Jenis proses yang berlaku untuk scan ini: dari input, atau dari line-nya. */
+  private async processTypeFor(input: ScanInput) {
+    if (input.processType) return input.processType;
+    if (!input.lineCode) return undefined;
+    const line = await this.findLine(input.lineCode);
+    return line?.processType;
+  }
+
+  private async partById(id: number) {
+    const rows = await this.db.select().from(parts).where(eq(parts.id, id)).limit(1);
+    return rows[0];
+  }
+
+  /** Jumlah scan yang diterima hari ini pada satu line. */
+  private async countToday(lineCode?: string | null): Promise<number> {
+    if (!lineCode) return 0;
+    const line = await this.findLine(lineCode);
+    if (!line) return 0;
+
+    const today = productionDateKey(new Date());
+    const start = new Date(`${today}T00:00:00`);
+    const end = new Date(`${today}T23:59:59.999`);
+
+    const rows = await this.db
+      .select({ value: count() })
+      .from(scanEvents)
+      .where(
+        and(
+          eq(scanEvents.lineId, line.id),
+          gte(scanEvents.scannedAt, start),
+          lte(scanEvents.scannedAt, end),
+        ),
+      );
+    return rows[0]?.value ?? 0;
+  }
+
+  /** Ringkasan untuk layar stasiun: identitas line, hitungan hari ini, scan terakhir. */
+  async summary(lineCode: string, limit = 10) {
+    const line = await this.findLine(lineCode);
+    if (!line) throw new BadRequestException(`Line ${lineCode} tidak ditemukan`);
+
+    const plantRows = await this.db
+      .select()
+      .from(plants)
+      .where(eq(plants.id, line.plantId))
+      .limit(1);
+
+    return {
+      line: {
+        code: line.code,
+        name: line.name,
+        processType: line.processType,
+        plantCode: plantRows[0]?.code ?? null,
+        plantName: plantRows[0]?.name ?? null,
+      },
+      counterToday: await this.countToday(lineCode),
+      recent: await this.recent(lineCode, limit),
+    };
   }
 
   /** Riwayat scan terbaru — dipakai layar operator untuk konfirmasi visual. */

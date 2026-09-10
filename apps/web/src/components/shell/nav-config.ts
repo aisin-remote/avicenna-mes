@@ -31,6 +31,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'Produksi',
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+      { href: '/scan', label: 'Stasiun Scan', icon: 'ScanLine' },
       { href: '/monitor', label: 'Monitor Line', icon: 'Activity' },
     ],
   },

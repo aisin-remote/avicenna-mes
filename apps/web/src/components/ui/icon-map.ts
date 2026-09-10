@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Activity,
   Database,
+  ScanLine,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -33,6 +34,7 @@ const ICONS: Record<string, LucideIcon> = {
   TriangleAlert,
   LayoutDashboard,
   Activity,
+  ScanLine,
 };
 
 /** Mengembalikan ikon Database sebagai cadangan agar UI tidak pernah kosong. */

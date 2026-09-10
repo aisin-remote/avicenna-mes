@@ -44,3 +44,48 @@ export const scanResultSchema = z.object({
   rejected: z.array(z.object({ index: z.number(), reason: z.string() })),
 });
 export type ScanResult = z.infer<typeof scanResultSchema>;
+
+/**
+ * Hasil satu scan dari layar stasiun operator.
+ *
+ * Berbeda dari ScanResult yang meringkas satu batch dari device, bentuk ini
+ * memuat semua yang dibutuhkan layar dalam satu jawaban: status untuk memilih
+ * warna, pesan untuk ditampilkan besar, identitas part sebagai konfirmasi
+ * visual, dan penghitung hari ini agar tidak perlu request kedua.
+ */
+export const stationStatusSchema = z.enum(['ACCEPTED', 'DUPLICATE', 'REJECTED']);
+export type StationStatus = z.infer<typeof stationStatusSchema>;
+
+export const stationResultSchema = z.object({
+  status: stationStatusSchema,
+  reason: z.string().optional(),
+  message: z.string(),
+  rawCode: z.string(),
+  partNumber: z.string().nullable(),
+  partName: z.string().nullable(),
+  qty: z.number(),
+  counterToday: z.number(),
+  scannedAt: z.string(),
+});
+export type StationResult = z.infer<typeof stationResultSchema>;
+
+export interface StationSummary {
+  line: {
+    code: string;
+    name: string;
+    processType: string;
+    plantCode: string | null;
+    plantName: string | null;
+  };
+  counterToday: number;
+  recent: Array<{
+    id: number;
+    kind: string;
+    rawCode: string;
+    serialNumber: string | null;
+    qty: number;
+    scannedAt: string | Date;
+    partNumber: string | null;
+    partName: string | null;
+  }>;
+}

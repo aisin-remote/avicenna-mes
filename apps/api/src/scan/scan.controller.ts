@@ -23,6 +23,25 @@ export class ScanController {
     return this.scan.ingest(body.scans, req.principal);
   }
 
+  /**
+   * Satu scan dari layar stasiun operator.
+   *
+   * Dipisah dari POST /scan yang melayani device: layar butuh satu jawaban
+   * lengkap (status, pesan, identitas part, penghitung) agar tidak perlu
+   * request kedua di antara dua scan yang bisa datang beruntun.
+   */
+  @Post('station')
+  @UsePipes(new ZodValidationPipe(scanInputSchema))
+  async station(@Body() body: ScanInput, @Req() req: Request) {
+    return this.scan.station(body, req.principal);
+  }
+
+  /** Identitas line, hitungan hari ini, dan scan terakhir — untuk memuat layar. */
+  @Get('summary')
+  async summary(@Query('line') line: string, @Query('limit') limit?: string) {
+    return this.scan.summary(line, limit ? Number(limit) : 10);
+  }
+
   @Get('recent')
   async recent(@Query('line') line: string, @Query('limit') limit?: string) {
     return this.scan.recent(line, limit ? Number(limit) : 50);
