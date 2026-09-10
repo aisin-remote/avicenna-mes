@@ -21,3 +21,4 @@ export * from './quality';
 export * from './delivery';
 export * from './machine';
 export * from './supply';
+export * from './scrap';

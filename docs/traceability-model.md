@@ -142,22 +142,65 @@ kebenaran. Ini yang membedakannya dari `avi_trace_component_stock_balances`
 dan `production_stocks` bella, yang menyimpan saldo langsung sehingga ketika
 angkanya melenceng tidak ada cara menelusuri sebabnya.
 
-## Perlu diputuskan bersama tim
+## Keputusan yang sudah diambil
 
-1. **Apakah operator men-scan komponen saat assembly?**
-   Ini menentukan silsilahnya nyata atau hanya perkiraan. Kalau tidak discan,
-   sistem hanya bisa menebak "lot yang sedang dipakai di line saat itu" —
-   cukup untuk kebanyakan kasus, tapi tidak cukup saat customer menuntut bukti.
+Kelima pertanyaan di bawah sudah dijawab tim pada 10 September 2026.
 
-2. **Backflush atau pencatatan eksplisit** untuk pemakaian material?
-   Skema mendukung keduanya; yang perlu diputuskan adalah bebannya di lapangan.
+### 1. Komponen TIDAK discan saat produksi
 
-3. **Satuan raw material.** D dilebur — satuannya kilogram, bukan pcs.
-   `qtyPer` di BOM perlu desimal, dan part perlu satuan (UOM). Avicenna punya
-   tabel `avi_uom` yang belum dipetakan.
+Yang discan hanya hasil barang jadinya. Komponen berkurang otomatis mengikuti
+BOM.
 
-4. **Apakah B dan C benar-benar lot, atau ada yang berseri?**
-   Sebagian komponen beli kadang punya barcode sendiri dari supplier.
+**Konsekuensi yang harus disadari:** silsilah menjadi `INFERRED`, bukan
+`SCANNED`. Sistem menyimpulkan komponen mana yang terpakai dari lot yang
+sedang aktif di line saat itu — bukan dari bukti langsung.
 
-5. **Scrap dan rework.** Kalau A gagal di machining, D-nya sudah terpakai.
-   Perlu disepakati bagaimana itu dicatat.
+Ini cukup untuk menelusuri dan menarik barang saat ada masalah, tapi TIDAK
+cukup bila suatu saat customer menuntut bukti per unit. Kolom `evidence`
+sengaja dibuat agar perbedaan itu tetap terlihat, sehingga kalau kelak
+sebagian proses mulai men-scan komponen, keduanya bisa hidup berdampingan
+tanpa mengubah skema.
+
+### 2. Backflush
+
+Pemakaian material dihitung otomatis dari BOM setiap ada scan produksi.
+Akurasinya sepenuhnya bergantung pada ketepatan BOM — BOM yang salah berarti
+stok yang salah, dan tidak ada yang akan menyadarinya sampai stock opname.
+
+Dijalankan lewat antrean, bukan di dalam request scan. Dua alasannya: layar
+operator tidak boleh ikut menunggu perhitungan material, dan kegagalan
+perhitungan tidak boleh menggagalkan pencatatan produksi yang sudah terjadi.
+Perhitungannya deterministik, jadi selalu bisa dijalankan ulang dari catatan
+produksi bila ada yang gagal.
+
+### 3. Satuan raw material
+
+Kebanyakan pcs. Yang dilebur — aluminium dan plastik — memakai kilogram.
+Sudah ditampung kolom `uom` pada part dan `qtyPer` desimal pada BOM.
+
+### 4. B dan C punya part number dan barcode sendiri
+
+Discan saat kedatangan untuk menambah stok, bukan saat produksi. Jadi jalur
+scan-nya ada di penerimaan barang, terpisah dari scan produksi.
+
+### 5. Perlakuan barang NG — ada dua, dan berbeda mendasar
+
+**a. Lebur ulang.** Part A yang NG dianggap kembali menjadi D karena akan
+dilebur lagi. Ini bukan sekadar pengurangan stok, melainkan **perubahan
+identitas**: stok A berkurang, stok D bertambah. Sisa material tetap bernilai,
+dan kalau hanya dicatat sebagai "hilang", stok D akan terus terlihat kurang
+dari kenyataan.
+
+**b. Repair.** Part ABC yang NG diperbaiki dengan mengganti komponen tertentu
+— misalnya hanya B. Ini mengubah silsilah unit tersebut: B yang lama keluar,
+B yang baru masuk. Silsilah karena itu harus bisa mencatat penggantian, bukan
+sekadar ditimpa — riwayat "unit ini pernah memakai B lot lama" tetap harus
+bisa dibaca saat investigasi.
+
+## Yang masih terbuka
+
+- Rasio konversi lebur ulang: 1 pcs A menjadi berapa kg D? Kemungkinan sama
+  dengan `qtyPer` di BOM, tapi biasanya ada susut pembakaran yang membuatnya
+  lebih kecil. Perlu angka dari lapangan.
+- Apakah komponen yang dilepas saat repair (B lama) bisa dipakai ulang, atau
+  langsung dibuang.

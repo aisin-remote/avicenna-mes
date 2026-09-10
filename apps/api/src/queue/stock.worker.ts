@@ -4,6 +4,7 @@ import { and, eq, gte, lte, type Database } from '@avicenna/db';
 import { mutations, stockBalances } from '@avicenna/db';
 import { summarizeMutations, previousDateKey, type MutationRow } from '@avicenna/domain';
 import { RedisService } from './redis.service';
+import { BackflushService } from '../backflush/backflush.service';
 import { InjectDb } from '../db/db.module';
 import { QUEUES, JOBS } from './queue.constants';
 
@@ -30,6 +31,7 @@ export class StockWorker implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly redis: RedisService,
     @InjectDb() private readonly db: Database,
+    private readonly backflush: BackflushService,
   ) {}
 
   onModuleInit(): void {
@@ -38,6 +40,16 @@ export class StockWorker implements OnModuleInit, OnModuleDestroy {
       async (job: Job) => {
         if (job.name === JOBS.RECALC_STOCK_BALANCE) {
           return this.recalc(job.data as RecalcPayload);
+        }
+        if (job.name === JOBS.BACKFLUSH_CONSUMPTION) {
+          const { scanEventId } = job.data as { scanEventId: number };
+          const result = await this.backflush.run(scanEventId);
+          this.logger.log(
+            `backflush scan=${scanEventId}: ${result.consumed} komponen` +
+              (result.shortages > 0 ? `, ${result.shortages} kurang stok` : '') +
+              (result.noBom ? ' (tanpa BOM)' : ''),
+          );
+          return result;
         }
         this.logger.warn(`job tidak dikenal: ${job.name}`);
       },
@@ -72,7 +84,7 @@ export class StockWorker implements OnModuleInit, OnModuleDestroy {
       .orderBy(stockBalances.balanceDate)
       .limit(1);
 
-    const opening = previous[0]?.closingQty ?? 0;
+    const opening = Number(previous[0]?.closingQty ?? 0);
 
     const rows = await this.db
       .select({
@@ -89,7 +101,12 @@ export class StockWorker implements OnModuleInit, OnModuleDestroy {
         ),
       );
 
-    const summary = summarizeMutations(opening, rows as MutationRow[]);
+    // Kolom desimal dikembalikan driver sebagai string; diubah ke angka di
+    // sini supaya logika domain tetap bekerja dengan angka biasa.
+    const summary = summarizeMutations(
+      opening,
+      rows.map((r) => ({ ...r, qty: Number(r.qty) })) as MutationRow[],
+    );
 
     await this.db
       .insert(stockBalances)
@@ -97,17 +114,17 @@ export class StockWorker implements OnModuleInit, OnModuleDestroy {
         partId: payload.partId,
         locationId: payload.locationId ?? null,
         balanceDate: payload.date,
-        openingQty: summary.openingQty,
-        inQty: summary.inQty,
-        outQty: summary.outQty,
-        closingQty: summary.closingQty,
+        openingQty: String(summary.openingQty),
+        inQty: String(summary.inQty),
+        outQty: String(summary.outQty),
+        closingQty: String(summary.closingQty),
       })
       .onDuplicateKeyUpdate({
         set: {
-          openingQty: summary.openingQty,
-          inQty: summary.inQty,
-          outQty: summary.outQty,
-          closingQty: summary.closingQty,
+          openingQty: String(summary.openingQty),
+          inQty: String(summary.inQty),
+          outQty: String(summary.outQty),
+          closingQty: String(summary.closingQty),
         },
       });
 

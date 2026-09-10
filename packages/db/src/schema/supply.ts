@@ -242,6 +242,16 @@ export const genealogy = mysqlTable(
      */
     evidence: mysqlEnum('evidence', ['SCANNED', 'INFERRED']).notNull().default('INFERRED'),
     occurredAt: timestamp('occurred_at').notNull(),
+    /**
+     * Ditandai saat komponen ini diganti lewat perbaikan.
+     *
+     * Barisnya TIDAK dihapus. Saat investigasi, pertanyaan "unit ini dulu
+     * memakai lot apa sebelum diperbaiki" harus tetap bisa dijawab — dan
+     * justru itu yang sering dicari ketika masalah muncul belakangan.
+     * Tautan yang masih berlaku adalah yang superseded_at-nya kosong.
+     */
+    supersededAt: timestamp('superseded_at'),
+    supersededByRepairId: fk('superseded_by_repair_id'),
     meta: json('meta'),
     createdAt: timestamps.createdAt,
   },

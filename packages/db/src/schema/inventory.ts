@@ -2,6 +2,7 @@ import {
   mysqlTable,
   varchar,
   int,
+  decimal,
   date,
   timestamp,
   mysqlEnum,
@@ -61,9 +62,24 @@ export const mutations = mysqlTable(
       .references(() => parts.id),
     locationId: fk('location_id').references(() => locations.id),
     lineId: fk('line_id').references(() => lines.id),
+    /**
+     * Lot yang bergerak. Kosong untuk part yang dilacak per butir atau hanya
+     * per jumlah.
+     *
+     * Tanpa kolom ini, sisa per lot tidak bisa dihitung — dan alokasi FIFO
+     * saat backflush jadi mustahil dilakukan dengan benar.
+     */
+    lotId: fk('lot_id'),
     type: mysqlEnum('type', MUTATION_TYPES).notNull(),
-    /** Bertanda: + masuk, - keluar. */
-    qty: int('qty').notNull(),
+    /**
+     * Bertanda: + masuk, - keluar.
+     *
+     * DESIMAL, bukan integer. Raw material yang dilebur dipakai dalam kilogram
+     * dengan pecahan — 8,4 kg yang dibulatkan menjadi 8 akan menumpuk menjadi
+     * selisih stok besar dalam hitungan bulan, dan penyebabnya tidak akan
+     * ketahuan karena tiap barisnya sendiri terlihat wajar.
+     */
+    qty: decimal('qty', { precision: 14, scale: 4 }).notNull(),
     /** Tabel + id asal (scan_events, quality_inspections, deliveries, ...). */
     sourceTable: varchar('source_table', { length: 64 }),
     sourceId: fk('source_id'),
@@ -78,6 +94,7 @@ export const mutations = mysqlTable(
     index('mutations_part_time_idx').on(t.partId, t.occurredAt),
     index('mutations_type_time_idx').on(t.type, t.occurredAt),
     index('mutations_source_idx').on(t.sourceTable, t.sourceId),
+    index('mutations_lot_idx').on(t.lotId, t.occurredAt),
   ],
 );
 
@@ -94,10 +111,12 @@ export const stockBalances = mysqlTable(
       .references(() => parts.id),
     locationId: fk('location_id').references(() => locations.id),
     balanceDate: date('balance_date', { mode: 'string' }).notNull(),
-    openingQty: int('opening_qty').notNull().default(0),
-    inQty: int('in_qty').notNull().default(0),
-    outQty: int('out_qty').notNull().default(0),
-    closingQty: int('closing_qty').notNull().default(0),
+    // Desimal mengikuti mutations — saldo tidak boleh kehilangan presisi yang
+    // sudah dijaga di buku besarnya.
+    openingQty: decimal('opening_qty', { precision: 14, scale: 4 }).notNull().default('0'),
+    inQty: decimal('in_qty', { precision: 14, scale: 4 }).notNull().default('0'),
+    outQty: decimal('out_qty', { precision: 14, scale: 4 }).notNull().default('0'),
+    closingQty: decimal('closing_qty', { precision: 14, scale: 4 }).notNull().default('0'),
     ...timestamps,
   },
   (t) => [

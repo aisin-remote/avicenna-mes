@@ -165,8 +165,10 @@ export class ScanService {
       }
     }
 
+    let insertedId: number | undefined;
+
     try {
-      await this.db.insert(scanEvents).values({
+      const inserted = await this.db.insert(scanEvents).values({
         plantId,
         kind: normalized.kind,
         processType,
@@ -182,6 +184,8 @@ export class ScanService {
         dedupeKey: normalized.dedupeKey,
         meta: normalized.meta ?? null,
       });
+      // mysql2 mengembalikan insertId pada elemen pertama hasil insert.
+      insertedId = Number((inserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
     } catch (err) {
       if (isDuplicateKey(err)) {
         return { duplicated: true, productionDate: prodDate, qty: 0 };
@@ -197,7 +201,7 @@ export class ScanService {
         partId: part.id,
         lineId: line?.id ?? null,
         type: 'PRODUCTION_IN',
-        qty: signedQty('PRODUCTION_IN', parsed.qty ?? normalized.qty),
+        qty: String(signedQty('PRODUCTION_IN', parsed.qty ?? normalized.qty)),
         sourceTable: 'scan_events',
         npk: normalized.npk ?? (principal?.kind === 'user' ? principal.npk : null),
         userId: principal?.kind === 'user' ? principal.sub : null,
@@ -209,6 +213,26 @@ export class ScanService {
     // layar monitor telat memperbarui — itu bisa diterima. Menggagalkan scan
     // yang datanya sudah tersimpan tidak bisa diterima, karena device akan
     // mengira scan-nya gagal dan operator akan men-scan ulang.
+    /*
+     * Backflush: komponen berkurang otomatis mengikuti BOM.
+     *
+     * Dijadwalkan, tidak dikerjakan di sini. Operator tidak boleh menunggu
+     * perhitungan material, dan kegagalannya tidak boleh menggagalkan
+     * pencatatan produksi yang barangnya sudah terlanjur jadi.
+     */
+    if (insertedId && normalized.kind === 'PRODUCTION') {
+      try {
+        await this.queue.add(QUEUES.STOCK, JOBS.BACKFLUSH_CONSUMPTION, {
+          scanEventId: insertedId,
+        });
+      } catch (err) {
+        this.logger.error(
+          `gagal menjadwalkan backflush untuk scan ${insertedId}: ${String(err)}. ` +
+            'Jalankan ulang job BACKFLUSH_CONSUMPTION setelah antrean pulih.',
+        );
+      }
+    }
+
     if (line) {
       try {
         await this.realtime.publish(`line:${line.code}`, 'scan', {

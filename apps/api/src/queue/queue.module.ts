@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { RedisService } from './redis.service';
 import { QueueService } from './queue.service';
 import { StockWorker } from './stock.worker';
+import { BackflushModule } from '../backflush/backflush.module';
 
 /**
  * Producer (QueueService) dan worker (StockWorker) hidup di proses yang sama
@@ -12,6 +13,7 @@ import { StockWorker } from './stock.worker';
  */
 @Global()
 @Module({
+  imports: [BackflushModule],
   providers: [RedisService, QueueService, StockWorker],
   exports: [RedisService, QueueService],
 })

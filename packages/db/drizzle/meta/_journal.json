@@ -15,6 +15,27 @@
       "when": 1789042867920,
       "tag": "0001_supply_chain",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1789044251926,
+      "tag": "0002_scrap_and_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1789044357358,
+      "tag": "0003_mutation_lot",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1789044573369,
+      "tag": "0004_decimal_qty",
+      "breakpoints": true
     }
   ]
 }

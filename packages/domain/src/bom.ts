@@ -13,6 +13,8 @@ export interface BomLine {
   qtyPer: number;
   /** Persentase susut yang wajar, 0-100. */
   scrapPct?: number;
+  /** Satuan komponen. Raw material yang dilebur memakai kg, bukan pcs. */
+  uom?: string;
   effectiveFrom?: string;
   /** null atau undefined berarti masih berlaku. */
   effectiveTo?: string | null;
