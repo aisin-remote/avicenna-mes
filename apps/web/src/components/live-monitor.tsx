@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Radio, Inbox } from 'lucide-react';
+import { Card, CardHeader } from './ui/card';
+import { LiveDot } from './ui/chip';
+import { springSoft, durations, easeSoft } from './motion/transitions';
 
 interface ScanEvent {
   kind: string;
@@ -11,6 +16,8 @@ interface ScanEvent {
 }
 
 type Status = 'connecting' | 'live' | 'reconnecting';
+
+const MAX_ROWS = 50;
 
 /**
  * Layar monitor realtime satu line.
@@ -23,14 +30,13 @@ type Status = 'connecting' | 'live' | 'reconnecting';
  * disaring ia akan muncul sebagai baris kosong di daftar.
  */
 export function LiveMonitor({ lineCode, apiUrl }: { lineCode: string; apiUrl: string }) {
-  const [events, setEvents] = useState<ScanEvent[]>([]);
+  const [events, setEvents] = useState<Array<ScanEvent & { key: string }>>([]);
   const [status, setStatus] = useState<Status>('connecting');
-  const sourceRef = useRef<EventSource | null>(null);
+  const seq = useRef(0);
 
   useEffect(() => {
     const url = `${apiUrl}/realtime/line:${encodeURIComponent(lineCode)}`;
     const source = new EventSource(url);
-    sourceRef.current = source;
 
     source.onopen = () => setStatus('live');
     source.onerror = () => setStatus('reconnecting');
@@ -38,63 +44,95 @@ export function LiveMonitor({ lineCode, apiUrl }: { lineCode: string; apiUrl: st
       try {
         const parsed = JSON.parse(e.data) as { type?: string; payload?: ScanEvent };
         if (parsed.type === 'ping' || !parsed.payload) return;
-        // Batasi 50 baris supaya layar yang dibiarkan terbuka semalaman
+        seq.current += 1;
+        const row = { ...parsed.payload, key: `${parsed.payload.scannedAt}-${seq.current}` };
+        // Batasi jumlah baris supaya layar yang dibiarkan terbuka semalaman
         // tidak menumpuk ribuan node DOM.
-        setEvents((prev) => [parsed.payload as ScanEvent, ...prev].slice(0, 50));
+        setEvents((prev) => [row, ...prev].slice(0, MAX_ROWS));
       } catch {
         // Pesan rusak diabaikan; koneksi tetap dipertahankan.
       }
     };
 
-    return () => {
-      source.close();
-      sourceRef.current = null;
-    };
+    return () => source.close();
   }, [lineCode, apiUrl]);
 
+  const tone = status === 'live' ? 'ok' : status === 'connecting' ? 'warn' : 'ng';
+  const text =
+    status === 'live' ? 'Terhubung' : status === 'connecting' ? 'Menyambung' : 'Menyambung ulang';
+
   return (
-    <div className="surface rounded-xl">
-      <div
-        className="flex items-center justify-between border-b px-5 py-3"
-        style={{ borderColor: 'var(--border)' }}
-      >
-        <h2 className="font-semibold">Line {lineCode}</h2>
-        <span className="flex items-center gap-2 text-xs">
-          <span
-            className="inline-block h-2 w-2 rounded-full"
-            style={{
-              background:
-                status === 'live'
-                  ? 'var(--color-ok)'
-                  : status === 'connecting'
-                    ? 'var(--color-warn)'
-                    : 'var(--color-ng)',
-            }}
-          />
-          {status === 'live' ? 'Terhubung' : status === 'connecting' ? 'Menyambung' : 'Menyambung ulang'}
-        </span>
-      </div>
+    <Card>
+      <CardHeader
+        icon={Radio}
+        title={`Aliran scan — ${lineCode}`}
+        subtitle={`${events.length} kejadian sejak layar dibuka`}
+        actions={
+          <span className="flex items-center gap-2.5 rounded-full border border-line px-4 py-2 text-[13px] font-medium">
+            <LiveDot tone={tone} />
+            {text}
+          </span>
+        }
+      />
+
+      <div className="h-px bg-line" />
 
       {events.length === 0 ? (
-        <p className="px-5 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
-          Belum ada scan masuk. Layar ini akan terisi otomatis.
-        </p>
+        <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+          <motion.div
+            animate={{ opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <Inbox className="size-8 text-ink-muted" strokeWidth={1.5} aria-hidden />
+          </motion.div>
+          <p className="text-[14px] text-ink-muted">
+            Belum ada scan masuk. Layar ini terisi otomatis begitu ada kiriman.
+          </p>
+        </div>
       ) : (
-        <ul className="divide-y" style={{ borderColor: 'var(--border)' }}>
-          {events.map((e, i) => (
-            <li key={`${e.scannedAt}-${i}`} className="flex items-center gap-4 px-5 py-3 text-sm">
-              <span className="w-24 shrink-0 text-xs font-medium" style={{ color: 'var(--muted)' }}>
-                {new Date(e.scannedAt).toLocaleTimeString('id-ID')}
-              </span>
-              <span className="flex-1 font-medium">{e.partNumber ?? e.serialNumber ?? '-'}</span>
-              <span className="tabular w-16 text-right">{e.qty} pcs</span>
-              <span className="w-24 text-right text-xs" style={{ color: 'var(--muted)' }}>
-                {e.kind}
-              </span>
-            </li>
-          ))}
+        <ul className="divide-y divide-line">
+          <AnimatePresence initial={false}>
+            {events.map((e, i) => (
+              <motion.li
+                key={e.key}
+                layout
+                initial={{ opacity: 0, height: 0, backgroundColor: 'rgba(79,70,229,0.07)' }}
+                animate={{ opacity: 1, height: 'auto', backgroundColor: 'rgba(79,70,229,0)' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{
+                  layout: springSoft,
+                  height: { duration: durations.base, ease: easeSoft },
+                  opacity: { duration: durations.base, ease: easeSoft },
+                  // Sorotan biru memudar lebih lambat agar mata sempat menangkap
+                  // baris mana yang baru masuk.
+                  backgroundColor: { duration: 1.4, ease: easeSoft },
+                }}
+                className="overflow-hidden"
+              >
+                <div className="flex items-center gap-4 px-6 py-3.5 text-[14px]">
+                  <span className="tabular w-20 shrink-0 text-[13px] font-medium text-ink-muted">
+                    {new Date(e.scannedAt).toLocaleTimeString('id-ID', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    })}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-semibold">
+                    {e.partNumber ?? e.serialNumber ?? '—'}
+                  </span>
+                  <span className="tabular w-24 shrink-0 text-right font-semibold">
+                    {e.qty} pcs
+                  </span>
+                  <span className="w-28 shrink-0 text-right text-[13px] text-ink-muted">
+                    {e.kind}
+                  </span>
+                </div>
+                {i === 0 ? null : null}
+              </motion.li>
+            ))}
+          </AnimatePresence>
         </ul>
       )}
-    </div>
+    </Card>
   );
 }

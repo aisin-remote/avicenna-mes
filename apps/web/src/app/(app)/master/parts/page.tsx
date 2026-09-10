@@ -1,5 +1,11 @@
 import Link from 'next/link';
+import { Package, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { listParts } from '@/lib/queries';
+import { PageHeader } from '@/components/ui/page-header';
+import { Card, CardHeader } from '@/components/ui/card';
+import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
+import { Chip } from '@/components/ui/chip';
+import { Reveal } from '@/components/motion/reveal';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,88 +21,116 @@ export default async function PartsPage({ searchParams }: PageProps) {
   const { data, meta } = await listParts({ page, perPage: 25, search });
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Master Part</h1>
-          <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
-            {meta.total} part terdaftar
-          </p>
-        </div>
+    <>
+      <PageHeader
+        crumbs={[{ label: 'Master Data' }, { label: 'Part' }]}
+        title="Master Part"
+        description={`${meta.total} part terdaftar di seluruh pabrik`}
+        actions={
+          // Form GET biasa: pencarian jadi bagian URL, bisa di-bookmark dan
+          // di-refresh tanpa state klien apa pun.
+          <form className="relative">
+            <Search
+              className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-ink-muted"
+              strokeWidth={1.8}
+              aria-hidden
+            />
+            <input
+              type="search"
+              name="q"
+              defaultValue={search ?? ''}
+              placeholder="Cari part number atau nama"
+              aria-label="Cari part"
+              className="h-11 w-72 rounded-full border border-line bg-card pl-11 pr-4 text-[14px] outline-none transition-colors duration-200 placeholder:text-ink-muted focus:border-line-strong"
+            />
+          </form>
+        }
+      />
 
-        {/* Form GET biasa: pencarian jadi bagian URL, bisa di-bookmark dan
-            di-refresh tanpa state klien apa pun. */}
-        <form className="flex gap-2">
-          <input
-            type="search"
-            name="q"
-            defaultValue={search ?? ''}
-            placeholder="Cari part number / nama"
-            className="w-64 rounded-lg border px-3 py-2 text-sm outline-none focus:border-brand-500"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      <Reveal>
+        <Card>
+          <CardHeader
+            icon={Package}
+            title="Daftar Part"
+            subtitle={search ? `Hasil pencarian untuk "${search}"` : 'Seluruh part aktif'}
           />
-          <button
-            type="submit"
-            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            Cari
-          </button>
-        </form>
-      </header>
-
-      <div className="surface overflow-x-auto rounded-xl">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left" style={{ borderColor: 'var(--border)' }}>
-              <Th>Part Number</Th>
-              <Th>Back No.</Th>
-              <Th>Nama</Th>
-              <Th>Pabrik</Th>
-              <Th>Proses</Th>
-              <Th>Line</Th>
-              <Th className="text-right">Qty/Kanban</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.length === 0 ? (
+          <Table>
+            <thead>
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
-                  Tidak ada part yang cocok. Jalankan <code>pnpm db:seed</code> untuk data contoh.
-                </td>
+                <Th>Part Number</Th>
+                <Th>Back No.</Th>
+                <Th>Nama</Th>
+                <Th>Pabrik</Th>
+                <Th>Proses</Th>
+                <Th>Line</Th>
+                <Th align="right">Qty/Kanban</Th>
               </tr>
-            ) : (
-              data.map((p) => (
-                <tr key={p.id} className="border-b last:border-0" style={{ borderColor: 'var(--border)' }}>
-                  <Td className="font-medium">{p.partNumber}</Td>
-                  <Td>{p.backNumber ?? '-'}</Td>
-                  <Td>{p.name}</Td>
-                  <Td>{p.plantCode ?? '-'}</Td>
-                  <Td>{p.processType}</Td>
-                  <Td>{p.lineName ?? '-'}</Td>
-                  <Td className="tabular text-right">{p.qtyPerKanban ?? '-'}</Td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {data.length === 0 ? (
+                <EmptyState colSpan={7}>
+                  {search ? (
+                    <>
+                      Tidak ada part yang cocok dengan &ldquo;{search}&rdquo;.{' '}
+                      <Link href="/master/parts" className="underline underline-offset-4">
+                        Hapus pencarian
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      Belum ada part. Jalankan{' '}
+                      <code className="rounded-md bg-surface px-1.5 py-0.5 font-mono text-[13px]">
+                        pnpm db:seed
+                      </code>{' '}
+                      untuk data contoh.
+                    </>
+                  )}
+                </EmptyState>
+              ) : (
+                data.map((p) => (
+                  <Tr key={p.id}>
+                    <Td strong>{p.partNumber}</Td>
+                    <Td>{p.backNumber ?? '—'}</Td>
+                    <Td>{p.name}</Td>
+                    <Td>
+                      <Chip value={p.plantCode ?? '—'} />
+                    </Td>
+                    <Td>
+                      <Chip value={p.processType} />
+                    </Td>
+                    <Td>{p.lineName ?? '—'}</Td>
+                    <Td align="right" strong className="tabular">
+                      {p.qtyPerKanban ?? '—'}
+                    </Td>
+                  </Tr>
+                ))
+              )}
+            </tbody>
+          </Table>
+        </Card>
+      </Reveal>
 
       {meta.totalPages > 1 ? (
-        <nav className="flex items-center justify-between text-sm">
-          <span style={{ color: 'var(--muted)' }}>
+        <nav className="mt-5 flex items-center justify-between text-[14px]">
+          <span className="text-ink-muted">
             Halaman {meta.page} dari {meta.totalPages}
           </span>
           <div className="flex gap-2">
-            <PageLink page={meta.page - 1} disabled={meta.page <= 1} search={search}>
+            <PageLink page={meta.page - 1} disabled={meta.page <= 1} search={search} dir="prev">
               Sebelumnya
             </PageLink>
-            <PageLink page={meta.page + 1} disabled={meta.page >= meta.totalPages} search={search}>
+            <PageLink
+              page={meta.page + 1}
+              disabled={meta.page >= meta.totalPages}
+              search={search}
+              dir="next"
+            >
               Berikutnya
             </PageLink>
           </div>
         </nav>
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -104,41 +138,44 @@ function PageLink({
   page,
   disabled,
   search,
+  dir,
   children,
 }: {
   page: number;
   disabled: boolean;
   search?: string;
+  dir: 'prev' | 'next';
   children: React.ReactNode;
 }) {
+  const Icon = dir === 'prev' ? ChevronLeft : ChevronRight;
+  const content = (
+    <>
+      {dir === 'prev' ? <Icon className="size-4" strokeWidth={2} aria-hidden /> : null}
+      {children}
+      {dir === 'next' ? <Icon className="size-4" strokeWidth={2} aria-hidden /> : null}
+    </>
+  );
+
   if (disabled) {
     return (
-      <span className="rounded-lg border px-3 py-1.5 opacity-40" style={{ borderColor: 'var(--border)' }}>
-        {children}
+      <span
+        aria-disabled
+        className="inline-flex h-10 items-center gap-1.5 rounded-full border border-line px-4 font-medium text-ink-muted opacity-45"
+      >
+        {content}
       </span>
     );
   }
+
   const query = new URLSearchParams({ page: String(page) });
   if (search) query.set('q', search);
+
   return (
     <Link
       href={`/master/parts?${query.toString()}`}
-      className="rounded-lg border px-3 py-1.5 hover:bg-brand-50"
-      style={{ borderColor: 'var(--border)' }}
+      className="inline-flex h-10 items-center gap-1.5 rounded-full border border-line bg-card px-4 font-medium transition-colors duration-200 hover:border-line-strong hover:bg-surface"
     >
-      {children}
+      {content}
     </Link>
   );
-}
-
-function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return (
-    <th className={`px-5 py-2.5 text-xs font-medium uppercase tracking-wide ${className}`} style={{ color: 'var(--muted)' }}>
-      {children}
-    </th>
-  );
-}
-
-function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-5 py-2.5 ${className}`}>{children}</td>;
 }

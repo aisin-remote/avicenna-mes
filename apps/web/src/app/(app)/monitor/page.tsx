@@ -1,5 +1,11 @@
 import Link from 'next/link';
+import { Activity, ArrowUpRight } from 'lucide-react';
 import { listLines } from '@/lib/queries';
+import { PageHeader } from '@/components/ui/page-header';
+import { Card } from '@/components/ui/card';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { Chip } from '@/components/ui/chip';
+import { Stagger, StaggerItem } from '@/components/motion/reveal';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,37 +13,49 @@ export default async function MonitorIndexPage() {
   const lines = await listLines();
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Monitor Line</h1>
-        <p className="mt-1 text-sm" style={{ color: 'var(--muted)' }}>
-          Pilih line untuk melihat scan yang masuk secara langsung
-        </p>
-      </header>
+    <>
+      <PageHeader
+        crumbs={[{ label: 'Monitor Line' }]}
+        title="Monitor Line"
+        description="Pilih line untuk melihat scan yang masuk secara langsung"
+      />
 
       {lines.length === 0 ? (
-        <p className="surface rounded-xl px-5 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
-          Belum ada line. Jalankan <code>pnpm db:seed</code> lebih dulu.
-        </p>
+        <Card className="px-6 py-14 text-center text-[14px] text-ink-muted">
+          Belum ada line. Jalankan{' '}
+          <code className="rounded-md bg-surface px-1.5 py-0.5 font-mono text-[13px]">
+            pnpm db:seed
+          </code>{' '}
+          lebih dulu.
+        </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Stagger className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {lines.map((line) => (
-            <Link
-              key={line.id}
-              href={`/monitor/${encodeURIComponent(line.code)}`}
-              className="surface rounded-xl p-5 transition hover:border-brand-500"
-            >
-              <div className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--muted)' }}>
-                {line.plantCode} · {line.processType}
-              </div>
-              <div className="mt-2 text-lg font-semibold">{line.name}</div>
-              <div className="text-sm" style={{ color: 'var(--muted)' }}>
-                {line.code}
-              </div>
-            </Link>
+            <StaggerItem key={line.id}>
+              <Link href={`/monitor/${encodeURIComponent(line.code)}`} className="block h-full">
+                <Card interactive className="group h-full p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <IconBadge icon={Activity} />
+                    <ArrowUpRight
+                      className="size-5 text-ink-muted transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-ink"
+                      strokeWidth={1.8}
+                      aria-hidden
+                    />
+                  </div>
+                  <div className="mt-4 text-[18px] font-bold leading-tight tracking-tight">
+                    {line.name}
+                  </div>
+                  <div className="mt-1 text-[14px] text-ink-muted">{line.code}</div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Chip value={line.plantCode ?? '—'} />
+                    <Chip value={line.processType} />
+                  </div>
+                </Card>
+              </Link>
+            </StaggerItem>
           ))}
-        </div>
+        </Stagger>
       )}
-    </div>
+    </>
   );
 }

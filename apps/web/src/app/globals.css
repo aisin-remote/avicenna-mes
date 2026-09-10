@@ -1,52 +1,173 @@
 @import 'tailwindcss';
 
 /*
- * Palet dibuat netral dan kontras tinggi.
- * Layar di lantai produksi sering terkena cahaya langsung dan monitornya tua,
- * jadi abu-abu tipis ala dashboard SaaS tidak terbaca di sana.
+ * Sistem desain Avicenna MES.
+ *
+ * Diturunkan dari referensi CORCOM: latar hangat netral, kartu putih dengan
+ * sudut sangat membulat, ikon dalam lingkaran bergaris tipis, dan aksen hitam
+ * pekat hanya untuk aksi utama.
+ *
+ * Catatan untuk lantai produksi: kontras teks dijaga tetap tinggi dan ukuran
+ * dasar tidak dikecilkan, karena monitor di area produksi sering tua dan
+ * terkena cahaya langsung.
  */
 @theme {
-  --color-brand-50: #eef4ff;
-  --color-brand-100: #d9e6ff;
-  --color-brand-500: #2563eb;
-  --color-brand-600: #1d4ed8;
-  --color-brand-700: #1e40af;
+  /* Netral hangat — dasar seluruh antarmuka */
+  --color-canvas: #e6e0d8;
+  --color-shell: #ffffff;
+  --color-surface: #f7f6f3;
+  --color-card: #ffffff;
 
+  --color-line: #ebeae5;
+  --color-line-strong: #dedcd5;
+
+  --color-ink: #16160f;
+  --color-ink-soft: #55554e;
+  --color-ink-muted: #8d8d86;
+
+  --color-accent: #111110;
+  --color-accent-soft: #2a2a26;
+
+  /* Semantik */
   --color-ok: #16a34a;
   --color-warn: #d97706;
   --color-ng: #dc2626;
+  --color-live: #4f46e5;
+
+  --radius-card: 1.5rem;
+  --radius-panel: 2rem;
+
+  --shadow-card: 0 1px 2px rgb(22 22 15 / 0.04);
+  --shadow-lift: 0 8px 24px -8px rgb(22 22 15 / 0.12);
+  --shadow-shell: 0 24px 60px -24px rgb(22 22 15 / 0.22);
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-:root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --border: #e2e5ea;
-  --text: #14181f;
-  --muted: #5b6472;
-}
+@layer base {
+  html {
+    background: var(--color-canvas);
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e1116;
-    --surface: #161b22;
-    --border: #262d38;
-    --text: #e6edf3;
-    --muted: #8b949e;
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Angka pada tabel dan kartu metrik harus rata kolom agar mudah dibandingkan. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background: var(--color-ink);
+    color: #fff;
   }
 }
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+@layer utilities {
+  /* Scrollbar tipis; scrollbar tebal bawaan merusak kesan kartu yang bersih. */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  .scroll-slim::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 999px;
+  }
+  .scroll-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
-.surface {
-  background: var(--surface);
-  border: 1px solid var(--border);
+/*
+ * Hormati preferensi sistem untuk mengurangi gerak.
+ * Sebagian operator sensitif terhadap animasi, dan ini layar yang ditatap
+ * sepanjang shift.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-/* Angka pada tabel & kartu metrik harus rata kolom supaya mudah dibandingkan. */
-.tabular {
-  font-variant-numeric: tabular-nums;
+/*
+ * ─── Animasi kemunculan ─────────────────────────────────────────────────────
+ *
+ * Sengaja memakai CSS, BUKAN JavaScript.
+ *
+ * Pendekatan sebelumnya memakai Motion dengan initial={opacity:0}. Akibatnya
+ * HTML dari server sudah membawa opacity:0, dan isi halaman baru terlihat
+ * setelah React selesai hidrasi. Kalau hidrasi gagal atau lambat — bundle
+ * rusak, jaringan pabrik tersendat, browser lama di lantai produksi — layar
+ * tinggal kosong. Untuk sistem yang dipakai bekerja, itu tidak bisa diterima.
+ *
+ * Animasi CSS berjalan tanpa JavaScript, tidak bisa tersangkut di keadaan
+ * tersembunyi, dan lebih murah. Motion tetap dipakai, tapi hanya untuk hal
+ * yang memang mustahil tanpa JavaScript: pil navigasi yang meluncur, umpan
+ * balik sentuh, dropdown, dan baris realtime yang masuk.
+ *
+ * `both` pada shorthand menahan keadaan akhir, sehingga elemen tetap terlihat
+ * setelah animasi selesai.
+ */
+@keyframes avi-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes avi-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer utilities {
+  .a-rise {
+    animation: avi-rise 0.38s var(--ease-out-soft) both;
+  }
+
+  .a-fade {
+    animation: avi-fade 0.26s var(--ease-out-soft) both;
+  }
+
+  /*
+   * Memunculkan anak secara berurutan tanpa perlu JavaScript.
+   * Jeda 45ms: cukup terasa mengalir, belum terasa menunggu. Anak ke-13 dan
+   * seterusnya memakai jeda yang sama dengan ke-12 agar daftar panjang tidak
+   * membuat baris terakhir muncul terlalu lama.
+   */
+  .a-stagger > * {
+    animation: avi-rise 0.38s var(--ease-out-soft) both;
+  }
+  .a-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .a-stagger > *:nth-child(2) { animation-delay: 45ms; }
+  .a-stagger > *:nth-child(3) { animation-delay: 90ms; }
+  .a-stagger > *:nth-child(4) { animation-delay: 135ms; }
+  .a-stagger > *:nth-child(5) { animation-delay: 180ms; }
+  .a-stagger > *:nth-child(6) { animation-delay: 225ms; }
+  .a-stagger > *:nth-child(7) { animation-delay: 270ms; }
+  .a-stagger > *:nth-child(8) { animation-delay: 315ms; }
+  .a-stagger > *:nth-child(9) { animation-delay: 360ms; }
+  .a-stagger > *:nth-child(10) { animation-delay: 405ms; }
+  .a-stagger > *:nth-child(11) { animation-delay: 450ms; }
+  .a-stagger > *:nth-child(n + 12) { animation-delay: 495ms; }
 }
