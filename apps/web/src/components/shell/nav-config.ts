@@ -37,7 +37,10 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Logistik',
-    items: [{ href: '/receiving', label: 'Penerimaan Barang', icon: 'Truck' }],
+    items: [
+      { href: '/receiving', label: 'Penerimaan Barang', icon: 'Truck' },
+      { href: '/trace', label: 'Telusur Silsilah', icon: 'GitBranch' },
+    ],
   },
   {
     title: 'Master Data',
