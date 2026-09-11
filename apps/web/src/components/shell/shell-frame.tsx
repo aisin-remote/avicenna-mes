@@ -5,6 +5,8 @@ import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar } from './sidebar';
 import { Topbar } from './topbar';
+import { SettingsPanel } from './settings-panel';
+import { usePreferences } from './preferences-provider';
 import { durations, easeSoft } from '../motion/transitions';
 
 /**
@@ -30,13 +32,32 @@ export function ShellFrame({
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const pathname = usePathname();
+  const { prefs } = usePreferences();
 
   // Menutup sendiri setelah berpindah halaman. Tanpa ini panel tetap menutupi
   // halaman yang baru saja dibuka, dan pengguna harus menutupnya dua kali.
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
+
+  /*
+   * Panel geser ditutup begitu layar melebar melewati lg.
+   *
+   * Di atas lg sidebar kembali menjadi bagian tetap tata letak, dan keadaan
+   * "terbuka" yang tertinggal membuat mode ikon tidak berlaku — pengguna
+   * memilih ikon saja tetapi sidebar tetap lebar sampai halaman dimuat ulang.
+   */
+  useEffect(() => {
+    const lebar = window.matchMedia('(min-width: 1024px)');
+    const tutupBilaLebar = () => {
+      if (lebar.matches) setMenuOpen(false);
+    };
+    tutupBilaLebar();
+    lebar.addEventListener('change', tutupBilaLebar);
+    return () => lebar.removeEventListener('change', tutupBilaLebar);
+  }, []);
 
   // Esc menutup panel — kebiasaan yang berlaku untuk semua lapisan menutup.
   useEffect(() => {
@@ -50,7 +71,7 @@ export function ShellFrame({
 
   return (
     <div className="flex h-dvh overflow-hidden bg-shell">
-      <Sidebar userName={userName} role={role} open={menuOpen} />
+      <Sidebar userName={userName} role={role} open={menuOpen} mode={prefs.sidebar} />
 
       {/* Lapisan gelap hanya muncul saat panel geser terbuka di layar sempit. */}
       <AnimatePresence>
@@ -63,7 +84,9 @@ export function ShellFrame({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: durations.base, ease: easeSoft }}
-            className="fixed inset-0 z-40 cursor-default bg-ink/30 lg:hidden"
+            // Hitam tetap, bukan token ink: di mode gelap ink menjadi terang,
+            // dan lapisan penutupnya justru akan menyilaukan.
+            className="fixed inset-0 z-40 cursor-default bg-black/40 lg:hidden"
           />
         ) : null}
       </AnimatePresence>
@@ -74,10 +97,13 @@ export function ShellFrame({
           role={role}
           navOpen={menuOpen}
           onToggleNav={() => setMenuOpen((v) => !v)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
         {/* Hanya area ini yang menggulir, sehingga sidebar dan topbar tetap diam. */}
         <main className="scroll-slim flex-1 overflow-y-auto bg-surface">{children}</main>
       </div>
+
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

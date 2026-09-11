@@ -6,6 +6,7 @@ import { ScanLine, CheckCircle2, XCircle, CopyX, Volume2, VolumeX } from 'lucide
 import type { StationResult, StationSummary } from '@avicenna/contracts';
 import { submitScanAction } from '@/app/(app)/scan/actions';
 import { useScanSound } from './use-scan-sound';
+import { usePreferences } from '../shell/preferences-provider';
 import { springSoft, durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
@@ -34,7 +35,21 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
   const [counter, setCounter] = useState(summary.counterToday);
   const [recent, setRecent] = useState<Row[]>(summary.recent.slice(0, MAX_RECENT));
   const [busy, setBusy] = useState(false);
-  const [soundOn, setSoundOn] = useState(true);
+  // Diawali dari preferensi tersimpan, lalu masih bisa dimatikan sesaat dari
+  // layar ini tanpa mengubah pengaturan perangkat.
+  const { prefs } = usePreferences();
+  const [soundOn, setSoundOn] = useState(prefs.scanSound);
+
+
+  /*
+   * Preferensi tersimpan baru terbaca setelah komponen terpasang — membaca
+   * localStorage saat render akan membuat hasil render server dan klien
+   * berbeda. Nilai awal useState karena itu selalu bawaan, dan efek inilah
+   * yang menyusulkan pilihan yang sebenarnya.
+   */
+  useEffect(() => {
+    setSoundOn(prefs.scanSound);
+  }, [prefs.scanSound]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const sound = useScanSound(soundOn);

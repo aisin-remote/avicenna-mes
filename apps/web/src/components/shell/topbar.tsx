@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, ChevronDown, Bell, Settings, Menu, X } from 'lucide-react';
+import { Search, ChevronDown, Bell, Settings, Menu, X } from 'lucide-react';
 import { IconButton } from '../ui/icon-button';
-import { Button } from '../ui/button';
 import { durations, easeSoft } from '../motion/transitions';
 
 /**
@@ -13,21 +12,24 @@ import { durations, easeSoft } from '../motion/transitions';
  * Kolom pencarian melebar halus saat difokuskan — isyarat kecil bahwa fokus
  * sudah pindah ke sana, tanpa perlu garis tebal yang mengotori tampilan.
  *
- * Di layar sempit isinya menyusut menurut urutan kepentingan: pencarian,
- * lalu tombol Tambah, lalu notifikasi dan pengaturan. Menu pengguna tidak
- * pernah ikut menyingkir — di situlah satu-satunya tombol Keluar.
+ * Di layar sempit isinya menyusut menurut urutan kepentingan: pencarian lebih
+ * dulu, lalu notifikasi dan pengaturan. Menu pengguna tidak pernah ikut
+ * menyingkir — di situlah tombol Keluar, dan jalan ke pengaturan saat ikonnya
+ * sudah disembunyikan.
  */
 export function Topbar({
   userName,
   role,
   navOpen = false,
   onToggleNav,
+  onOpenSettings,
 }: {
   userName: string;
   role: string | null;
   /** Keadaan panel navigasi — hanya berpengaruh di bawah lg. */
   navOpen?: boolean;
   onToggleNav?: () => void;
+  onOpenSettings?: () => void;
 }) {
   const [focused, setFocused] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -76,20 +78,12 @@ export function Topbar({
       </motion.div>
 
       <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
-        <div className="hidden sm:block">
-          <Button icon={Plus} trailing={ChevronDown}>
-            Tambah
-          </Button>
-        </div>
-
-        <div className="mx-1 hidden h-7 w-px bg-line sm:block" aria-hidden />
-
-        {/* Notifikasi dan pengaturan menyingkir lebih dulu di layar sempit —
-            keduanya tidak mendesak, dan yang harus selalu terjangkau adalah
-            menu pengguna. */}
+        {/* Notifikasi menyingkir lebih dulu di layar sempit; pengaturan ikut,
+            karena keduanya tidak mendesak dan yang harus selalu terjangkau
+            adalah menu pengguna. */}
         <div className="hidden items-center gap-3 sm:flex">
           <IconButton icon={Bell} label="Notifikasi" badge />
-          <IconButton icon={Settings} label="Pengaturan" />
+          <IconButton icon={Settings} label="Pengaturan tampilan" onClick={onOpenSettings} />
         </div>
 
         <div className="mx-1 hidden h-7 w-px bg-line sm:block" aria-hidden />
@@ -143,6 +137,19 @@ export function Topbar({
                     <div className="text-[12px] capitalize text-ink-muted">{role ?? '—'}</div>
                   </div>
                   <div className="my-1 h-px bg-line" />
+                  {/* Di layar sempit ikon pengaturan di bilah atas disembunyikan,
+                      jadi ini satu-satunya jalan ke sana. */}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      onOpenSettings?.();
+                    }}
+                    className="w-full rounded-xl px-3 py-2 text-left text-[14px] font-medium text-ink-soft transition-colors hover:bg-surface hover:text-ink sm:hidden"
+                  >
+                    Pengaturan tampilan
+                  </button>
                   <form action="/api/logout" method="post">
                     <button
                       type="submit"

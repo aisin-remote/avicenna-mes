@@ -44,6 +44,91 @@
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/*
+ * ── Mode gelap ────────────────────────────────────────────────────────────
+ *
+ * Hanya SATU blok, karena pilihan 'ikut sistem' sudah diselesaikan di
+ * JavaScript menjadi nilai pasti pada atribut data-theme (lihat
+ * lib/preferences.ts). Blok kembar di dalam @media prefers-color-scheme
+ * akan menjadi tempat kedua yang harus dijaga tetap sama, dan cepat atau
+ * lambat keduanya akan berbeda.
+ *
+ * Netralnya tetap hangat seperti mode terang — abu-abu kebiruan akan membuat
+ * dua mode itu terasa seperti dua aplikasi berbeda.
+ */
+:root[data-theme='dark'] {
+  --color-canvas: #0e0e0c;
+  --color-shell: #16160f;
+  --color-surface: #1b1b16;
+  --color-card: #211f1a;
+
+  --color-line: #2d2b25;
+  --color-line-strong: #3d3b33;
+
+  --color-ink: #f3f1ea;
+  --color-ink-soft: #bebbb2;
+  --color-ink-muted: #8b8980;
+
+  /* Aksen hitam tidak bisa dipakai apa adanya di latar gelap: tombolnya akan
+     lenyap. Diganti grafit terang yang tetap aman dengan teks putih. */
+  --color-accent: #55544b;
+  --color-accent-soft: #6b695f;
+
+  /* Warna semantik dicerahkan; nilai versi terang terlalu redup di latar gelap,
+     terutama saat dipakai sebagai teks di atas bidang bernada tipis. */
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-ng: #f87171;
+  --color-live: #a5b4fc;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-lift: 0 8px 24px -8px rgb(0 0 0 / 0.6);
+  --shadow-shell: 0 24px 60px -24px rgb(0 0 0 / 0.75);
+}
+
+/*
+ * ── Warna aksen ───────────────────────────────────────────────────────────
+ *
+ * Aksen selalu berpasangan dengan teks putih di seluruh aplikasi, jadi tiap
+ * pilihan harus cukup gelap untuk itu — termasuk versi mode gelapnya, yang
+ * dinaikkan sedikit agar tidak tenggelam di latar gelap.
+ */
+:root[data-accent='biru'] {
+  --color-accent: #1d4ed8;
+  --color-accent-soft: #2563eb;
+}
+:root[data-accent='biru'][data-theme='dark'] {
+  --color-accent: #2563eb;
+  --color-accent-soft: #3b82f6;
+}
+
+:root[data-accent='hijau'] {
+  --color-accent: #15803d;
+  --color-accent-soft: #16a34a;
+}
+:root[data-accent='hijau'][data-theme='dark'] {
+  --color-accent: #16a34a;
+  --color-accent-soft: #22c55e;
+}
+
+:root[data-accent='jingga'] {
+  --color-accent: #c2410c;
+  --color-accent-soft: #ea580c;
+}
+:root[data-accent='jingga'][data-theme='dark'] {
+  --color-accent: #ea580c;
+  --color-accent-soft: #f97316;
+}
+
+:root[data-accent='ungu'] {
+  --color-accent: #6d28d9;
+  --color-accent-soft: #7c3aed;
+}
+:root[data-accent='ungu'][data-theme='dark'] {
+  --color-accent: #7c3aed;
+  --color-accent-soft: #8b5cf6;
+}
+
 @layer base {
   html {
     background: var(--color-canvas);
@@ -61,9 +146,11 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Warnanya dibalik lewat token, bukan putih tetap: di mode gelap teks
+     terpilih akan menjadi putih di atas latar putih dan lenyap. */
   ::selection {
     background: var(--color-ink);
-    color: #fff;
+    color: var(--color-shell);
   }
 }
 

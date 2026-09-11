@@ -7,6 +7,7 @@ import type { LoadingScanResult } from '@avicenna/contracts';
 import { scanKanbanAction, undoKanbanAction } from '@/app/(app)/delivery/actions';
 import type { LoadingDetail } from '@/lib/loading-api';
 import { useScanSound } from '../scan/use-scan-sound';
+import { usePreferences } from '../shell/preferences-provider';
 import { springSoft, durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
@@ -42,7 +43,21 @@ export function LoadingScan({ doc }: { doc: LoadingDetail }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(0);
-  const [soundOn, setSoundOn] = useState(true);
+  // Diawali dari preferensi tersimpan, lalu masih bisa dimatikan sesaat dari
+  // layar ini tanpa mengubah pengaturan perangkat.
+  const { prefs } = usePreferences();
+  const [soundOn, setSoundOn] = useState(prefs.scanSound);
+
+
+  /*
+   * Preferensi tersimpan baru terbaca setelah komponen terpasang — membaca
+   * localStorage saat render akan membuat hasil render server dan klien
+   * berbeda. Nilai awal useState karena itu selalu bawaan, dan efek inilah
+   * yang menyusulkan pilihan yang sebenarnya.
+   */
+  useEffect(() => {
+    setSoundOn(prefs.scanSound);
+  }, [prefs.scanSound]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const queue = useRef<string[]>([]);

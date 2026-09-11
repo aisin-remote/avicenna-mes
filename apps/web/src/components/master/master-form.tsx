@@ -99,7 +99,7 @@ export function MasterForm({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: durations.base, ease: easeSoft }}
-            className="absolute inset-0 cursor-default bg-ink/20 backdrop-blur-[2px]"
+            className="absolute inset-0 cursor-default bg-black/30 backdrop-blur-[2px]"
           />
 
           <motion.aside
