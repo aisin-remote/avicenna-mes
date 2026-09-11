@@ -200,9 +200,15 @@ export class ScanService {
         plantId,
         partId: part.id,
         lineId: line?.id ?? null,
+        // SLOC tujuan line ini — barang jadi masuk ke gudang finish good.
+        // Pasangannya (keluar dari gudang WIP) ditulis backflush.
+        locationId: line?.outputLocationId ?? null,
         type: 'PRODUCTION_IN',
         qty: String(signedQty('PRODUCTION_IN', parsed.qty ?? normalized.qty)),
         sourceTable: 'scan_events',
+        // Tanpa sourceId, mutasi ini tidak bisa ditelusuri balik ke scan-nya —
+        // sourceTable saja tidak menunjuk baris mana pun.
+        sourceId: insertedId,
         npk: normalized.npk ?? (principal?.kind === 'user' ? principal.npk : null),
         userId: principal?.kind === 'user' ? principal.sub : null,
         occurredAt: normalized.scannedAt,

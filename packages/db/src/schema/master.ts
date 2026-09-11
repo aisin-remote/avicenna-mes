@@ -30,6 +30,26 @@ export const lines = mysqlTable(
     code: varchar('code', { length: 32 }).notNull(),
     name: varchar('name', { length: 128 }).notNull(),
     processType: mysqlEnum('process_type', PROCESS_TYPES).notNull(),
+    /*
+     * SLOC asal dan tujuan line ini.
+     *
+     * Produksi adalah perpindahan barang, bukan sekadar penambahan: komponen
+     * KELUAR dari gudang WIP dan barang jadi MASUK ke gudang finish good. Tanpa
+     * kedua kolom ini sistem tidak tahu SLOC mana yang harus dipotong dan mana
+     * yang ditambah, sehingga saldo totalnya benar tetapi saldo per SLOC —
+     * justru angka yang dicocokkan dengan SAP — tidak akan pernah cocok.
+     *
+     * Disimpan per line, bukan diturunkan dari jenis lokasi, karena satu pabrik
+     * bisa punya beberapa gudang WIP dan tebakan berdasarkan jenis akan salah
+     * begitu gudang kedua dibuat.
+     *
+     * Tanpa .references(): `locations` didefinisikan di inventory.ts yang
+     * sendirinya mengimpor berkas ini, jadi menambahkan rujukannya membuat
+     * impor berputar. Keutuhannya dijaga di service — lokasi wajib milik pabrik
+     * yang sama, dan itu memang pemeriksaan yang tidak bisa dilakukan FK.
+     */
+    inputLocationId: fk('input_location_id'),
+    outputLocationId: fk('output_location_id'),
     sortOrder: int('sort_order').notNull().default(0),
     isActive: boolean('is_active').notNull().default(true),
     ...timestamps,

@@ -50,6 +50,20 @@
       "when": 1789051923857,
       "tag": "0006_delivery_location",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1789120116847,
+      "tag": "0007_line_sloc",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1789120263516,
+      "tag": "0008_sloc_kinds",
+      "breakpoints": true
     }
   ]
 }

@@ -24,7 +24,23 @@ export const locations = mysqlTable(
       .references(() => plants.id),
     code: varchar('code', { length: 32 }).notNull(),
     name: varchar('name', { length: 128 }).notNull(),
-    kind: mysqlEnum('kind', ['WIP', 'FINISH_GOOD', 'CHUTE', 'NG', 'TRANSIT']).notNull(),
+    /*
+     * Jenis lokasi. Mengikuti SLOC pada rantai yang dipakai SAP:
+     *   WAREHOUSE  gudang komponen & raw material  (WH00)
+     *   WIP        barang setengah jadi di line    (WP01)
+     *   FINISH_GOOD barang jadi                    (PP02)
+     *   STAGING    sudah dipick, menunggu truk     (PP04)
+     * CHUTE, NG, dan TRANSIT tidak punya padanan SLOC dan tidak dikirim ke SAP.
+     */
+    kind: mysqlEnum('kind', [
+      'WAREHOUSE',
+      'WIP',
+      'FINISH_GOOD',
+      'STAGING',
+      'CHUTE',
+      'NG',
+      'TRANSIT',
+    ]).notNull(),
     ...timestamps,
   },
   (t) => [uniqueIndex('locations_plant_code_unique').on(t.plantId, t.code)],

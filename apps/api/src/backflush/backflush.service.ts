@@ -1,7 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { eq, and, sql, isNull, or, type Database } from '@avicenna/db';
-import { scanEvents, parts, bomLines, lots, mutations, consumptions, genealogy } from '@avicenna/db';
-import { planBackflush, type AvailableLot, type BomLine } from '@avicenna/domain';
+import {
+  scanEvents,
+  parts,
+  lines,
+  bomLines,
+  lots,
+  mutations,
+  consumptions,
+  genealogy,
+} from '@avicenna/db';
+import {
+  planBackflush,
+  toLocalDateKey,
+  type AvailableLot,
+  type BomLine,
+} from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 
 /**
@@ -35,7 +49,27 @@ export class BackflushService {
       return { consumed: 0, shortages: 0, noBom: true };
     }
 
-    const onDate = scan.scannedAt.toISOString().slice(0, 10);
+    // Kunci tanggal dari komponen waktu SETEMPAT. toISOString() memakai UTC,
+    // sehingga scan pukul 06.00 di UTC+7 terbaca sebagai tanggal kemarin — dan
+    // masa berlaku BOM akan dinilai dengan tanggal yang salah.
+    const onDate = toLocalDateKey(scan.scannedAt);
+
+    /*
+     * Line menentukan SLOC mana yang dipotong. Produksi memindahkan barang:
+     * komponen keluar dari gudang WIP line ini, bukan hilang dari ketiadaan.
+     * Tanpa lokasi, saldo per SLOC tidak akan pernah cocok dengan SAP.
+     */
+    const lineRows = scan.lineId
+      ? await this.db.select().from(lines).where(eq(lines.id, scan.lineId)).limit(1)
+      : [];
+    const inputLocationId = lineRows[0]?.inputLocationId ?? null;
+    if (scan.lineId && !inputLocationId) {
+      // Dilaporkan, bukan digagalkan: produksinya sudah terjadi. Tapi tanpa
+      // SLOC asal, baris ini tidak akan bisa dikirim ke SAP.
+      this.logger.warn(
+        `line ${scan.lineId} belum punya SLOC asal — pemakaian material tercatat tanpa lokasi`,
+      );
+    }
 
     const rawBom = await this.db
       .select()
@@ -85,6 +119,7 @@ export class BackflushService {
         plantId: scan.plantId,
         partId: c.componentPartId,
         lineId: scan.lineId,
+        locationId: inputLocationId,
         lotId: c.lotId ?? null,
         type: 'CONSUMPTION_OUT',
         // Bertanda negatif: material keluar dari stok. TIDAK dibulatkan —

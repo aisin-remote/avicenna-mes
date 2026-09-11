@@ -58,6 +58,10 @@ export function Topbar({
           jadi lingkaran tanpa guna, dan mendesak menu pengguna sampai keluar
           layar — padahal di situlah satu-satunya tombol Keluar. */}
       <motion.div
+        // Nilai awal harus berupa angka. Tanpa ini nilai terhitungnya "none",
+        // dan Motion tidak bisa menganimasikan dari sesuatu yang bukan ukuran —
+        // peringatannya muncul di konsol setiap kali halaman dibuka.
+        initial={{ maxWidth: 460 }}
         animate={{ maxWidth: focused ? 560 : 460 }}
         transition={{ duration: durations.base, ease: easeSoft }}
         className="relative hidden w-full md:block"

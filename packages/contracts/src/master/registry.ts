@@ -30,7 +30,15 @@ export type MasterEntity = (typeof MASTER_ENTITIES)[number];
 
 export const PROCESS_TYPES = ['CASTING', 'MACHINING', 'ASSEMBLING', 'INJECTION'] as const;
 export const TOOLING_KINDS = ['MOLD', 'DIES', 'JIG'] as const;
-export const LOCATION_KINDS = ['WIP', 'FINISH_GOOD', 'CHUTE', 'NG', 'TRANSIT'] as const;
+export const LOCATION_KINDS = [
+  'WAREHOUSE',
+  'WIP',
+  'FINISH_GOOD',
+  'STAGING',
+  'CHUTE',
+  'NG',
+  'TRANSIT',
+] as const;
 export const PART_TYPES = ['RAW_MATERIAL', 'COMPONENT', 'WIP', 'FINISHED_GOOD'] as const;
 export const SOURCE_TYPES = ['PURCHASED', 'MANUFACTURED'] as const;
 export const TRACKING_MODES = ['SERIAL', 'LOT', 'QUANTITY'] as const;
@@ -127,6 +135,20 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         options: PROCESS_TYPES,
         required: true,
         inList: true,
+      },
+      {
+        name: 'inputLocationId',
+        label: 'SLOC Asal',
+        kind: 'reference',
+        refEntity: 'locations',
+        hint: 'Gudang tempat komponen diambil saat produksi (WP01). Stok di sini yang berkurang.',
+      },
+      {
+        name: 'outputLocationId',
+        label: 'SLOC Tujuan',
+        kind: 'reference',
+        refEntity: 'locations',
+        hint: 'Gudang tempat barang jadi disimpan (PP02). Stok di sini yang bertambah.',
       },
       {
         name: 'sortOrder',
