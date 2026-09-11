@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Plus, ChevronDown, Bell, Settings } from 'lucide-react';
+import { Search, Plus, ChevronDown, Bell, Settings, Menu, X } from 'lucide-react';
 import { IconButton } from '../ui/icon-button';
 import { Button } from '../ui/button';
 import { durations, easeSoft } from '../motion/transitions';
@@ -12,17 +12,53 @@ import { durations, easeSoft } from '../motion/transitions';
  *
  * Kolom pencarian melebar halus saat difokuskan — isyarat kecil bahwa fokus
  * sudah pindah ke sana, tanpa perlu garis tebal yang mengotori tampilan.
+ *
+ * Di layar sempit isinya menyusut menurut urutan kepentingan: pencarian,
+ * lalu tombol Tambah, lalu notifikasi dan pengaturan. Menu pengguna tidak
+ * pernah ikut menyingkir — di situlah satu-satunya tombol Keluar.
  */
-export function Topbar({ userName, role }: { userName: string; role: string | null }) {
+export function Topbar({
+  userName,
+  role,
+  navOpen = false,
+  onToggleNav,
+}: {
+  userName: string;
+  role: string | null;
+  /** Keadaan panel navigasi — hanya berpengaruh di bawah lg. */
+  navOpen?: boolean;
+  onToggleNav?: () => void;
+}) {
   const [focused, setFocused] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   return (
-    <header className="flex h-[76px] shrink-0 items-center gap-5 border-b border-line bg-shell px-7">
+    <header className="flex h-[76px] shrink-0 items-center gap-4 border-b border-line bg-shell px-4 sm:gap-5 sm:px-7">
+      {/* Satu-satunya jalan ke navigasi di layar sempit, jadi selalu di paling
+          kiri — tempat yang sama dengan logo di layar lebar. */}
+      {onToggleNav ? (
+        <button
+          type="button"
+          onClick={onToggleNav}
+          aria-label={navOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi'}
+          aria-expanded={navOpen}
+          className="grid size-11 shrink-0 place-items-center rounded-full border border-line text-ink-soft transition-colors hover:border-ink hover:text-ink lg:hidden"
+        >
+          {navOpen ? (
+            <X className="size-5" strokeWidth={2} aria-hidden />
+          ) : (
+            <Menu className="size-5" strokeWidth={2} aria-hidden />
+          )}
+        </button>
+      ) : null}
+
+      {/* Pencarian disembunyikan di layar sempit: dipersempit terus ia menyusut
+          jadi lingkaran tanpa guna, dan mendesak menu pengguna sampai keluar
+          layar — padahal di situlah satu-satunya tombol Keluar. */}
       <motion.div
         animate={{ maxWidth: focused ? 560 : 460 }}
         transition={{ duration: durations.base, ease: easeSoft }}
-        className="relative w-full"
+        className="relative hidden w-full md:block"
       >
         <Search
           className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-ink-muted"
@@ -39,27 +75,34 @@ export function Topbar({ userName, role }: { userName: string; role: string | nu
         />
       </motion.div>
 
-      <div className="ml-auto flex items-center gap-3">
-        <Button icon={Plus} trailing={ChevronDown}>
-          Tambah
-        </Button>
+      <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
+        <div className="hidden sm:block">
+          <Button icon={Plus} trailing={ChevronDown}>
+            Tambah
+          </Button>
+        </div>
 
-        <div className="mx-1 h-7 w-px bg-line" aria-hidden />
+        <div className="mx-1 hidden h-7 w-px bg-line sm:block" aria-hidden />
 
-        <IconButton icon={Bell} label="Notifikasi" badge />
-        <IconButton icon={Settings} label="Pengaturan" />
+        {/* Notifikasi dan pengaturan menyingkir lebih dulu di layar sempit —
+            keduanya tidak mendesak, dan yang harus selalu terjangkau adalah
+            menu pengguna. */}
+        <div className="hidden items-center gap-3 sm:flex">
+          <IconButton icon={Bell} label="Notifikasi" badge />
+          <IconButton icon={Settings} label="Pengaturan" />
+        </div>
 
-        <div className="mx-1 h-7 w-px bg-line" aria-hidden />
+        <div className="mx-1 hidden h-7 w-px bg-line sm:block" aria-hidden />
 
         <div className="relative">
           <motion.button
             type="button"
-            onClick={() => setMenuOpen((v) => !v)}
+            onClick={() => setUserMenuOpen((v) => !v)}
             whileTap={{ scale: 0.98 }}
             transition={{ duration: durations.fast, ease: easeSoft }}
-            aria-expanded={menuOpen}
+            aria-expanded={userMenuOpen}
             aria-haspopup="menu"
-            className="flex items-center gap-3 rounded-full py-1.5 pl-1.5 pr-3 outline-none transition-colors duration-200 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ink/20"
+            className="flex shrink-0 items-center gap-3 rounded-full py-1.5 pl-1.5 pr-1.5 outline-none transition-colors duration-200 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ink/20 sm:pr-3"
           >
             <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-[14px] font-bold text-white">
               {initials(userName)}
@@ -69,23 +112,23 @@ export function Topbar({ userName, role }: { userName: string; role: string | nu
               <span className="block text-[12px] capitalize text-ink-muted">{role ?? '—'}</span>
             </span>
             <motion.span
-              animate={{ rotate: menuOpen ? 180 : 0 }}
+              animate={{ rotate: userMenuOpen ? 180 : 0 }}
               transition={{ duration: durations.base, ease: easeSoft }}
-              className="text-ink-muted"
+              className="hidden text-ink-muted sm:block"
             >
               <ChevronDown className="size-4" strokeWidth={2} aria-hidden />
             </motion.span>
           </motion.button>
 
           <AnimatePresence>
-            {menuOpen ? (
+            {userMenuOpen ? (
               <>
                 {/* Lapisan penutup: klik di mana saja menutup menu. */}
                 <button
                   type="button"
                   aria-label="Tutup menu"
                   className="fixed inset-0 z-10 cursor-default"
-                  onClick={() => setMenuOpen(false)}
+                  onClick={() => setUserMenuOpen(false)}
                 />
                 <motion.div
                   role="menu"

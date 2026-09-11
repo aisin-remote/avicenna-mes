@@ -17,11 +17,38 @@ import { cn } from '../ui/cn';
  * halaman ia MELUNCUR dari posisi lama ke posisi baru alih-alih berkedip
  * hilang-muncul.
  */
-export function Sidebar({ userName, role }: { userName: string; role: string | null }) {
+export function Sidebar({
+  userName,
+  role,
+  open = false,
+}: {
+  userName: string;
+  role: string | null;
+  /** Hanya berlaku di bawah lg; di layar lebar sidebar selalu tampak. */
+  open?: boolean;
+}) {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-[264px] shrink-0 flex-col border-r border-line bg-shell">
+    <aside
+      /*
+       * Di bawah lg: panel geser di atas isi halaman. Mulai lg: kembali
+       * menjadi kolom biasa di dalam flex.
+       *
+       * Saat tertutup dipakai `invisible`, bukan sekadar digeser keluar layar.
+       * Panel yang hanya digeser tetap ada di urutan Tab: menekan Tab dari
+       * halaman akan memindahkan fokus ke menu yang tidak terlihat, dan
+       * pengguna keyboard kehilangan jejak di mana fokusnya berada.
+       * `visibility` ikut ditransisikan supaya animasi menutupnya tetap
+       * terlihat — tanpa itu panel langsung lenyap alih-alih meluncur.
+       */
+      className={cn(
+        'fixed inset-y-0 left-0 z-50 flex w-[264px] shrink-0 flex-col border-r border-line bg-shell',
+        'transition-[transform,visibility] duration-300 ease-out motion-reduce:transition-none',
+        'lg:visible lg:static lg:z-auto lg:translate-x-0 lg:shadow-none',
+        open ? 'visible translate-x-0 shadow-shell' : 'invisible -translate-x-full',
+      )}
+    >
       <div className="px-7 pb-6 pt-8">
         <Link href="/dashboard" className="block">
           <div className="text-[22px] font-extrabold leading-none tracking-tight">AVICENNA</div>
