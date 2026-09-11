@@ -15,6 +15,7 @@ import {
   Network,
   MoveRight,
   PackageCheck,
+  Share2,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -41,6 +42,7 @@ const ICONS: Record<string, LucideIcon> = {
   Network,
   MoveRight,
   PackageCheck,
+  Share2,
 };
 
 /** Mengembalikan ikon Database sebagai cadangan agar UI tidak pernah kosong. */

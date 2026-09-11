@@ -136,7 +136,9 @@ masalah.
 2. ~~**Pisahkan Pulling dari Loading**~~ — selesai. Dokumen kini melewati
    DRAFT → PICKING → PICKED → LOADING → SHIPPED, dan stok berpindah
    PP02 → PP04 → keluar.
-3. **Lapisan SAP** — outbox, movement type, status posting, penulis ke MS SQL.
+3. ~~**Lapisan SAP**~~ — outbox, movement type, status posting, dan layar
+   pemantauan selesai. Penulis ke MS SQL masih kerangka: menunggu bentuk tabel
+   tujuan dan movement type dari tim SAP.
 4. **PO** — supaya penerimaan bisa dicocokkan ke pesanan.
 5. **RFID gate** — paling akhir; di diagram pun tidak terhubung ke SAP.
 
@@ -159,6 +161,69 @@ Sasaran tiap tahap juga berbeda. Saat pulling, sasarannya RENCANA. Saat memuat,
 sasarannya yang BENAR-BENAR terambil — memuat lebih banyak daripada isi staging
 tidak mungkin benar, berapa pun rencananya.
 
+## Cara kerja lapisan SAP
+
+```
+perpindahan barang  ──>  TT_STOCK_MUTATION  ──pengumpul──>  TT_SAP_OUTBOX
+                                                                 │
+                                                            pengirim
+                                                                 v
+                                                       MS SQL  ──>  SAP
+```
+
+### Mengumpulkan, bukan mencatat saat kejadian
+
+Alternatifnya memanggil "catat ke outbox" di enam service berbeda —
+penerimaan, transfer, pulling, pengiriman, scan produksi, backflush. Enam
+tempat yang harus diingat, dan yang ketujuh pasti terlupa.
+
+Pengumpul mencari dokumen yang belum punya baris outbox dengan `NOT EXISTS`,
+bukan dengan penanda posisi terakhir. Penanda posisi punya lubang yang
+terkenal: transaksi yang commit belakangan tetapi memperoleh id lebih kecil
+akan terlewat, dan tidak ada yang memberitahu. `NOT EXISTS` ditambah unique
+index pada (SOURCE_TABLE, SOURCE_ID) membuat pengumpulan idempoten dan tidak
+bisa bocor.
+
+### Jeda mengendap
+
+Dokumen hanya diambil bila mutasi terbarunya sudah lewat 60 detik. Backflush
+berjalan di antrean, beberapa detik SETELAH scan produksinya tercatat.
+Mengambil terlalu cepat berarti mengirim konfirmasi produksi tanpa baris
+pemakaian komponennya — barang jadi bertambah di SAP, materialnya tidak pernah
+berkurang.
+
+### Lima status, tiga di antaranya bukan kegagalan
+
+| Status | Arti |
+|--------|------|
+| PENDING | menunggu dikirim |
+| SENT | sudah masuk MS SQL |
+| FAILED | pengiriman gagal, akan dicoba lagi |
+| HELD | movement type-nya belum diputuskan — sengaja ditahan |
+| SKIPPED | memang tidak perlu dikirim |
+
+HELD dan SKIPPED sengaja dibedakan dari FAILED. Dokumen yang tertahan karena
+menunggu keputusan bukan kegagalan teknis, dan mencampurnya membuat layar
+pemantauan penuh "error" yang tidak ada yang bisa memperbaikinya.
+
+Begitu movement type diisi, dokumen HELD dilepas sendiri pada putaran
+berikutnya — tidak perlu disentuh satu per satu.
+
+### TRANSFER_IN tidak dikirim
+
+Perpindahan antar SLOC adalah SATU dokumen SAP yang memuat sisi keluar dan
+sisi masuk sekaligus. Mengirim keduanya berarti stok berpindah dua kali.
+
+### Koneksi SAP terpisah dari MSSQL_*
+
+`MSSQL_*` yang sudah ada menunjuk J922 dengan user `guest_ro`: baca-saja, untuk
+MENARIK data mesin. Tujuan SAP adalah sebaliknya — database lain, user yang
+boleh MENULIS. Memakai satu set kredensial untuk dua arah berarti memberi hak
+tulis pada koneksi yang seharusnya hanya membaca, dan itu hak yang tidak akan
+pernah dicabut lagi setelah terlanjur diberikan.
+
+`SAP_MSSQL_*` karena itu berdiri sendiri. Lihat `.env.example`.
+
 ## Catatan dari pengerjaan
 
 **Barcode produksi polos belum menambah stok.** `parseBarcode` memperlakukan
@@ -169,9 +234,20 @@ belum dipastikan, sebagian scan produksi tidak akan pernah sampai ke SAP.
 
 ## Yang masih terbuka
 
-- **Movement type SAP** untuk tiap jenis mutasi. Dugaan awal: 101 (GR),
-  311 (transfer antar SLOC), 261 (pemakaian produksi), 601 (pengiriman).
-  Perlu dikonfirmasi ke tim SAP, karena salah movement type berarti salah akun.
+- **Movement type SAP** untuk tiap jenis mutasi. Dugaan sementara sudah
+  dituliskan di `packages/domain/src/sap-movement.ts` — 101 (GR), 311
+  (transfer antar SLOC), 261 (pemakaian produksi), 601 (pengiriman), 551
+  (scrap), 309 (penyesuaian). **Angka-angka itu BELUM dikonfirmasi tim SAP.**
+  Salah movement type berarti salah akun GL: barangnya pindah dengan benar di
+  gudang, tetapi jurnalnya masuk ke tempat yang keliru, dan itu baru ketahuan
+  saat tutup buku.
+- **Bentuk tabel tujuan di MS SQL.** Dugaan: satu tabel kepala + satu tabel
+  baris mengikuti penamaan mereka (mis. TT_MES_MOVEMENT_H / _L). Sisi MS SQL
+  perlu memberi unique index pada IDEMPOTENCY_KEY — itulah yang menahan dokumen
+  dobel saat jaringan tersendat, bukan logika di sisi kita.
+- **Apakah satu dokumen per scan produksi terlalu banyak.** Sekarang tiap scan
+  menghasilkan satu dokumen SAP. Kalau volumenya memberatkan, pengelompokan per
+  shift atau per jam bisa ditambahkan di pengumpul tanpa mengubah yang lain.
 - Apakah nomor dokumen material hasil posting SAP dikembalikan ke sini. Kalau
   ya, perlu kolom penampungnya dan jalur baliknya.
 - Bagaimana kode SLOC di sini dipetakan ke plant + storage location SAP untuk

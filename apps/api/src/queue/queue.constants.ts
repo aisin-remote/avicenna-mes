@@ -13,5 +13,7 @@ export const JOBS = {
   BACKFLUSH_CONSUMPTION: 'backflush-consumption',
   EXPORT_EXCEL: 'export-excel',
   SYNC_J922: 'sync-j922',
+  COLLECT_SAP_OUTBOX: 'collect-sap-outbox',
+  FLUSH_SAP_OUTBOX: 'flush-sap-outbox',
   SEND_NOTIFICATION: 'send-notification',
 } as const;

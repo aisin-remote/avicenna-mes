@@ -45,6 +45,10 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    title: 'Integrasi',
+    items: [{ href: '/sap', label: 'Integrasi SAP', icon: 'Share2' }],
+  },
+  {
     title: 'Master Data',
     collapsible: true,
     items: MASTER_ENTITIES.map((key) => ({
