@@ -23,28 +23,28 @@ export const MACHINE_EVENT_TYPES = [
  * di sistem lama.
  */
 export const machineEvents = mysqlTable(
-  'machine_events',
+  'TT_MACHINE_EVENT',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    machineId: fk('machine_id').references(() => machines.id),
-    type: mysqlEnum('type', MACHINE_EVENT_TYPES).notNull(),
+    machineId: fk('MACHINE_ID').references(() => machines.id),
+    type: mysqlEnum('TYPE', MACHINE_EVENT_TYPES).notNull(),
     /** Sumber data: mesin kirim sendiri (MQTT) atau hasil tarikan dari J922. */
-    source: mysqlEnum('source', ['MQTT', 'J922_SYNC', 'MANUAL']).notNull(),
-    status: varchar('status', { length: 64 }),
-    shotCount: int('shot_count'),
-    occurredAt: timestamp('occurred_at').notNull(),
+    source: mysqlEnum('SOURCE', ['MQTT', 'J922_SYNC', 'MANUAL']).notNull(),
+    status: varchar('STATUS', { length: 64 }),
+    shotCount: int('SHOT_COUNT'),
+    occurredAt: timestamp('OCCURRED_AT').notNull(),
     /** Idempotensi: MQTT at-least-once dan sync bisa mengirim ulang baris yang sama. */
-    dedupeKey: varchar('dedupe_key', { length: 128 }),
-    payload: json('payload'),
+    dedupeKey: varchar('DEDUPE_KEY', { length: 128 }),
+    payload: json('PAYLOAD'),
     createdAt: timestamps.createdAt,
   },
   (t) => [
-    index('machine_events_machine_time_idx').on(t.machineId, t.occurredAt),
-    index('machine_events_type_time_idx').on(t.type, t.occurredAt),
-    index('machine_events_dedupe_idx').on(t.dedupeKey),
+    index('TT_MACHINE_EVENT_MACHINE_TIME_IDX').on(t.machineId, t.occurredAt),
+    index('TT_MACHINE_EVENT_TYPE_TIME_IDX').on(t.type, t.occurredAt),
+    index('TT_MACHINE_EVENT_DEDUPE_IDX').on(t.dedupeKey),
   ],
 );
 

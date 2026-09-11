@@ -8,46 +8,46 @@ import { pk, fk, timestamps } from './_shared';
  * Semua tabel operasional membawa plant_id supaya data dua pabrik tidak saling tercampur.
  */
 export const plants = mysqlTable(
-  'plants',
+  'TM_PLANT',
   {
     id: pk(),
-    code: varchar('code', { length: 32 }).notNull(),
-    name: varchar('name', { length: 128 }).notNull(),
-    isActive: boolean('is_active').notNull().default(true),
+    code: varchar('CODE', { length: 32 }).notNull(),
+    name: varchar('NAME', { length: 128 }).notNull(),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('plants_code_unique').on(t.code)],
+  (t) => [uniqueIndex('TM_PLANT_CODE_UNIQUE').on(t.code)],
 );
 
 export const roles = mysqlTable(
-  'roles',
+  'TM_ROLE',
   {
     id: pk(),
-    name: varchar('name', { length: 64 }).notNull(),
-    label: varchar('label', { length: 128 }),
+    name: varchar('NAME', { length: 64 }).notNull(),
+    label: varchar('LABEL', { length: 128 }),
     ...timestamps,
   },
-  (t) => [uniqueIndex('roles_name_unique').on(t.name)],
+  (t) => [uniqueIndex('TM_ROLE_NAME_UNIQUE').on(t.name)],
 );
 
 export const users = mysqlTable(
-  'users',
+  'TM_USER',
   {
     id: pk(),
     /** NPK = nomor pokok karyawan. Dipakai sebagai identitas login & jejak scan. */
-    npk: varchar('npk', { length: 32 }).notNull(),
-    name: varchar('name', { length: 128 }).notNull(),
-    email: varchar('email', { length: 191 }),
-    passwordHash: varchar('password_hash', { length: 255 }),
-    roleId: fk('role_id').references(() => roles.id),
-    plantId: fk('plant_id').references(() => plants.id),
-    isActive: boolean('is_active').notNull().default(true),
+    npk: varchar('NPK', { length: 32 }).notNull(),
+    name: varchar('NAME', { length: 128 }).notNull(),
+    email: varchar('EMAIL', { length: 191 }),
+    passwordHash: varchar('PASSWORD_HASH', { length: 255 }),
+    roleId: fk('ROLE_ID').references(() => roles.id),
+    plantId: fk('PLANT_ID').references(() => plants.id),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('users_npk_unique').on(t.npk),
-    uniqueIndex('users_email_unique').on(t.email),
-    index('users_plant_idx').on(t.plantId),
+    uniqueIndex('TM_USER_NPK_UNIQUE').on(t.npk),
+    uniqueIndex('TM_USER_EMAIL_UNIQUE').on(t.email),
+    index('TM_USER_PLANT_IDX').on(t.plantId),
   ],
 );
 
@@ -57,19 +57,19 @@ export const users = mysqlTable(
  * MachineAuthorizationService milik bella dan dipertahankan.
  */
 export const devices = mysqlTable(
-  'devices',
+  'TM_DEVICE',
   {
     id: pk(),
-    code: varchar('code', { length: 64 }).notNull(),
-    name: varchar('name', { length: 128 }).notNull(),
-    plantId: fk('plant_id').references(() => plants.id),
-    kind: mysqlEnum('kind', ['SCANNER', 'RFID', 'MACHINE_PANEL', 'PRINTER']).notNull(),
-    tokenHash: varchar('token_hash', { length: 255 }),
-    lastSeenAt: varchar('last_seen_at', { length: 32 }),
-    isActive: boolean('is_active').notNull().default(true),
+    code: varchar('CODE', { length: 64 }).notNull(),
+    name: varchar('NAME', { length: 128 }).notNull(),
+    plantId: fk('PLANT_ID').references(() => plants.id),
+    kind: mysqlEnum('KIND', ['SCANNER', 'RFID', 'MACHINE_PANEL', 'PRINTER']).notNull(),
+    tokenHash: varchar('TOKEN_HASH', { length: 255 }),
+    lastSeenAt: varchar('LAST_SEEN_AT', { length: 32 }),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('devices_code_unique').on(t.code), index('devices_plant_idx').on(t.plantId)],
+  (t) => [uniqueIndex('TM_DEVICE_CODE_UNIQUE').on(t.code), index('TM_DEVICE_PLANT_IDX').on(t.plantId)],
 );
 
 export const plantsRelations = relations(plants, ({ many }) => ({

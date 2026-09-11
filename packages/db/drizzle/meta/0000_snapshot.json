@@ -1,79 +1,79 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "30ab0750-a192-4efe-ad99-e47d837dd145",
+  "id": "86037e8d-b1ea-4742-bc43-12cf045f8d42",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
-    "devices": {
-      "name": "devices",
+    "TM_DEVICE": {
+      "name": "TM_DEVICE",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "code": {
-          "name": "code",
+        "CODE": {
+          "name": "CODE",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "kind": {
-          "name": "kind",
+        "KIND": {
+          "name": "KIND",
           "type": "enum('SCANNER','RFID','MACHINE_PANEL','PRINTER')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "token_hash": {
-          "name": "token_hash",
+        "TOKEN_HASH": {
+          "name": "TOKEN_HASH",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "last_seen_at": {
-          "name": "last_seen_at",
+        "LAST_SEEN_AT": {
+          "name": "LAST_SEEN_AT",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "is_active": {
-          "name": "is_active",
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": true
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -82,89 +82,89 @@
         }
       },
       "indexes": {
-        "devices_code_unique": {
-          "name": "devices_code_unique",
+        "TM_DEVICE_CODE_UNIQUE": {
+          "name": "TM_DEVICE_CODE_UNIQUE",
           "columns": [
-            "code"
+            "CODE"
           ],
           "isUnique": true
         },
-        "devices_plant_idx": {
-          "name": "devices_plant_idx",
+        "TM_DEVICE_PLANT_IDX": {
+          "name": "TM_DEVICE_PLANT_IDX",
           "columns": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "devices_plant_id_plants_id_fk": {
-          "name": "devices_plant_id_plants_id_fk",
-          "tableFrom": "devices",
-          "tableTo": "plants",
+        "TM_DEVICE_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_DEVICE_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_DEVICE",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "devices_id": {
-          "name": "devices_id",
+        "TM_DEVICE_ID": {
+          "name": "TM_DEVICE_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "plants": {
-      "name": "plants",
+    "TM_PLANT": {
+      "name": "TM_PLANT",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "code": {
-          "name": "code",
+        "CODE": {
+          "name": "CODE",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "is_active": {
-          "name": "is_active",
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": true
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -173,60 +173,60 @@
         }
       },
       "indexes": {
-        "plants_code_unique": {
-          "name": "plants_code_unique",
+        "TM_PLANT_CODE_UNIQUE": {
+          "name": "TM_PLANT_CODE_UNIQUE",
           "columns": [
-            "code"
+            "CODE"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "plants_id": {
-          "name": "plants_id",
+        "TM_PLANT_ID": {
+          "name": "TM_PLANT_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "roles": {
-      "name": "roles",
+    "TM_ROLE": {
+      "name": "TM_ROLE",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "label": {
-          "name": "label",
+        "LABEL": {
+          "name": "LABEL",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -235,96 +235,96 @@
         }
       },
       "indexes": {
-        "roles_name_unique": {
-          "name": "roles_name_unique",
+        "TM_ROLE_NAME_UNIQUE": {
+          "name": "TM_ROLE_NAME_UNIQUE",
           "columns": [
-            "name"
+            "NAME"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "roles_id": {
-          "name": "roles_id",
+        "TM_ROLE_ID": {
+          "name": "TM_ROLE_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "users": {
-      "name": "users",
+    "TM_USER": {
+      "name": "TM_USER",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "npk": {
-          "name": "npk",
+        "NPK": {
+          "name": "NPK",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "email": {
-          "name": "email",
+        "EMAIL": {
+          "name": "EMAIL",
           "type": "varchar(191)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "password_hash": {
-          "name": "password_hash",
+        "PASSWORD_HASH": {
+          "name": "PASSWORD_HASH",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "role_id": {
-          "name": "role_id",
+        "ROLE_ID": {
+          "name": "ROLE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "is_active": {
-          "name": "is_active",
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": true
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -333,122 +333,122 @@
         }
       },
       "indexes": {
-        "users_npk_unique": {
-          "name": "users_npk_unique",
+        "TM_USER_NPK_UNIQUE": {
+          "name": "TM_USER_NPK_UNIQUE",
           "columns": [
-            "npk"
+            "NPK"
           ],
           "isUnique": true
         },
-        "users_email_unique": {
-          "name": "users_email_unique",
+        "TM_USER_EMAIL_UNIQUE": {
+          "name": "TM_USER_EMAIL_UNIQUE",
           "columns": [
-            "email"
+            "EMAIL"
           ],
           "isUnique": true
         },
-        "users_plant_idx": {
-          "name": "users_plant_idx",
+        "TM_USER_PLANT_IDX": {
+          "name": "TM_USER_PLANT_IDX",
           "columns": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "users_role_id_roles_id_fk": {
-          "name": "users_role_id_roles_id_fk",
-          "tableFrom": "users",
-          "tableTo": "roles",
+        "TM_USER_ROLE_ID_TM_ROLE_ID_fk": {
+          "name": "TM_USER_ROLE_ID_TM_ROLE_ID_fk",
+          "tableFrom": "TM_USER",
+          "tableTo": "TM_ROLE",
           "columnsFrom": [
-            "role_id"
+            "ROLE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "users_plant_id_plants_id_fk": {
-          "name": "users_plant_id_plants_id_fk",
-          "tableFrom": "users",
-          "tableTo": "plants",
+        "TM_USER_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_USER_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_USER",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "users_id": {
-          "name": "users_id",
+        "TM_USER_ID": {
+          "name": "TM_USER_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "customer_parts": {
-      "name": "customer_parts",
+    "TM_SHIPPING_PARTS": {
+      "name": "TM_SHIPPING_PARTS",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "part_id": {
-          "name": "part_id",
+        "PART_ID": {
+          "name": "PART_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "customer_id": {
-          "name": "customer_id",
+        "CUSTOMER_ID": {
+          "name": "CUSTOMER_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "customer_part_number": {
-          "name": "customer_part_number",
+        "CUSTOMER_PART_NUMBER": {
+          "name": "CUSTOMER_PART_NUMBER",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "customer_back_number": {
-          "name": "customer_back_number",
+        "CUSTOMER_BACK_NUMBER": {
+          "name": "CUSTOMER_BACK_NUMBER",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "qty_per_kanban": {
-          "name": "qty_per_kanban",
+        "QTY_PER_KANBAN": {
+          "name": "QTY_PER_KANBAN",
           "type": "int",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -457,110 +457,118 @@
         }
       },
       "indexes": {
-        "customer_parts_unique": {
-          "name": "customer_parts_unique",
+        "TM_SHIPPING_PARTS_UNIQUE": {
+          "name": "TM_SHIPPING_PARTS_UNIQUE",
           "columns": [
-            "customer_id",
-            "customer_part_number"
+            "CUSTOMER_ID",
+            "CUSTOMER_PART_NUMBER"
           ],
           "isUnique": true
         },
-        "customer_parts_part_idx": {
-          "name": "customer_parts_part_idx",
+        "TM_SHIPPING_PARTS_PART_IDX": {
+          "name": "TM_SHIPPING_PARTS_PART_IDX",
           "columns": [
-            "part_id"
+            "PART_ID"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "customer_parts_part_id_parts_id_fk": {
-          "name": "customer_parts_part_id_parts_id_fk",
-          "tableFrom": "customer_parts",
-          "tableTo": "parts",
+        "TM_SHIPPING_PARTS_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TM_SHIPPING_PARTS_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TM_SHIPPING_PARTS",
+          "tableTo": "TM_PARTS",
           "columnsFrom": [
-            "part_id"
+            "PART_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "customer_parts_customer_id_customers_id_fk": {
-          "name": "customer_parts_customer_id_customers_id_fk",
-          "tableFrom": "customer_parts",
-          "tableTo": "customers",
+        "TM_SHIPPING_PARTS_CUSTOMER_ID_TM_CUST_ID_fk": {
+          "name": "TM_SHIPPING_PARTS_CUSTOMER_ID_TM_CUST_ID_fk",
+          "tableFrom": "TM_SHIPPING_PARTS",
+          "tableTo": "TM_CUST",
           "columnsFrom": [
-            "customer_id"
+            "CUSTOMER_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "customer_parts_id": {
-          "name": "customer_parts_id",
+        "TM_SHIPPING_PARTS_ID": {
+          "name": "TM_SHIPPING_PARTS_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "customers": {
-      "name": "customers",
+    "TM_CUST": {
+      "name": "TM_CUST",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "code": {
-          "name": "code",
+        "CODE": {
+          "name": "CODE",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "dock": {
-          "name": "dock",
+        "DOCK": {
+          "name": "DOCK",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "is_active": {
-          "name": "is_active",
+        "PART_NUMBER_FORMAT": {
+          "name": "PART_NUMBER_FORMAT",
+          "type": "enum('TMMIN','SUZUKI','MMKI','TBINA','NONE')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'NONE'"
+        },
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": true
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -569,90 +577,104 @@
         }
       },
       "indexes": {
-        "customers_code_unique": {
-          "name": "customers_code_unique",
+        "TM_CUST_CODE_UNIQUE": {
+          "name": "TM_CUST_CODE_UNIQUE",
           "columns": [
-            "code"
+            "CODE"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "customers_id": {
-          "name": "customers_id",
+        "TM_CUST_ID": {
+          "name": "TM_CUST_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "lines": {
-      "name": "lines",
+    "TM_LINE": {
+      "name": "TM_LINE",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "code": {
-          "name": "code",
+        "CODE": {
+          "name": "CODE",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "process_type": {
-          "name": "process_type",
+        "PROCESS_TYPE": {
+          "name": "PROCESS_TYPE",
           "type": "enum('CASTING','MACHINING','ASSEMBLING','INJECTION')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "sort_order": {
-          "name": "sort_order",
+        "INPUT_LOCATION_ID": {
+          "name": "INPUT_LOCATION_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "OUTPUT_LOCATION_ID": {
+          "name": "OUTPUT_LOCATION_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "SORT_ORDER": {
+          "name": "SORT_ORDER",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "is_active": {
-          "name": "is_active",
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": true
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -661,111 +683,111 @@
         }
       },
       "indexes": {
-        "lines_plant_code_unique": {
-          "name": "lines_plant_code_unique",
+        "TM_LINE_PLANT_CODE_UNIQUE": {
+          "name": "TM_LINE_PLANT_CODE_UNIQUE",
           "columns": [
-            "plant_id",
-            "code"
+            "PLANT_ID",
+            "CODE"
           ],
           "isUnique": true
         },
-        "lines_process_idx": {
-          "name": "lines_process_idx",
+        "TM_LINE_PROCESS_IDX": {
+          "name": "TM_LINE_PROCESS_IDX",
           "columns": [
-            "process_type"
+            "PROCESS_TYPE"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "lines_plant_id_plants_id_fk": {
-          "name": "lines_plant_id_plants_id_fk",
-          "tableFrom": "lines",
-          "tableTo": "plants",
+        "TM_LINE_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_LINE_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_LINE",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "lines_id": {
-          "name": "lines_id",
+        "TM_LINE_ID": {
+          "name": "TM_LINE_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "machines": {
-      "name": "machines",
+    "TM_MACHINE": {
+      "name": "TM_MACHINE",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "line_id": {
-          "name": "line_id",
+        "LINE_ID": {
+          "name": "LINE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "code": {
-          "name": "code",
+        "CODE": {
+          "name": "CODE",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "external_ref": {
-          "name": "external_ref",
+        "EXTERNAL_REF": {
+          "name": "EXTERNAL_REF",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "is_active": {
-          "name": "is_active",
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": true
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -774,153 +796,185 @@
         }
       },
       "indexes": {
-        "machines_plant_code_unique": {
-          "name": "machines_plant_code_unique",
+        "TM_MACHINE_PLANT_CODE_UNIQUE": {
+          "name": "TM_MACHINE_PLANT_CODE_UNIQUE",
           "columns": [
-            "plant_id",
-            "code"
+            "PLANT_ID",
+            "CODE"
           ],
           "isUnique": true
         },
-        "machines_external_ref_idx": {
-          "name": "machines_external_ref_idx",
+        "TM_MACHINE_EXTERNAL_REF_IDX": {
+          "name": "TM_MACHINE_EXTERNAL_REF_IDX",
           "columns": [
-            "external_ref"
+            "EXTERNAL_REF"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "machines_plant_id_plants_id_fk": {
-          "name": "machines_plant_id_plants_id_fk",
-          "tableFrom": "machines",
-          "tableTo": "plants",
+        "TM_MACHINE_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_MACHINE_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_MACHINE",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "machines_line_id_lines_id_fk": {
-          "name": "machines_line_id_lines_id_fk",
-          "tableFrom": "machines",
-          "tableTo": "lines",
+        "TM_MACHINE_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TM_MACHINE_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TM_MACHINE",
+          "tableTo": "TM_LINE",
           "columnsFrom": [
-            "line_id"
+            "LINE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "machines_id": {
-          "name": "machines_id",
+        "TM_MACHINE_ID": {
+          "name": "TM_MACHINE_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "parts": {
-      "name": "parts",
+    "TM_PARTS": {
+      "name": "TM_PARTS",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "line_id": {
-          "name": "line_id",
+        "LINE_ID": {
+          "name": "LINE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "part_number": {
-          "name": "part_number",
+        "PART_NUMBER": {
+          "name": "PART_NUMBER",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "back_number": {
-          "name": "back_number",
+        "BACK_NUMBER": {
+          "name": "BACK_NUMBER",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(191)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "process_type": {
-          "name": "process_type",
+        "PROCESS_TYPE": {
+          "name": "PROCESS_TYPE",
           "type": "enum('CASTING','MACHINING','ASSEMBLING','INJECTION')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "qty_per_kanban": {
-          "name": "qty_per_kanban",
+        "PART_TYPE": {
+          "name": "PART_TYPE",
+          "type": "enum('RAW_MATERIAL','COMPONENT','WIP','FINISHED_GOOD')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'FINISHED_GOOD'"
+        },
+        "SOURCE_TYPE": {
+          "name": "SOURCE_TYPE",
+          "type": "enum('PURCHASED','MANUFACTURED')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'MANUFACTURED'"
+        },
+        "TRACKING_MODE": {
+          "name": "TRACKING_MODE",
+          "type": "enum('SERIAL','LOT','QUANTITY')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'SERIAL'"
+        },
+        "UOM": {
+          "name": "UOM",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pcs'"
+        },
+        "QTY_PER_KANBAN": {
+          "name": "QTY_PER_KANBAN",
           "type": "int",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "standard_stock": {
-          "name": "standard_stock",
+        "STANDARD_STOCK": {
+          "name": "STANDARD_STOCK",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "photo_path": {
-          "name": "photo_path",
+        "PHOTO_PATH": {
+          "name": "PHOTO_PATH",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "is_active": {
-          "name": "is_active",
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": true
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -929,110 +983,110 @@
         }
       },
       "indexes": {
-        "parts_plant_partnumber_unique": {
-          "name": "parts_plant_partnumber_unique",
+        "TM_PARTS_PLANT_PARTNUMBER_UNIQUE": {
+          "name": "TM_PARTS_PLANT_PARTNUMBER_UNIQUE",
           "columns": [
-            "plant_id",
-            "part_number"
+            "PLANT_ID",
+            "PART_NUMBER"
           ],
           "isUnique": true
         },
-        "parts_back_number_idx": {
-          "name": "parts_back_number_idx",
+        "TM_PARTS_BACK_NUMBER_IDX": {
+          "name": "TM_PARTS_BACK_NUMBER_IDX",
           "columns": [
-            "back_number"
+            "BACK_NUMBER"
           ],
           "isUnique": false
         },
-        "parts_line_idx": {
-          "name": "parts_line_idx",
+        "TM_PARTS_LINE_IDX": {
+          "name": "TM_PARTS_LINE_IDX",
           "columns": [
-            "line_id"
+            "LINE_ID"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "parts_plant_id_plants_id_fk": {
-          "name": "parts_plant_id_plants_id_fk",
-          "tableFrom": "parts",
-          "tableTo": "plants",
+        "TM_PARTS_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_PARTS_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_PARTS",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "parts_line_id_lines_id_fk": {
-          "name": "parts_line_id_lines_id_fk",
-          "tableFrom": "parts",
-          "tableTo": "lines",
+        "TM_PARTS_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TM_PARTS_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TM_PARTS",
+          "tableTo": "TM_LINE",
           "columnsFrom": [
-            "line_id"
+            "LINE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "parts_id": {
-          "name": "parts_id",
+        "TM_PARTS_ID": {
+          "name": "TM_PARTS_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "suppliers": {
-      "name": "suppliers",
+    "TM_VENDOR": {
+      "name": "TM_VENDOR",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "code": {
-          "name": "code",
+        "CODE": {
+          "name": "CODE",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "is_active": {
-          "name": "is_active",
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": true
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -1041,60 +1095,60 @@
         }
       },
       "indexes": {
-        "suppliers_code_unique": {
-          "name": "suppliers_code_unique",
+        "TM_VENDOR_CODE_UNIQUE": {
+          "name": "TM_VENDOR_CODE_UNIQUE",
           "columns": [
-            "code"
+            "CODE"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "suppliers_id": {
-          "name": "suppliers_id",
+        "TM_VENDOR_ID": {
+          "name": "TM_VENDOR_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "tooling_parts": {
-      "name": "tooling_parts",
+    "TM_TOOLING_PARTS": {
+      "name": "TM_TOOLING_PARTS",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "tooling_id": {
-          "name": "tooling_id",
+        "TOOLING_ID": {
+          "name": "TOOLING_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "part_id": {
-          "name": "part_id",
+        "PART_ID": {
+          "name": "PART_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -1103,118 +1157,118 @@
         }
       },
       "indexes": {
-        "tooling_parts_unique": {
-          "name": "tooling_parts_unique",
+        "TM_TOOLING_PARTS_UNIQUE": {
+          "name": "TM_TOOLING_PARTS_UNIQUE",
           "columns": [
-            "tooling_id",
-            "part_id"
+            "TOOLING_ID",
+            "PART_ID"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {
-        "tooling_parts_tooling_id_toolings_id_fk": {
-          "name": "tooling_parts_tooling_id_toolings_id_fk",
-          "tableFrom": "tooling_parts",
-          "tableTo": "toolings",
+        "TM_TOOLING_PARTS_TOOLING_ID_TM_TOOLING_ID_fk": {
+          "name": "TM_TOOLING_PARTS_TOOLING_ID_TM_TOOLING_ID_fk",
+          "tableFrom": "TM_TOOLING_PARTS",
+          "tableTo": "TM_TOOLING",
           "columnsFrom": [
-            "tooling_id"
+            "TOOLING_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "tooling_parts_part_id_parts_id_fk": {
-          "name": "tooling_parts_part_id_parts_id_fk",
-          "tableFrom": "tooling_parts",
-          "tableTo": "parts",
+        "TM_TOOLING_PARTS_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TM_TOOLING_PARTS_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TM_TOOLING_PARTS",
+          "tableTo": "TM_PARTS",
           "columnsFrom": [
-            "part_id"
+            "PART_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "tooling_parts_id": {
-          "name": "tooling_parts_id",
+        "TM_TOOLING_PARTS_ID": {
+          "name": "TM_TOOLING_PARTS_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "toolings": {
-      "name": "toolings",
+    "TM_TOOLING": {
+      "name": "TM_TOOLING",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "code": {
-          "name": "code",
+        "CODE": {
+          "name": "CODE",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "kind": {
-          "name": "kind",
+        "KIND": {
+          "name": "KIND",
           "type": "enum('MOLD','DIES','JIG')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "cavity": {
-          "name": "cavity",
+        "CAVITY": {
+          "name": "CAVITY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 1
         },
-        "is_active": {
-          "name": "is_active",
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": true
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -1223,116 +1277,116 @@
         }
       },
       "indexes": {
-        "toolings_plant_code_unique": {
-          "name": "toolings_plant_code_unique",
+        "TM_TOOLING_PLANT_CODE_UNIQUE": {
+          "name": "TM_TOOLING_PLANT_CODE_UNIQUE",
           "columns": [
-            "plant_id",
-            "code"
+            "PLANT_ID",
+            "CODE"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {
-        "toolings_plant_id_plants_id_fk": {
-          "name": "toolings_plant_id_plants_id_fk",
-          "tableFrom": "toolings",
-          "tableTo": "plants",
+        "TM_TOOLING_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_TOOLING_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_TOOLING",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "toolings_id": {
-          "name": "toolings_id",
+        "TM_TOOLING_ID": {
+          "name": "TM_TOOLING_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "kanban_events": {
-      "name": "kanban_events",
+    "TT_KANBAN_EVENT": {
+      "name": "TT_KANBAN_EVENT",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "kanban_id": {
-          "name": "kanban_id",
+        "KANBAN_ID": {
+          "name": "KANBAN_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "type": {
-          "name": "type",
+        "TYPE": {
+          "name": "TYPE",
           "type": "enum('PRODUCED','PULLED','PAIRED','STORED','LOADED','DELIVERED','CANCELLED','ADJUSTED')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "line_id": {
-          "name": "line_id",
+        "LINE_ID": {
+          "name": "LINE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "paired_kanban_id": {
-          "name": "paired_kanban_id",
+        "PAIRED_KANBAN_ID": {
+          "name": "PAIRED_KANBAN_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "qty": {
-          "name": "qty",
+        "QTY": {
+          "name": "QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "user_id": {
-          "name": "user_id",
+        "USER_ID": {
+          "name": "USER_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "device_id": {
-          "name": "device_id",
+        "DEVICE_ID": {
+          "name": "DEVICE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "occurred_at": {
-          "name": "occurred_at",
+        "OCCURRED_AT": {
+          "name": "OCCURRED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "meta": {
-          "name": "meta",
+        "META": {
+          "name": "META",
           "type": "json",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -1341,165 +1395,165 @@
         }
       },
       "indexes": {
-        "kanban_events_kanban_idx": {
-          "name": "kanban_events_kanban_idx",
+        "TT_KANBAN_EVENT_KANBAN_IDX": {
+          "name": "TT_KANBAN_EVENT_KANBAN_IDX",
           "columns": [
-            "kanban_id",
-            "occurred_at"
+            "KANBAN_ID",
+            "OCCURRED_AT"
           ],
           "isUnique": false
         },
-        "kanban_events_type_time_idx": {
-          "name": "kanban_events_type_time_idx",
+        "TT_KANBAN_EVENT_TYPE_TIME_IDX": {
+          "name": "TT_KANBAN_EVENT_TYPE_TIME_IDX",
           "columns": [
-            "type",
-            "occurred_at"
+            "TYPE",
+            "OCCURRED_AT"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "kanban_events_kanban_id_kanbans_id_fk": {
-          "name": "kanban_events_kanban_id_kanbans_id_fk",
-          "tableFrom": "kanban_events",
-          "tableTo": "kanbans",
+        "TT_KANBAN_EVENT_KANBAN_ID_TM_KANBAN_ID_fk": {
+          "name": "TT_KANBAN_EVENT_KANBAN_ID_TM_KANBAN_ID_fk",
+          "tableFrom": "TT_KANBAN_EVENT",
+          "tableTo": "TM_KANBAN",
           "columnsFrom": [
-            "kanban_id"
+            "KANBAN_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "kanban_events_line_id_lines_id_fk": {
-          "name": "kanban_events_line_id_lines_id_fk",
-          "tableFrom": "kanban_events",
-          "tableTo": "lines",
+        "TT_KANBAN_EVENT_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TT_KANBAN_EVENT_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TT_KANBAN_EVENT",
+          "tableTo": "TM_LINE",
           "columnsFrom": [
-            "line_id"
+            "LINE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "kanban_events_user_id_users_id_fk": {
-          "name": "kanban_events_user_id_users_id_fk",
-          "tableFrom": "kanban_events",
-          "tableTo": "users",
+        "TT_KANBAN_EVENT_USER_ID_TM_USER_ID_fk": {
+          "name": "TT_KANBAN_EVENT_USER_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_KANBAN_EVENT",
+          "tableTo": "TM_USER",
           "columnsFrom": [
-            "user_id"
+            "USER_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "kanban_events_device_id_devices_id_fk": {
-          "name": "kanban_events_device_id_devices_id_fk",
-          "tableFrom": "kanban_events",
-          "tableTo": "devices",
+        "TT_KANBAN_EVENT_DEVICE_ID_TM_DEVICE_ID_fk": {
+          "name": "TT_KANBAN_EVENT_DEVICE_ID_TM_DEVICE_ID_fk",
+          "tableFrom": "TT_KANBAN_EVENT",
+          "tableTo": "TM_DEVICE",
           "columnsFrom": [
-            "device_id"
+            "DEVICE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "kanban_events_id": {
-          "name": "kanban_events_id",
+        "TT_KANBAN_EVENT_ID": {
+          "name": "TT_KANBAN_EVENT_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "kanbans": {
-      "name": "kanbans",
+    "TM_KANBAN": {
+      "name": "TM_KANBAN",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "part_id": {
-          "name": "part_id",
+        "PART_ID": {
+          "name": "PART_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "customer_id": {
-          "name": "customer_id",
+        "CUSTOMER_ID": {
+          "name": "CUSTOMER_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "serial_number": {
-          "name": "serial_number",
+        "SERIAL_NUMBER": {
+          "name": "SERIAL_NUMBER",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "qty": {
-          "name": "qty",
+        "QTY": {
+          "name": "QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "status": {
-          "name": "status",
+        "STATUS": {
+          "name": "STATUS",
           "type": "enum('CREATED','PRODUCED','STORED','PULLED','LOADED','DELIVERED','CANCELLED')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "'CREATED'"
         },
-        "produced_at": {
-          "name": "produced_at",
+        "PRODUCED_AT": {
+          "name": "PRODUCED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "delivered_at": {
-          "name": "delivered_at",
+        "DELIVERED_AT": {
+          "name": "DELIVERED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -1508,243 +1562,243 @@
         }
       },
       "indexes": {
-        "kanbans_plant_serial_unique": {
-          "name": "kanbans_plant_serial_unique",
+        "TM_KANBAN_PLANT_SERIAL_UNIQUE": {
+          "name": "TM_KANBAN_PLANT_SERIAL_UNIQUE",
           "columns": [
-            "plant_id",
-            "serial_number"
+            "PLANT_ID",
+            "SERIAL_NUMBER"
           ],
           "isUnique": true
         },
-        "kanbans_part_status_idx": {
-          "name": "kanbans_part_status_idx",
+        "TM_KANBAN_PART_STATUS_IDX": {
+          "name": "TM_KANBAN_PART_STATUS_IDX",
           "columns": [
-            "part_id",
-            "status"
+            "PART_ID",
+            "STATUS"
           ],
           "isUnique": false
         },
-        "kanbans_status_created_idx": {
-          "name": "kanbans_status_created_idx",
+        "TM_KANBAN_STATUS_CREATED_IDX": {
+          "name": "TM_KANBAN_STATUS_CREATED_IDX",
           "columns": [
-            "status",
-            "created_at"
+            "STATUS",
+            "CREATED_AT"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "kanbans_plant_id_plants_id_fk": {
-          "name": "kanbans_plant_id_plants_id_fk",
-          "tableFrom": "kanbans",
-          "tableTo": "plants",
+        "TM_KANBAN_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_KANBAN_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_KANBAN",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "kanbans_part_id_parts_id_fk": {
-          "name": "kanbans_part_id_parts_id_fk",
-          "tableFrom": "kanbans",
-          "tableTo": "parts",
+        "TM_KANBAN_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TM_KANBAN_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TM_KANBAN",
+          "tableTo": "TM_PARTS",
           "columnsFrom": [
-            "part_id"
+            "PART_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "kanbans_customer_id_customers_id_fk": {
-          "name": "kanbans_customer_id_customers_id_fk",
-          "tableFrom": "kanbans",
-          "tableTo": "customers",
+        "TM_KANBAN_CUSTOMER_ID_TM_CUST_ID_fk": {
+          "name": "TM_KANBAN_CUSTOMER_ID_TM_CUST_ID_fk",
+          "tableFrom": "TM_KANBAN",
+          "tableTo": "TM_CUST",
           "columnsFrom": [
-            "customer_id"
+            "CUSTOMER_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "kanbans_id": {
-          "name": "kanbans_id",
+        "TM_KANBAN_ID": {
+          "name": "TM_KANBAN_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "production_plans": {
-      "name": "production_plans",
+    "TT_PRODUCTION_PLAN": {
+      "name": "TT_PRODUCTION_PLAN",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "line_id": {
-          "name": "line_id",
+        "LINE_ID": {
+          "name": "LINE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "part_id": {
-          "name": "part_id",
+        "PART_ID": {
+          "name": "PART_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "customer_id": {
-          "name": "customer_id",
+        "CUSTOMER_ID": {
+          "name": "CUSTOMER_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "plan_date": {
-          "name": "plan_date",
+        "PLAN_DATE": {
+          "name": "PLAN_DATE",
           "type": "date",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "cycle": {
-          "name": "cycle",
+        "CYCLE": {
+          "name": "CYCLE",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 1
         },
-        "seq_no": {
-          "name": "seq_no",
+        "SEQ_NO": {
+          "name": "SEQ_NO",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "order_qty": {
-          "name": "order_qty",
+        "ORDER_QTY": {
+          "name": "ORDER_QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "direct_pulling_qty": {
-          "name": "direct_pulling_qty",
+        "DIRECT_PULLING_QTY": {
+          "name": "DIRECT_PULLING_QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "stock_chute_qty": {
-          "name": "stock_chute_qty",
+        "STOCK_CHUTE_QTY": {
+          "name": "STOCK_CHUTE_QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "dock": {
-          "name": "dock",
+        "DOCK": {
+          "name": "DOCK",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "dn_number": {
-          "name": "dn_number",
+        "DN_NUMBER": {
+          "name": "DN_NUMBER",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "working_start": {
-          "name": "working_start",
+        "WORKING_START": {
+          "name": "WORKING_START",
           "type": "time",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "working_end": {
-          "name": "working_end",
+        "WORKING_END": {
+          "name": "WORKING_END",
           "type": "time",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "delivery_time": {
-          "name": "delivery_time",
+        "DELIVERY_TIME": {
+          "name": "DELIVERY_TIME",
           "type": "time",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "actual_start_at": {
-          "name": "actual_start_at",
+        "ACTUAL_START_AT": {
+          "name": "ACTUAL_START_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "actual_end_at": {
-          "name": "actual_end_at",
+        "ACTUAL_END_AT": {
+          "name": "ACTUAL_END_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "plan_source": {
-          "name": "plan_source",
+        "PLAN_SOURCE": {
+          "name": "PLAN_SOURCE",
           "type": "enum('MANUAL','IMPORT','STATIC_SEQ','API')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "'MANUAL'"
         },
-        "status": {
-          "name": "status",
+        "STATUS": {
+          "name": "STATUS",
           "type": "enum('DRAFT','RELEASED','RUNNING','DONE','CANCELLED')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "'DRAFT'"
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -1753,216 +1807,216 @@
         }
       },
       "indexes": {
-        "production_plans_date_line_idx": {
-          "name": "production_plans_date_line_idx",
+        "TT_PRODUCTION_PLAN_DATE_LINE_IDX": {
+          "name": "TT_PRODUCTION_PLAN_DATE_LINE_IDX",
           "columns": [
-            "plan_date",
-            "line_id"
+            "PLAN_DATE",
+            "LINE_ID"
           ],
           "isUnique": false
         },
-        "production_plans_part_date_idx": {
-          "name": "production_plans_part_date_idx",
+        "TT_PRODUCTION_PLAN_PART_DATE_IDX": {
+          "name": "TT_PRODUCTION_PLAN_PART_DATE_IDX",
           "columns": [
-            "part_id",
-            "plan_date"
+            "PART_ID",
+            "PLAN_DATE"
           ],
           "isUnique": false
         },
-        "production_plans_slot_unique": {
-          "name": "production_plans_slot_unique",
+        "TT_PRODUCTION_PLAN_SLOT_UNIQUE": {
+          "name": "TT_PRODUCTION_PLAN_SLOT_UNIQUE",
           "columns": [
-            "line_id",
-            "plan_date",
-            "cycle",
-            "seq_no"
+            "LINE_ID",
+            "PLAN_DATE",
+            "CYCLE",
+            "SEQ_NO"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {
-        "production_plans_plant_id_plants_id_fk": {
-          "name": "production_plans_plant_id_plants_id_fk",
-          "tableFrom": "production_plans",
-          "tableTo": "plants",
+        "TT_PRODUCTION_PLAN_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_PRODUCTION_PLAN_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_PRODUCTION_PLAN",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "production_plans_line_id_lines_id_fk": {
-          "name": "production_plans_line_id_lines_id_fk",
-          "tableFrom": "production_plans",
-          "tableTo": "lines",
+        "TT_PRODUCTION_PLAN_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TT_PRODUCTION_PLAN_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TT_PRODUCTION_PLAN",
+          "tableTo": "TM_LINE",
           "columnsFrom": [
-            "line_id"
+            "LINE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "production_plans_part_id_parts_id_fk": {
-          "name": "production_plans_part_id_parts_id_fk",
-          "tableFrom": "production_plans",
-          "tableTo": "parts",
+        "TT_PRODUCTION_PLAN_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_PRODUCTION_PLAN_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_PRODUCTION_PLAN",
+          "tableTo": "TM_PARTS",
           "columnsFrom": [
-            "part_id"
+            "PART_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "production_plans_customer_id_customers_id_fk": {
-          "name": "production_plans_customer_id_customers_id_fk",
-          "tableFrom": "production_plans",
-          "tableTo": "customers",
+        "TT_PRODUCTION_PLAN_CUSTOMER_ID_TM_CUST_ID_fk": {
+          "name": "TT_PRODUCTION_PLAN_CUSTOMER_ID_TM_CUST_ID_fk",
+          "tableFrom": "TT_PRODUCTION_PLAN",
+          "tableTo": "TM_CUST",
           "columnsFrom": [
-            "customer_id"
+            "CUSTOMER_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "production_plans_id": {
-          "name": "production_plans_id",
+        "TT_PRODUCTION_PLAN_ID": {
+          "name": "TT_PRODUCTION_PLAN_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "scan_events": {
-      "name": "scan_events",
+    "TT_HISTORY_SCAN": {
+      "name": "TT_HISTORY_SCAN",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "kind": {
-          "name": "kind",
+        "KIND": {
+          "name": "KIND",
           "type": "enum('PRODUCTION','PULLING','DELIVERY','RECEIVING','INSPECTION','STOCK_TAKE')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "process_type": {
-          "name": "process_type",
+        "PROCESS_TYPE": {
+          "name": "PROCESS_TYPE",
           "type": "enum('CASTING','MACHINING','ASSEMBLING','INJECTION')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "line_id": {
-          "name": "line_id",
+        "LINE_ID": {
+          "name": "LINE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "part_id": {
-          "name": "part_id",
+        "PART_ID": {
+          "name": "PART_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "machine_id": {
-          "name": "machine_id",
+        "MACHINE_ID": {
+          "name": "MACHINE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "production_plan_id": {
-          "name": "production_plan_id",
+        "PRODUCTION_PLAN_ID": {
+          "name": "PRODUCTION_PLAN_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "raw_code": {
-          "name": "raw_code",
+        "RAW_CODE": {
+          "name": "RAW_CODE",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "serial_number": {
-          "name": "serial_number",
+        "SERIAL_NUMBER": {
+          "name": "SERIAL_NUMBER",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "qty": {
-          "name": "qty",
+        "QTY": {
+          "name": "QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 1
         },
-        "user_id": {
-          "name": "user_id",
+        "USER_ID": {
+          "name": "USER_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "device_id": {
-          "name": "device_id",
+        "DEVICE_ID": {
+          "name": "DEVICE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "scanned_at": {
-          "name": "scanned_at",
+        "SCANNED_AT": {
+          "name": "SCANNED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "dedupe_key": {
-          "name": "dedupe_key",
+        "DEDUPE_KEY": {
+          "name": "DEDUPE_KEY",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "meta": {
-          "name": "meta",
+        "META": {
+          "name": "META",
           "type": "json",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -1971,197 +2025,197 @@
         }
       },
       "indexes": {
-        "scan_events_dedupe_unique": {
-          "name": "scan_events_dedupe_unique",
+        "TT_HISTORY_SCAN_DEDUPE_UNIQUE": {
+          "name": "TT_HISTORY_SCAN_DEDUPE_UNIQUE",
           "columns": [
-            "dedupe_key"
+            "DEDUPE_KEY"
           ],
           "isUnique": true
         },
-        "scan_events_time_idx": {
-          "name": "scan_events_time_idx",
+        "TT_HISTORY_SCAN_TIME_IDX": {
+          "name": "TT_HISTORY_SCAN_TIME_IDX",
           "columns": [
-            "scanned_at"
+            "SCANNED_AT"
           ],
           "isUnique": false
         },
-        "scan_events_line_kind_time_idx": {
-          "name": "scan_events_line_kind_time_idx",
+        "TT_HISTORY_SCAN_LINE_KIND_TIME_IDX": {
+          "name": "TT_HISTORY_SCAN_LINE_KIND_TIME_IDX",
           "columns": [
-            "line_id",
-            "kind",
-            "scanned_at"
+            "LINE_ID",
+            "KIND",
+            "SCANNED_AT"
           ],
           "isUnique": false
         },
-        "scan_events_part_time_idx": {
-          "name": "scan_events_part_time_idx",
+        "TT_HISTORY_SCAN_PART_TIME_IDX": {
+          "name": "TT_HISTORY_SCAN_PART_TIME_IDX",
           "columns": [
-            "part_id",
-            "scanned_at"
+            "PART_ID",
+            "SCANNED_AT"
           ],
           "isUnique": false
         },
-        "scan_events_serial_idx": {
-          "name": "scan_events_serial_idx",
+        "TT_HISTORY_SCAN_SERIAL_IDX": {
+          "name": "TT_HISTORY_SCAN_SERIAL_IDX",
           "columns": [
-            "serial_number"
+            "SERIAL_NUMBER"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "scan_events_plant_id_plants_id_fk": {
-          "name": "scan_events_plant_id_plants_id_fk",
-          "tableFrom": "scan_events",
-          "tableTo": "plants",
+        "TT_HISTORY_SCAN_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_HISTORY_SCAN_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_HISTORY_SCAN",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "scan_events_line_id_lines_id_fk": {
-          "name": "scan_events_line_id_lines_id_fk",
-          "tableFrom": "scan_events",
-          "tableTo": "lines",
+        "TT_HISTORY_SCAN_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TT_HISTORY_SCAN_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TT_HISTORY_SCAN",
+          "tableTo": "TM_LINE",
           "columnsFrom": [
-            "line_id"
+            "LINE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "scan_events_part_id_parts_id_fk": {
-          "name": "scan_events_part_id_parts_id_fk",
-          "tableFrom": "scan_events",
-          "tableTo": "parts",
+        "TT_HISTORY_SCAN_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_HISTORY_SCAN_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_HISTORY_SCAN",
+          "tableTo": "TM_PARTS",
           "columnsFrom": [
-            "part_id"
+            "PART_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "scan_events_machine_id_machines_id_fk": {
-          "name": "scan_events_machine_id_machines_id_fk",
-          "tableFrom": "scan_events",
-          "tableTo": "machines",
+        "TT_HISTORY_SCAN_MACHINE_ID_TM_MACHINE_ID_fk": {
+          "name": "TT_HISTORY_SCAN_MACHINE_ID_TM_MACHINE_ID_fk",
+          "tableFrom": "TT_HISTORY_SCAN",
+          "tableTo": "TM_MACHINE",
           "columnsFrom": [
-            "machine_id"
+            "MACHINE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "scan_events_production_plan_id_production_plans_id_fk": {
-          "name": "scan_events_production_plan_id_production_plans_id_fk",
-          "tableFrom": "scan_events",
-          "tableTo": "production_plans",
+        "TT_HISTORY_SCAN_PRODUCTION_PLAN_ID_TT_PRODUCTION_PLAN_ID_fk": {
+          "name": "TT_HISTORY_SCAN_PRODUCTION_PLAN_ID_TT_PRODUCTION_PLAN_ID_fk",
+          "tableFrom": "TT_HISTORY_SCAN",
+          "tableTo": "TT_PRODUCTION_PLAN",
           "columnsFrom": [
-            "production_plan_id"
+            "PRODUCTION_PLAN_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "scan_events_user_id_users_id_fk": {
-          "name": "scan_events_user_id_users_id_fk",
-          "tableFrom": "scan_events",
-          "tableTo": "users",
+        "TT_HISTORY_SCAN_USER_ID_TM_USER_ID_fk": {
+          "name": "TT_HISTORY_SCAN_USER_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_HISTORY_SCAN",
+          "tableTo": "TM_USER",
           "columnsFrom": [
-            "user_id"
+            "USER_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "scan_events_device_id_devices_id_fk": {
-          "name": "scan_events_device_id_devices_id_fk",
-          "tableFrom": "scan_events",
-          "tableTo": "devices",
+        "TT_HISTORY_SCAN_DEVICE_ID_TM_DEVICE_ID_fk": {
+          "name": "TT_HISTORY_SCAN_DEVICE_ID_TM_DEVICE_ID_fk",
+          "tableFrom": "TT_HISTORY_SCAN",
+          "tableTo": "TM_DEVICE",
           "columnsFrom": [
-            "device_id"
+            "DEVICE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "scan_events_id": {
-          "name": "scan_events_id",
+        "TT_HISTORY_SCAN_ID": {
+          "name": "TT_HISTORY_SCAN_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "locations": {
-      "name": "locations",
+    "TM_LOCATION": {
+      "name": "TM_LOCATION",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "code": {
-          "name": "code",
+        "CODE": {
+          "name": "CODE",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "kind": {
-          "name": "kind",
-          "type": "enum('WIP','FINISH_GOOD','CHUTE','NG','TRANSIT')",
+        "KIND": {
+          "name": "KIND",
+          "type": "enum('WAREHOUSE','WIP','FINISH_GOOD','STAGING','CHUTE','NG','TRANSIT')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -2170,144 +2224,151 @@
         }
       },
       "indexes": {
-        "locations_plant_code_unique": {
-          "name": "locations_plant_code_unique",
+        "TM_LOCATION_PLANT_CODE_UNIQUE": {
+          "name": "TM_LOCATION_PLANT_CODE_UNIQUE",
           "columns": [
-            "plant_id",
-            "code"
+            "PLANT_ID",
+            "CODE"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {
-        "locations_plant_id_plants_id_fk": {
-          "name": "locations_plant_id_plants_id_fk",
-          "tableFrom": "locations",
-          "tableTo": "plants",
+        "TM_LOCATION_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_LOCATION_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_LOCATION",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "locations_id": {
-          "name": "locations_id",
+        "TM_LOCATION_ID": {
+          "name": "TM_LOCATION_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "mutations": {
-      "name": "mutations",
+    "TT_STOCK_MUTATION": {
+      "name": "TT_STOCK_MUTATION",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "part_id": {
-          "name": "part_id",
+        "PART_ID": {
+          "name": "PART_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "location_id": {
-          "name": "location_id",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "line_id": {
-          "name": "line_id",
+        "LOCATION_ID": {
+          "name": "LOCATION_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "type": {
-          "name": "type",
-          "type": "enum('PRODUCTION_IN','DELIVERY_OUT','NG_OUT','ADJUSTMENT','STOCK_TAKE','TRANSFER_IN','TRANSFER_OUT','RECEIVING_IN')",
+        "LINE_ID": {
+          "name": "LINE_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "LOT_ID": {
+          "name": "LOT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "TYPE": {
+          "name": "TYPE",
+          "type": "enum('PRODUCTION_IN','DELIVERY_OUT','NG_OUT','ADJUSTMENT','STOCK_TAKE','TRANSFER_IN','TRANSFER_OUT','RECEIVING_IN','CONSUMPTION_OUT')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "qty": {
-          "name": "qty",
-          "type": "int",
+        "QTY": {
+          "name": "QTY",
+          "type": "decimal(14,4)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "source_table": {
-          "name": "source_table",
+        "SOURCE_TABLE": {
+          "name": "SOURCE_TABLE",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "source_id": {
-          "name": "source_id",
+        "SOURCE_ID": {
+          "name": "SOURCE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "npk": {
-          "name": "npk",
+        "NPK": {
+          "name": "NPK",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "user_id": {
-          "name": "user_id",
+        "USER_ID": {
+          "name": "USER_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "occurred_at": {
-          "name": "occurred_at",
+        "OCCURRED_AT": {
+          "name": "OCCURRED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "note": {
-          "name": "note",
+        "NOTE": {
+          "name": "NOTE",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "meta": {
-          "name": "meta",
+        "META": {
+          "name": "META",
           "type": "json",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -2316,182 +2377,190 @@
         }
       },
       "indexes": {
-        "mutations_part_time_idx": {
-          "name": "mutations_part_time_idx",
+        "TT_STOCK_MUTATION_PART_TIME_IDX": {
+          "name": "TT_STOCK_MUTATION_PART_TIME_IDX",
           "columns": [
-            "part_id",
-            "occurred_at"
+            "PART_ID",
+            "OCCURRED_AT"
           ],
           "isUnique": false
         },
-        "mutations_type_time_idx": {
-          "name": "mutations_type_time_idx",
+        "TT_STOCK_MUTATION_TYPE_TIME_IDX": {
+          "name": "TT_STOCK_MUTATION_TYPE_TIME_IDX",
           "columns": [
-            "type",
-            "occurred_at"
+            "TYPE",
+            "OCCURRED_AT"
           ],
           "isUnique": false
         },
-        "mutations_source_idx": {
-          "name": "mutations_source_idx",
+        "TT_STOCK_MUTATION_SOURCE_IDX": {
+          "name": "TT_STOCK_MUTATION_SOURCE_IDX",
           "columns": [
-            "source_table",
-            "source_id"
+            "SOURCE_TABLE",
+            "SOURCE_ID"
+          ],
+          "isUnique": false
+        },
+        "TT_STOCK_MUTATION_LOT_IDX": {
+          "name": "TT_STOCK_MUTATION_LOT_IDX",
+          "columns": [
+            "LOT_ID",
+            "OCCURRED_AT"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "mutations_plant_id_plants_id_fk": {
-          "name": "mutations_plant_id_plants_id_fk",
-          "tableFrom": "mutations",
-          "tableTo": "plants",
+        "TT_STOCK_MUTATION_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_STOCK_MUTATION_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_STOCK_MUTATION",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "mutations_part_id_parts_id_fk": {
-          "name": "mutations_part_id_parts_id_fk",
-          "tableFrom": "mutations",
-          "tableTo": "parts",
+        "TT_STOCK_MUTATION_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_STOCK_MUTATION_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_STOCK_MUTATION",
+          "tableTo": "TM_PARTS",
           "columnsFrom": [
-            "part_id"
+            "PART_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "mutations_location_id_locations_id_fk": {
-          "name": "mutations_location_id_locations_id_fk",
-          "tableFrom": "mutations",
-          "tableTo": "locations",
+        "TT_STOCK_MUTATION_LOCATION_ID_TM_LOCATION_ID_fk": {
+          "name": "TT_STOCK_MUTATION_LOCATION_ID_TM_LOCATION_ID_fk",
+          "tableFrom": "TT_STOCK_MUTATION",
+          "tableTo": "TM_LOCATION",
           "columnsFrom": [
-            "location_id"
+            "LOCATION_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "mutations_line_id_lines_id_fk": {
-          "name": "mutations_line_id_lines_id_fk",
-          "tableFrom": "mutations",
-          "tableTo": "lines",
+        "TT_STOCK_MUTATION_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TT_STOCK_MUTATION_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TT_STOCK_MUTATION",
+          "tableTo": "TM_LINE",
           "columnsFrom": [
-            "line_id"
+            "LINE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "mutations_user_id_users_id_fk": {
-          "name": "mutations_user_id_users_id_fk",
-          "tableFrom": "mutations",
-          "tableTo": "users",
+        "TT_STOCK_MUTATION_USER_ID_TM_USER_ID_fk": {
+          "name": "TT_STOCK_MUTATION_USER_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_STOCK_MUTATION",
+          "tableTo": "TM_USER",
           "columnsFrom": [
-            "user_id"
+            "USER_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "mutations_id": {
-          "name": "mutations_id",
+        "TT_STOCK_MUTATION_ID": {
+          "name": "TT_STOCK_MUTATION_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "stock_balances": {
-      "name": "stock_balances",
+    "TT_STOCK_BALANCE": {
+      "name": "TT_STOCK_BALANCE",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "part_id": {
-          "name": "part_id",
+        "PART_ID": {
+          "name": "PART_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "location_id": {
-          "name": "location_id",
+        "LOCATION_ID": {
+          "name": "LOCATION_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "balance_date": {
-          "name": "balance_date",
+        "BALANCE_DATE": {
+          "name": "BALANCE_DATE",
           "type": "date",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "opening_qty": {
-          "name": "opening_qty",
-          "type": "int",
+        "OPENING_QTY": {
+          "name": "OPENING_QTY",
+          "type": "decimal(14,4)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
-        "in_qty": {
-          "name": "in_qty",
-          "type": "int",
+        "IN_QTY": {
+          "name": "IN_QTY",
+          "type": "decimal(14,4)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
-        "out_qty": {
-          "name": "out_qty",
-          "type": "int",
+        "OUT_QTY": {
+          "name": "OUT_QTY",
+          "type": "decimal(14,4)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
-        "closing_qty": {
-          "name": "closing_qty",
-          "type": "int",
+        "CLOSING_QTY": {
+          "name": "CLOSING_QTY",
+          "type": "decimal(14,4)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "'0'"
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -2500,103 +2569,103 @@
         }
       },
       "indexes": {
-        "stock_balances_unique": {
-          "name": "stock_balances_unique",
+        "TT_STOCK_BALANCE_UNIQUE": {
+          "name": "TT_STOCK_BALANCE_UNIQUE",
           "columns": [
-            "part_id",
-            "location_id",
-            "balance_date"
+            "PART_ID",
+            "LOCATION_ID",
+            "BALANCE_DATE"
           ],
           "isUnique": true
         },
-        "stock_balances_date_idx": {
-          "name": "stock_balances_date_idx",
+        "TT_STOCK_BALANCE_DATE_IDX": {
+          "name": "TT_STOCK_BALANCE_DATE_IDX",
           "columns": [
-            "balance_date"
+            "BALANCE_DATE"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "stock_balances_part_id_parts_id_fk": {
-          "name": "stock_balances_part_id_parts_id_fk",
-          "tableFrom": "stock_balances",
-          "tableTo": "parts",
+        "TT_STOCK_BALANCE_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_STOCK_BALANCE_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_STOCK_BALANCE",
+          "tableTo": "TM_PARTS",
           "columnsFrom": [
-            "part_id"
+            "PART_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "stock_balances_location_id_locations_id_fk": {
-          "name": "stock_balances_location_id_locations_id_fk",
-          "tableFrom": "stock_balances",
-          "tableTo": "locations",
+        "TT_STOCK_BALANCE_LOCATION_ID_TM_LOCATION_ID_fk": {
+          "name": "TT_STOCK_BALANCE_LOCATION_ID_TM_LOCATION_ID_fk",
+          "tableFrom": "TT_STOCK_BALANCE",
+          "tableTo": "TM_LOCATION",
           "columnsFrom": [
-            "location_id"
+            "LOCATION_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "stock_balances_id": {
-          "name": "stock_balances_id",
+        "TT_STOCK_BALANCE_ID": {
+          "name": "TT_STOCK_BALANCE_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "inspection_details": {
-      "name": "inspection_details",
+    "TT_INSPECTION_L": {
+      "name": "TT_INSPECTION_L",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "inspection_id": {
-          "name": "inspection_id",
+        "INSPECTION_ID": {
+          "name": "INSPECTION_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "ng_master_id": {
-          "name": "ng_master_id",
+        "NG_MASTER_ID": {
+          "name": "NG_MASTER_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "qty": {
-          "name": "qty",
+        "QTY": {
+          "name": "QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "meta": {
-          "name": "meta",
+        "META": {
+          "name": "META",
           "type": "json",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -2605,124 +2674,124 @@
         }
       },
       "indexes": {
-        "inspection_details_inspection_idx": {
-          "name": "inspection_details_inspection_idx",
+        "TT_INSPECTION_L_INSPECTION_IDX": {
+          "name": "TT_INSPECTION_L_INSPECTION_IDX",
           "columns": [
-            "inspection_id"
+            "INSPECTION_ID"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "inspection_details_inspection_id_quality_inspections_id_fk": {
-          "name": "inspection_details_inspection_id_quality_inspections_id_fk",
-          "tableFrom": "inspection_details",
-          "tableTo": "quality_inspections",
+        "TT_INSPECTION_L_INSPECTION_ID_TT_INSPECTION_H_ID_fk": {
+          "name": "TT_INSPECTION_L_INSPECTION_ID_TT_INSPECTION_H_ID_fk",
+          "tableFrom": "TT_INSPECTION_L",
+          "tableTo": "TT_INSPECTION_H",
           "columnsFrom": [
-            "inspection_id"
+            "INSPECTION_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "inspection_details_ng_master_id_ng_masters_id_fk": {
-          "name": "inspection_details_ng_master_id_ng_masters_id_fk",
-          "tableFrom": "inspection_details",
-          "tableTo": "ng_masters",
+        "TT_INSPECTION_L_NG_MASTER_ID_TM_NG_ID_fk": {
+          "name": "TT_INSPECTION_L_NG_MASTER_ID_TM_NG_ID_fk",
+          "tableFrom": "TT_INSPECTION_L",
+          "tableTo": "TM_NG",
           "columnsFrom": [
-            "ng_master_id"
+            "NG_MASTER_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "inspection_details_id": {
-          "name": "inspection_details_id",
+        "TT_INSPECTION_L_ID": {
+          "name": "TT_INSPECTION_L_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "ng_masters": {
-      "name": "ng_masters",
+    "TM_NG": {
+      "name": "TM_NG",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "code": {
-          "name": "code",
+        "CODE": {
+          "name": "CODE",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "NAME": {
+          "name": "NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "process_type": {
-          "name": "process_type",
+        "PROCESS_TYPE": {
+          "name": "PROCESS_TYPE",
           "type": "enum('CASTING','MACHINING','ASSEMBLING','INJECTION')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "category": {
-          "name": "category",
+        "CATEGORY": {
+          "name": "CATEGORY",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "sort_order": {
-          "name": "sort_order",
+        "SORT_ORDER": {
+          "name": "SORT_ORDER",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "is_active": {
-          "name": "is_active",
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
           "type": "enum('0','1')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "'1'"
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -2731,148 +2800,148 @@
         }
       },
       "indexes": {
-        "ng_masters_plant_code_unique": {
-          "name": "ng_masters_plant_code_unique",
+        "TM_NG_PLANT_CODE_UNIQUE": {
+          "name": "TM_NG_PLANT_CODE_UNIQUE",
           "columns": [
-            "plant_id",
-            "code"
+            "PLANT_ID",
+            "CODE"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {
-        "ng_masters_plant_id_plants_id_fk": {
-          "name": "ng_masters_plant_id_plants_id_fk",
-          "tableFrom": "ng_masters",
-          "tableTo": "plants",
+        "TM_NG_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_NG_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_NG",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "ng_masters_id": {
-          "name": "ng_masters_id",
+        "TM_NG_ID": {
+          "name": "TM_NG_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "quality_inspections": {
-      "name": "quality_inspections",
+    "TT_INSPECTION_H": {
+      "name": "TT_INSPECTION_H",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "part_id": {
-          "name": "part_id",
+        "PART_ID": {
+          "name": "PART_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "line_id": {
-          "name": "line_id",
+        "LINE_ID": {
+          "name": "LINE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "machine_id": {
-          "name": "machine_id",
+        "MACHINE_ID": {
+          "name": "MACHINE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "process_type": {
-          "name": "process_type",
+        "PROCESS_TYPE": {
+          "name": "PROCESS_TYPE",
           "type": "enum('CASTING','MACHINING','ASSEMBLING','INJECTION')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "inspected_at": {
-          "name": "inspected_at",
+        "INSPECTED_AT": {
+          "name": "INSPECTED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "shift": {
-          "name": "shift",
+        "SHIFT": {
+          "name": "SHIFT",
           "type": "enum('1','2','3')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "checked_qty": {
-          "name": "checked_qty",
+        "CHECKED_QTY": {
+          "name": "CHECKED_QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "ok_qty": {
-          "name": "ok_qty",
+        "OK_QTY": {
+          "name": "OK_QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "ng_qty": {
-          "name": "ng_qty",
+        "NG_QTY": {
+          "name": "NG_QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "inspector_id": {
-          "name": "inspector_id",
+        "INSPECTOR_ID": {
+          "name": "INSPECTOR_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "note": {
-          "name": "note",
+        "NOTE": {
+          "name": "NOTE",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -2881,221 +2950,264 @@
         }
       },
       "indexes": {
-        "quality_inspections_part_time_idx": {
-          "name": "quality_inspections_part_time_idx",
+        "TT_INSPECTION_H_PART_TIME_IDX": {
+          "name": "TT_INSPECTION_H_PART_TIME_IDX",
           "columns": [
-            "part_id",
-            "inspected_at"
+            "PART_ID",
+            "INSPECTED_AT"
           ],
           "isUnique": false
         },
-        "quality_inspections_line_time_idx": {
-          "name": "quality_inspections_line_time_idx",
+        "TT_INSPECTION_H_LINE_TIME_IDX": {
+          "name": "TT_INSPECTION_H_LINE_TIME_IDX",
           "columns": [
-            "line_id",
-            "inspected_at"
+            "LINE_ID",
+            "INSPECTED_AT"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "quality_inspections_plant_id_plants_id_fk": {
-          "name": "quality_inspections_plant_id_plants_id_fk",
-          "tableFrom": "quality_inspections",
-          "tableTo": "plants",
+        "TT_INSPECTION_H_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_INSPECTION_H_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_INSPECTION_H",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "quality_inspections_part_id_parts_id_fk": {
-          "name": "quality_inspections_part_id_parts_id_fk",
-          "tableFrom": "quality_inspections",
-          "tableTo": "parts",
+        "TT_INSPECTION_H_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_INSPECTION_H_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_INSPECTION_H",
+          "tableTo": "TM_PARTS",
           "columnsFrom": [
-            "part_id"
+            "PART_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "quality_inspections_line_id_lines_id_fk": {
-          "name": "quality_inspections_line_id_lines_id_fk",
-          "tableFrom": "quality_inspections",
-          "tableTo": "lines",
+        "TT_INSPECTION_H_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TT_INSPECTION_H_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TT_INSPECTION_H",
+          "tableTo": "TM_LINE",
           "columnsFrom": [
-            "line_id"
+            "LINE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "quality_inspections_machine_id_machines_id_fk": {
-          "name": "quality_inspections_machine_id_machines_id_fk",
-          "tableFrom": "quality_inspections",
-          "tableTo": "machines",
+        "TT_INSPECTION_H_MACHINE_ID_TM_MACHINE_ID_fk": {
+          "name": "TT_INSPECTION_H_MACHINE_ID_TM_MACHINE_ID_fk",
+          "tableFrom": "TT_INSPECTION_H",
+          "tableTo": "TM_MACHINE",
           "columnsFrom": [
-            "machine_id"
+            "MACHINE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "quality_inspections_inspector_id_users_id_fk": {
-          "name": "quality_inspections_inspector_id_users_id_fk",
-          "tableFrom": "quality_inspections",
-          "tableTo": "users",
+        "TT_INSPECTION_H_INSPECTOR_ID_TM_USER_ID_fk": {
+          "name": "TT_INSPECTION_H_INSPECTOR_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_INSPECTION_H",
+          "tableTo": "TM_USER",
           "columnsFrom": [
-            "inspector_id"
+            "INSPECTOR_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "quality_inspections_id": {
-          "name": "quality_inspections_id",
+        "TT_INSPECTION_H_ID": {
+          "name": "TT_INSPECTION_H_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "deliveries": {
-      "name": "deliveries",
+    "TT_DELIVERY": {
+      "name": "TT_DELIVERY",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "customer_id": {
-          "name": "customer_id",
+        "CUSTOMER_ID": {
+          "name": "CUSTOMER_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "document_number": {
-          "name": "document_number",
+        "DOCUMENT_NUMBER": {
+          "name": "DOCUMENT_NUMBER",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "manifest_number": {
-          "name": "manifest_number",
+        "MANIFEST_NUMBER": {
+          "name": "MANIFEST_NUMBER",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "delivery_date": {
-          "name": "delivery_date",
+        "PDS_NUMBER": {
+          "name": "PDS_NUMBER",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "DELIVERY_DATE": {
+          "name": "DELIVERY_DATE",
           "type": "date",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "cycle": {
-          "name": "cycle",
+        "CYCLE": {
+          "name": "CYCLE",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 1
         },
-        "dock": {
-          "name": "dock",
+        "DOCK": {
+          "name": "DOCK",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "plan_time": {
-          "name": "plan_time",
+        "PLAN_TIME": {
+          "name": "PLAN_TIME",
           "type": "time",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "departed_at": {
-          "name": "departed_at",
+        "DEPARTED_AT": {
+          "name": "DEPARTED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "arrived_at": {
-          "name": "arrived_at",
+        "ARRIVED_AT": {
+          "name": "ARRIVED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "status": {
-          "name": "status",
-          "type": "enum('DRAFT','LOADING','LOADED','SHIPPED','RECEIVED','CANCELLED')",
+        "STATUS": {
+          "name": "STATUS",
+          "type": "enum('DRAFT','PICKING','PICKED','LOADING','SHIPPED','RECEIVED','CANCELLED')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "'DRAFT'"
         },
-        "truck_number": {
-          "name": "truck_number",
+        "LOCATION_ID": {
+          "name": "LOCATION_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "STAGING_LOCATION_ID": {
+          "name": "STAGING_LOCATION_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "TRUCK_NUMBER": {
+          "name": "TRUCK_NUMBER",
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "driver_name": {
-          "name": "driver_name",
+        "DRIVER_NAME": {
+          "name": "DRIVER_NAME",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_by_id": {
-          "name": "created_by_id",
+        "TRUCK_STATUS": {
+          "name": "TRUCK_STATUS",
+          "type": "enum('PENDING','ARRIVED','LOADING','DEPARTED')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'PENDING'"
+        },
+        "TRUCK_PICKED_AT": {
+          "name": "TRUCK_PICKED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "TRUCK_PICKED_BY_ID": {
+          "name": "TRUCK_PICKED_BY_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_BY_ID": {
+          "name": "CREATED_BY_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -3104,140 +3216,205 @@
         }
       },
       "indexes": {
-        "deliveries_plant_document_unique": {
-          "name": "deliveries_plant_document_unique",
+        "TT_DELIVERY_PLANT_DOCUMENT_UNIQUE": {
+          "name": "TT_DELIVERY_PLANT_DOCUMENT_UNIQUE",
           "columns": [
-            "plant_id",
-            "document_number"
+            "PLANT_ID",
+            "DOCUMENT_NUMBER"
           ],
           "isUnique": true
         },
-        "deliveries_date_customer_idx": {
-          "name": "deliveries_date_customer_idx",
+        "TT_DELIVERY_DATE_CUSTOMER_IDX": {
+          "name": "TT_DELIVERY_DATE_CUSTOMER_IDX",
           "columns": [
-            "delivery_date",
-            "customer_id"
+            "DELIVERY_DATE",
+            "CUSTOMER_ID"
           ],
           "isUnique": false
         },
-        "deliveries_status_idx": {
-          "name": "deliveries_status_idx",
+        "TT_DELIVERY_STATUS_IDX": {
+          "name": "TT_DELIVERY_STATUS_IDX",
           "columns": [
-            "status"
+            "STATUS"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "deliveries_plant_id_plants_id_fk": {
-          "name": "deliveries_plant_id_plants_id_fk",
-          "tableFrom": "deliveries",
-          "tableTo": "plants",
+        "TT_DELIVERY_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_DELIVERY_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_DELIVERY",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "deliveries_customer_id_customers_id_fk": {
-          "name": "deliveries_customer_id_customers_id_fk",
-          "tableFrom": "deliveries",
-          "tableTo": "customers",
+        "TT_DELIVERY_CUSTOMER_ID_TM_CUST_ID_fk": {
+          "name": "TT_DELIVERY_CUSTOMER_ID_TM_CUST_ID_fk",
+          "tableFrom": "TT_DELIVERY",
+          "tableTo": "TM_CUST",
           "columnsFrom": [
-            "customer_id"
+            "CUSTOMER_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "deliveries_created_by_id_users_id_fk": {
-          "name": "deliveries_created_by_id_users_id_fk",
-          "tableFrom": "deliveries",
-          "tableTo": "users",
+        "TT_DELIVERY_LOCATION_ID_TM_LOCATION_ID_fk": {
+          "name": "TT_DELIVERY_LOCATION_ID_TM_LOCATION_ID_fk",
+          "tableFrom": "TT_DELIVERY",
+          "tableTo": "TM_LOCATION",
           "columnsFrom": [
-            "created_by_id"
+            "LOCATION_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_DELIVERY_TRUCK_PICKED_BY_ID_TM_USER_ID_fk": {
+          "name": "TT_DELIVERY_TRUCK_PICKED_BY_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_DELIVERY",
+          "tableTo": "TM_USER",
+          "columnsFrom": [
+            "TRUCK_PICKED_BY_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_DELIVERY_CREATED_BY_ID_TM_USER_ID_fk": {
+          "name": "TT_DELIVERY_CREATED_BY_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_DELIVERY",
+          "tableTo": "TM_USER",
+          "columnsFrom": [
+            "CREATED_BY_ID"
+          ],
+          "columnsTo": [
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "deliveries_id": {
-          "name": "deliveries_id",
+        "TT_DELIVERY_ID": {
+          "name": "TT_DELIVERY_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "delivery_lines": {
-      "name": "delivery_lines",
+    "TT_DELIVERY_ITEM": {
+      "name": "TT_DELIVERY_ITEM",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "delivery_id": {
-          "name": "delivery_id",
+        "DELIVERY_ID": {
+          "name": "DELIVERY_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "part_id": {
-          "name": "part_id",
+        "PART_ID": {
+          "name": "PART_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "plan_qty": {
-          "name": "plan_qty",
+        "CUSTOMER_PART_ID": {
+          "name": "CUSTOMER_PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "PLANNED_KANBAN": {
+          "name": "PLANNED_KANBAN",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "actual_qty": {
-          "name": "actual_qty",
+        "PLANNED_QTY": {
+          "name": "PLANNED_QTY",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "kanban_count": {
-          "name": "kanban_count",
+        "QTY_PER_KANBAN": {
+          "name": "QTY_PER_KANBAN",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "created_at": {
-          "name": "created_at",
+        "PICKED_KANBAN": {
+          "name": "PICKED_KANBAN",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "PICKED_QTY": {
+          "name": "PICKED_QTY",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "ACTUAL_KANBAN": {
+          "name": "ACTUAL_KANBAN",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "ACTUAL_QTY": {
+          "name": "ACTUAL_QTY",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -3246,136 +3423,136 @@
         }
       },
       "indexes": {
-        "delivery_lines_unique": {
-          "name": "delivery_lines_unique",
+        "TT_DELIVERY_ITEM_UNIQUE": {
+          "name": "TT_DELIVERY_ITEM_UNIQUE",
           "columns": [
-            "delivery_id",
-            "part_id"
+            "DELIVERY_ID",
+            "PART_ID"
           ],
           "isUnique": true
         },
-        "delivery_lines_part_idx": {
-          "name": "delivery_lines_part_idx",
+        "TT_DELIVERY_ITEM_PART_IDX": {
+          "name": "TT_DELIVERY_ITEM_PART_IDX",
           "columns": [
-            "part_id"
+            "PART_ID"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "delivery_lines_delivery_id_deliveries_id_fk": {
-          "name": "delivery_lines_delivery_id_deliveries_id_fk",
-          "tableFrom": "delivery_lines",
-          "tableTo": "deliveries",
+        "TT_DELIVERY_ITEM_DELIVERY_ID_TT_DELIVERY_ID_fk": {
+          "name": "TT_DELIVERY_ITEM_DELIVERY_ID_TT_DELIVERY_ID_fk",
+          "tableFrom": "TT_DELIVERY_ITEM",
+          "tableTo": "TT_DELIVERY",
           "columnsFrom": [
-            "delivery_id"
+            "DELIVERY_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "delivery_lines_part_id_parts_id_fk": {
-          "name": "delivery_lines_part_id_parts_id_fk",
-          "tableFrom": "delivery_lines",
-          "tableTo": "parts",
+        "TT_DELIVERY_ITEM_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_DELIVERY_ITEM_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_DELIVERY_ITEM",
+          "tableTo": "TM_PARTS",
           "columnsFrom": [
-            "part_id"
+            "PART_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "delivery_lines_id": {
-          "name": "delivery_lines_id",
+        "TT_DELIVERY_ITEM_ID": {
+          "name": "TT_DELIVERY_ITEM_ID",
           "columns": [
-            "id"
+            "ID"
           ]
         }
       },
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
-    "machine_events": {
-      "name": "machine_events",
+    "TT_MACHINE_EVENT": {
+      "name": "TT_MACHINE_EVENT",
       "columns": {
-        "id": {
-          "name": "id",
+        "ID": {
+          "name": "ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": true
         },
-        "plant_id": {
-          "name": "plant_id",
+        "PLANT_ID": {
+          "name": "PLANT_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "machine_id": {
-          "name": "machine_id",
+        "MACHINE_ID": {
+          "name": "MACHINE_ID",
           "type": "bigint unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "type": {
-          "name": "type",
+        "TYPE": {
+          "name": "TYPE",
           "type": "enum('SHOT','CYCLE_END','ALARM','DOWNTIME_START','DOWNTIME_END','STATUS_CHANGE','DANDORI_START','DANDORI_END')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "source": {
-          "name": "source",
+        "SOURCE": {
+          "name": "SOURCE",
           "type": "enum('MQTT','J922_SYNC','MANUAL')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "status": {
-          "name": "status",
+        "STATUS": {
+          "name": "STATUS",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "shot_count": {
-          "name": "shot_count",
+        "SHOT_COUNT": {
+          "name": "SHOT_COUNT",
           "type": "int",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "occurred_at": {
-          "name": "occurred_at",
+        "OCCURRED_AT": {
+          "name": "OCCURRED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "dedupe_key": {
-          "name": "dedupe_key",
+        "DEDUPE_KEY": {
+          "name": "DEDUPE_KEY",
           "type": "varchar(128)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "payload": {
-          "name": "payload",
+        "PAYLOAD": {
+          "name": "PAYLOAD",
           "type": "json",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "CREATED_AT": {
+          "name": "CREATED_AT",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
@@ -3384,63 +3561,2187 @@
         }
       },
       "indexes": {
-        "machine_events_machine_time_idx": {
-          "name": "machine_events_machine_time_idx",
+        "TT_MACHINE_EVENT_MACHINE_TIME_IDX": {
+          "name": "TT_MACHINE_EVENT_MACHINE_TIME_IDX",
           "columns": [
-            "machine_id",
-            "occurred_at"
+            "MACHINE_ID",
+            "OCCURRED_AT"
           ],
           "isUnique": false
         },
-        "machine_events_type_time_idx": {
-          "name": "machine_events_type_time_idx",
+        "TT_MACHINE_EVENT_TYPE_TIME_IDX": {
+          "name": "TT_MACHINE_EVENT_TYPE_TIME_IDX",
           "columns": [
-            "type",
-            "occurred_at"
+            "TYPE",
+            "OCCURRED_AT"
           ],
           "isUnique": false
         },
-        "machine_events_dedupe_idx": {
-          "name": "machine_events_dedupe_idx",
+        "TT_MACHINE_EVENT_DEDUPE_IDX": {
+          "name": "TT_MACHINE_EVENT_DEDUPE_IDX",
           "columns": [
-            "dedupe_key"
+            "DEDUPE_KEY"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "machine_events_plant_id_plants_id_fk": {
-          "name": "machine_events_plant_id_plants_id_fk",
-          "tableFrom": "machine_events",
-          "tableTo": "plants",
+        "TT_MACHINE_EVENT_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_MACHINE_EVENT_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_MACHINE_EVENT",
+          "tableTo": "TM_PLANT",
           "columnsFrom": [
-            "plant_id"
+            "PLANT_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "machine_events_machine_id_machines_id_fk": {
-          "name": "machine_events_machine_id_machines_id_fk",
-          "tableFrom": "machine_events",
-          "tableTo": "machines",
+        "TT_MACHINE_EVENT_MACHINE_ID_TM_MACHINE_ID_fk": {
+          "name": "TT_MACHINE_EVENT_MACHINE_ID_TM_MACHINE_ID_fk",
+          "tableFrom": "TT_MACHINE_EVENT",
+          "tableTo": "TM_MACHINE",
           "columnsFrom": [
-            "machine_id"
+            "MACHINE_ID"
           ],
           "columnsTo": [
-            "id"
+            "ID"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "machine_events_id": {
-          "name": "machine_events_id",
+        "TT_MACHINE_EVENT_ID": {
+          "name": "TT_MACHINE_EVENT_ID",
           "columns": [
-            "id"
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TM_BOM": {
+      "name": "TM_BOM",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "PARENT_PART_ID": {
+          "name": "PARENT_PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "COMPONENT_PART_ID": {
+          "name": "COMPONENT_PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "QTY_PER": {
+          "name": "QTY_PER",
+          "type": "decimal(12,4)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "UOM": {
+          "name": "UOM",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pcs'"
+        },
+        "SCRAP_PCT": {
+          "name": "SCRAP_PCT",
+          "type": "decimal(5,2)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'0'"
+        },
+        "SEQUENCE": {
+          "name": "SEQUENCE",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "EFFECTIVE_FROM": {
+          "name": "EFFECTIVE_FROM",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "EFFECTIVE_TO": {
+          "name": "EFFECTIVE_TO",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "NOTE": {
+          "name": "NOTE",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TM_BOM_PARENT_IDX": {
+          "name": "TM_BOM_PARENT_IDX",
+          "columns": [
+            "PARENT_PART_ID",
+            "EFFECTIVE_FROM"
+          ],
+          "isUnique": false
+        },
+        "TM_BOM_COMPONENT_IDX": {
+          "name": "TM_BOM_COMPONENT_IDX",
+          "columns": [
+            "COMPONENT_PART_ID"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TM_BOM_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_BOM_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_BOM",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TM_BOM_PARENT_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TM_BOM_PARENT_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TM_BOM",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "PARENT_PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TM_BOM_COMPONENT_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TM_BOM_COMPONENT_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TM_BOM",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "COMPONENT_PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TM_BOM_ID": {
+          "name": "TM_BOM_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_CONSUMPTION": {
+      "name": "TT_CONSUMPTION",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "LINE_ID": {
+          "name": "LINE_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "PRODUCED_PART_ID": {
+          "name": "PRODUCED_PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "COMPONENT_PART_ID": {
+          "name": "COMPONENT_PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "LOT_ID": {
+          "name": "LOT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "QTY": {
+          "name": "QTY",
+          "type": "decimal(14,4)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "UOM": {
+          "name": "UOM",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pcs'"
+        },
+        "SOURCE": {
+          "name": "SOURCE",
+          "type": "enum('BACKFLUSH','MANUAL','ADJUSTMENT')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "OCCURRED_AT": {
+          "name": "OCCURRED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "USER_ID": {
+          "name": "USER_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_CONSUMPTION_PRODUCED_IDX": {
+          "name": "TT_CONSUMPTION_PRODUCED_IDX",
+          "columns": [
+            "PRODUCED_PART_ID",
+            "OCCURRED_AT"
+          ],
+          "isUnique": false
+        },
+        "TT_CONSUMPTION_COMPONENT_IDX": {
+          "name": "TT_CONSUMPTION_COMPONENT_IDX",
+          "columns": [
+            "COMPONENT_PART_ID",
+            "OCCURRED_AT"
+          ],
+          "isUnique": false
+        },
+        "TT_CONSUMPTION_LOT_IDX": {
+          "name": "TT_CONSUMPTION_LOT_IDX",
+          "columns": [
+            "LOT_ID"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_CONSUMPTION_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_CONSUMPTION_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_CONSUMPTION",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_CONSUMPTION_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TT_CONSUMPTION_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TT_CONSUMPTION",
+          "tableTo": "TM_LINE",
+          "columnsFrom": [
+            "LINE_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_CONSUMPTION_PRODUCED_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_CONSUMPTION_PRODUCED_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_CONSUMPTION",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "PRODUCED_PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_CONSUMPTION_COMPONENT_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_CONSUMPTION_COMPONENT_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_CONSUMPTION",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "COMPONENT_PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_CONSUMPTION_LOT_ID_TT_LOT_ID_fk": {
+          "name": "TT_CONSUMPTION_LOT_ID_TT_LOT_ID_fk",
+          "tableFrom": "TT_CONSUMPTION",
+          "tableTo": "TT_LOT",
+          "columnsFrom": [
+            "LOT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_CONSUMPTION_USER_ID_TM_USER_ID_fk": {
+          "name": "TT_CONSUMPTION_USER_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_CONSUMPTION",
+          "tableTo": "TM_USER",
+          "columnsFrom": [
+            "USER_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_CONSUMPTION_ID": {
+          "name": "TT_CONSUMPTION_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_GENEALOGY": {
+      "name": "TT_GENEALOGY",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "PARENT_SERIAL": {
+          "name": "PARENT_SERIAL",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "PARENT_PART_ID": {
+          "name": "PARENT_PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "COMPONENT_PART_ID": {
+          "name": "COMPONENT_PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "COMPONENT_SERIAL": {
+          "name": "COMPONENT_SERIAL",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "COMPONENT_LOT_ID": {
+          "name": "COMPONENT_LOT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "QTY": {
+          "name": "QTY",
+          "type": "decimal(14,4)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'1'"
+        },
+        "EVIDENCE": {
+          "name": "EVIDENCE",
+          "type": "enum('SCANNED','INFERRED')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'INFERRED'"
+        },
+        "OCCURRED_AT": {
+          "name": "OCCURRED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "SUPERSEDED_AT": {
+          "name": "SUPERSEDED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "SUPERSEDED_BY_REPAIR_ID": {
+          "name": "SUPERSEDED_BY_REPAIR_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "META": {
+          "name": "META",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_GENEALOGY_PARENT_IDX": {
+          "name": "TT_GENEALOGY_PARENT_IDX",
+          "columns": [
+            "PARENT_SERIAL"
+          ],
+          "isUnique": false
+        },
+        "TT_GENEALOGY_LOT_IDX": {
+          "name": "TT_GENEALOGY_LOT_IDX",
+          "columns": [
+            "COMPONENT_LOT_ID"
+          ],
+          "isUnique": false
+        },
+        "TT_GENEALOGY_COMPONENT_SERIAL_IDX": {
+          "name": "TT_GENEALOGY_COMPONENT_SERIAL_IDX",
+          "columns": [
+            "COMPONENT_SERIAL"
+          ],
+          "isUnique": false
+        },
+        "TT_GENEALOGY_PART_TIME_IDX": {
+          "name": "TT_GENEALOGY_PART_TIME_IDX",
+          "columns": [
+            "PARENT_PART_ID",
+            "OCCURRED_AT"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_GENEALOGY_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_GENEALOGY_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_GENEALOGY",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_GENEALOGY_PARENT_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_GENEALOGY_PARENT_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_GENEALOGY",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "PARENT_PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_GENEALOGY_COMPONENT_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_GENEALOGY_COMPONENT_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_GENEALOGY",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "COMPONENT_PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_GENEALOGY_COMPONENT_LOT_ID_TT_LOT_ID_fk": {
+          "name": "TT_GENEALOGY_COMPONENT_LOT_ID_TT_LOT_ID_fk",
+          "tableFrom": "TT_GENEALOGY",
+          "tableTo": "TT_LOT",
+          "columnsFrom": [
+            "COMPONENT_LOT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_GENEALOGY_ID": {
+          "name": "TT_GENEALOGY_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_LOT": {
+      "name": "TT_LOT",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "PART_ID": {
+          "name": "PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "LOT_NUMBER": {
+          "name": "LOT_NUMBER",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "SUPPLIER_LOT_NUMBER": {
+          "name": "SUPPLIER_LOT_NUMBER",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "SUPPLIER_ID": {
+          "name": "SUPPLIER_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "RECEIVED_AT": {
+          "name": "RECEIVED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "EXPIRES_AT": {
+          "name": "EXPIRES_AT",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "INITIAL_QTY": {
+          "name": "INITIAL_QTY",
+          "type": "decimal(14,4)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'0'"
+        },
+        "STATUS": {
+          "name": "STATUS",
+          "type": "enum('OPEN','CONSUMED','BLOCKED','RETURNED')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'OPEN'"
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_LOT_PLANT_NUMBER_UNIQUE": {
+          "name": "TT_LOT_PLANT_NUMBER_UNIQUE",
+          "columns": [
+            "PLANT_ID",
+            "LOT_NUMBER"
+          ],
+          "isUnique": true
+        },
+        "TT_LOT_PART_IDX": {
+          "name": "TT_LOT_PART_IDX",
+          "columns": [
+            "PART_ID"
+          ],
+          "isUnique": false
+        },
+        "TT_LOT_SUPPLIER_LOT_IDX": {
+          "name": "TT_LOT_SUPPLIER_LOT_IDX",
+          "columns": [
+            "SUPPLIER_LOT_NUMBER"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_LOT_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_LOT_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_LOT",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_LOT_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_LOT_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_LOT",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_LOT_SUPPLIER_ID_TM_VENDOR_ID_fk": {
+          "name": "TT_LOT_SUPPLIER_ID_TM_VENDOR_ID_fk",
+          "tableFrom": "TT_LOT",
+          "tableTo": "TM_VENDOR",
+          "columnsFrom": [
+            "SUPPLIER_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_LOT_ID": {
+          "name": "TT_LOT_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_PURCHASE_RECEIPT_L": {
+      "name": "TT_PURCHASE_RECEIPT_L",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "RECEIPT_ID": {
+          "name": "RECEIPT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "PART_ID": {
+          "name": "PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "LOT_ID": {
+          "name": "LOT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "QTY": {
+          "name": "QTY",
+          "type": "decimal(14,4)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "UOM": {
+          "name": "UOM",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pcs'"
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_PURCHASE_RECEIPT_L_RECEIPT_IDX": {
+          "name": "TT_PURCHASE_RECEIPT_L_RECEIPT_IDX",
+          "columns": [
+            "RECEIPT_ID"
+          ],
+          "isUnique": false
+        },
+        "TT_PURCHASE_RECEIPT_L_PART_IDX": {
+          "name": "TT_PURCHASE_RECEIPT_L_PART_IDX",
+          "columns": [
+            "PART_ID"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_PURCHASE_RECEIPT_L_RECEIPT_ID_TT_PURCHASE_RECEIPT_H_ID_fk": {
+          "name": "TT_PURCHASE_RECEIPT_L_RECEIPT_ID_TT_PURCHASE_RECEIPT_H_ID_fk",
+          "tableFrom": "TT_PURCHASE_RECEIPT_L",
+          "tableTo": "TT_PURCHASE_RECEIPT_H",
+          "columnsFrom": [
+            "RECEIPT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "TT_PURCHASE_RECEIPT_L_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_PURCHASE_RECEIPT_L_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_PURCHASE_RECEIPT_L",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_PURCHASE_RECEIPT_L_LOT_ID_TT_LOT_ID_fk": {
+          "name": "TT_PURCHASE_RECEIPT_L_LOT_ID_TT_LOT_ID_fk",
+          "tableFrom": "TT_PURCHASE_RECEIPT_L",
+          "tableTo": "TT_LOT",
+          "columnsFrom": [
+            "LOT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_PURCHASE_RECEIPT_L_ID": {
+          "name": "TT_PURCHASE_RECEIPT_L_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_PURCHASE_RECEIPT_H": {
+      "name": "TT_PURCHASE_RECEIPT_H",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "SUPPLIER_ID": {
+          "name": "SUPPLIER_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "DOCUMENT_NUMBER": {
+          "name": "DOCUMENT_NUMBER",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "SUPPLIER_DOC_NUMBER": {
+          "name": "SUPPLIER_DOC_NUMBER",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "RECEIVED_AT": {
+          "name": "RECEIVED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "LOCATION_ID": {
+          "name": "LOCATION_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "STATUS": {
+          "name": "STATUS",
+          "type": "enum('DRAFT','RECEIVED','CANCELLED')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'DRAFT'"
+        },
+        "RECEIVED_BY_ID": {
+          "name": "RECEIVED_BY_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "NOTE": {
+          "name": "NOTE",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_PURCHASE_RECEIPT_H_PLANT_DOCUMENT_UNIQUE": {
+          "name": "TT_PURCHASE_RECEIPT_H_PLANT_DOCUMENT_UNIQUE",
+          "columns": [
+            "PLANT_ID",
+            "DOCUMENT_NUMBER"
+          ],
+          "isUnique": true
+        },
+        "TT_PURCHASE_RECEIPT_H_SUPPLIER_DATE_IDX": {
+          "name": "TT_PURCHASE_RECEIPT_H_SUPPLIER_DATE_IDX",
+          "columns": [
+            "SUPPLIER_ID",
+            "RECEIVED_AT"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_PURCHASE_RECEIPT_H_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_PURCHASE_RECEIPT_H_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_PURCHASE_RECEIPT_H",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_PURCHASE_RECEIPT_H_SUPPLIER_ID_TM_VENDOR_ID_fk": {
+          "name": "TT_PURCHASE_RECEIPT_H_SUPPLIER_ID_TM_VENDOR_ID_fk",
+          "tableFrom": "TT_PURCHASE_RECEIPT_H",
+          "tableTo": "TM_VENDOR",
+          "columnsFrom": [
+            "SUPPLIER_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_PURCHASE_RECEIPT_H_LOCATION_ID_TM_LOCATION_ID_fk": {
+          "name": "TT_PURCHASE_RECEIPT_H_LOCATION_ID_TM_LOCATION_ID_fk",
+          "tableFrom": "TT_PURCHASE_RECEIPT_H",
+          "tableTo": "TM_LOCATION",
+          "columnsFrom": [
+            "LOCATION_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_PURCHASE_RECEIPT_H_RECEIVED_BY_ID_TM_USER_ID_fk": {
+          "name": "TT_PURCHASE_RECEIPT_H_RECEIVED_BY_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_PURCHASE_RECEIPT_H",
+          "tableTo": "TM_USER",
+          "columnsFrom": [
+            "RECEIVED_BY_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_PURCHASE_RECEIPT_H_ID": {
+          "name": "TT_PURCHASE_RECEIPT_H_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_GOODS_MOVEMENT_L": {
+      "name": "TT_GOODS_MOVEMENT_L",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "TRANSFER_ID": {
+          "name": "TRANSFER_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "PART_ID": {
+          "name": "PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "LOT_ID": {
+          "name": "LOT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "SERIAL_NUMBER": {
+          "name": "SERIAL_NUMBER",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "QTY": {
+          "name": "QTY",
+          "type": "decimal(14,4)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_GOODS_MOVEMENT_L_TRANSFER_IDX": {
+          "name": "TT_GOODS_MOVEMENT_L_TRANSFER_IDX",
+          "columns": [
+            "TRANSFER_ID"
+          ],
+          "isUnique": false
+        },
+        "TT_GOODS_MOVEMENT_L_PART_IDX": {
+          "name": "TT_GOODS_MOVEMENT_L_PART_IDX",
+          "columns": [
+            "PART_ID"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_GOODS_MOVEMENT_L_TRANSFER_ID_TT_GOODS_MOVEMENT_H_ID_fk": {
+          "name": "TT_GOODS_MOVEMENT_L_TRANSFER_ID_TT_GOODS_MOVEMENT_H_ID_fk",
+          "tableFrom": "TT_GOODS_MOVEMENT_L",
+          "tableTo": "TT_GOODS_MOVEMENT_H",
+          "columnsFrom": [
+            "TRANSFER_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "TT_GOODS_MOVEMENT_L_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_GOODS_MOVEMENT_L_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_GOODS_MOVEMENT_L",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_GOODS_MOVEMENT_L_LOT_ID_TT_LOT_ID_fk": {
+          "name": "TT_GOODS_MOVEMENT_L_LOT_ID_TT_LOT_ID_fk",
+          "tableFrom": "TT_GOODS_MOVEMENT_L",
+          "tableTo": "TT_LOT",
+          "columnsFrom": [
+            "LOT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_GOODS_MOVEMENT_L_ID": {
+          "name": "TT_GOODS_MOVEMENT_L_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_GOODS_MOVEMENT_H": {
+      "name": "TT_GOODS_MOVEMENT_H",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "DOCUMENT_NUMBER": {
+          "name": "DOCUMENT_NUMBER",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "FROM_LOCATION_ID": {
+          "name": "FROM_LOCATION_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "TO_LOCATION_ID": {
+          "name": "TO_LOCATION_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "FROM_LINE_ID": {
+          "name": "FROM_LINE_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "TO_LINE_ID": {
+          "name": "TO_LINE_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "MOVED_AT": {
+          "name": "MOVED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "STATUS": {
+          "name": "STATUS",
+          "type": "enum('DRAFT','MOVED','CANCELLED')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'DRAFT'"
+        },
+        "USER_ID": {
+          "name": "USER_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "NOTE": {
+          "name": "NOTE",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_GOODS_MOVEMENT_H_PLANT_DOCUMENT_UNIQUE": {
+          "name": "TT_GOODS_MOVEMENT_H_PLANT_DOCUMENT_UNIQUE",
+          "columns": [
+            "PLANT_ID",
+            "DOCUMENT_NUMBER"
+          ],
+          "isUnique": true
+        },
+        "TT_GOODS_MOVEMENT_H_MOVED_IDX": {
+          "name": "TT_GOODS_MOVEMENT_H_MOVED_IDX",
+          "columns": [
+            "MOVED_AT"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_GOODS_MOVEMENT_H_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_GOODS_MOVEMENT_H_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_GOODS_MOVEMENT_H",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_GOODS_MOVEMENT_H_FROM_LOCATION_ID_TM_LOCATION_ID_fk": {
+          "name": "TT_GOODS_MOVEMENT_H_FROM_LOCATION_ID_TM_LOCATION_ID_fk",
+          "tableFrom": "TT_GOODS_MOVEMENT_H",
+          "tableTo": "TM_LOCATION",
+          "columnsFrom": [
+            "FROM_LOCATION_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_GOODS_MOVEMENT_H_TO_LOCATION_ID_TM_LOCATION_ID_fk": {
+          "name": "TT_GOODS_MOVEMENT_H_TO_LOCATION_ID_TM_LOCATION_ID_fk",
+          "tableFrom": "TT_GOODS_MOVEMENT_H",
+          "tableTo": "TM_LOCATION",
+          "columnsFrom": [
+            "TO_LOCATION_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_GOODS_MOVEMENT_H_FROM_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TT_GOODS_MOVEMENT_H_FROM_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TT_GOODS_MOVEMENT_H",
+          "tableTo": "TM_LINE",
+          "columnsFrom": [
+            "FROM_LINE_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_GOODS_MOVEMENT_H_TO_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TT_GOODS_MOVEMENT_H_TO_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TT_GOODS_MOVEMENT_H",
+          "tableTo": "TM_LINE",
+          "columnsFrom": [
+            "TO_LINE_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_GOODS_MOVEMENT_H_USER_ID_TM_USER_ID_fk": {
+          "name": "TT_GOODS_MOVEMENT_H_USER_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_GOODS_MOVEMENT_H",
+          "tableTo": "TM_USER",
+          "columnsFrom": [
+            "USER_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_GOODS_MOVEMENT_H_ID": {
+          "name": "TT_GOODS_MOVEMENT_H_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_NG_DISPOSITION": {
+      "name": "TT_NG_DISPOSITION",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "LINE_ID": {
+          "name": "LINE_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "PART_ID": {
+          "name": "PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "SERIAL_NUMBER": {
+          "name": "SERIAL_NUMBER",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "LOT_ID": {
+          "name": "LOT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "QTY": {
+          "name": "QTY",
+          "type": "decimal(14,4)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "DISPOSITION": {
+          "name": "DISPOSITION",
+          "type": "enum('REMELT','REPAIR','DISCARD','RETURN_SUPPLIER')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "CONVERTED_TO_PART_ID": {
+          "name": "CONVERTED_TO_PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CONVERTED_QTY": {
+          "name": "CONVERTED_QTY",
+          "type": "decimal(14,4)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CONVERTED_LOT_ID": {
+          "name": "CONVERTED_LOT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "REASON": {
+          "name": "REASON",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "OCCURRED_AT": {
+          "name": "OCCURRED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "USER_ID": {
+          "name": "USER_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_NG_DISPOSITION_PART_TIME_IDX": {
+          "name": "TT_NG_DISPOSITION_PART_TIME_IDX",
+          "columns": [
+            "PART_ID",
+            "OCCURRED_AT"
+          ],
+          "isUnique": false
+        },
+        "TT_NG_DISPOSITION_SERIAL_IDX": {
+          "name": "TT_NG_DISPOSITION_SERIAL_IDX",
+          "columns": [
+            "SERIAL_NUMBER"
+          ],
+          "isUnique": false
+        },
+        "TT_NG_DISPOSITION_DISPOSITION_IDX": {
+          "name": "TT_NG_DISPOSITION_DISPOSITION_IDX",
+          "columns": [
+            "DISPOSITION",
+            "OCCURRED_AT"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_NG_DISPOSITION_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_NG_DISPOSITION_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_NG_DISPOSITION",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_NG_DISPOSITION_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TT_NG_DISPOSITION_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TT_NG_DISPOSITION",
+          "tableTo": "TM_LINE",
+          "columnsFrom": [
+            "LINE_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_NG_DISPOSITION_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_NG_DISPOSITION_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_NG_DISPOSITION",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_NG_DISPOSITION_LOT_ID_TT_LOT_ID_fk": {
+          "name": "TT_NG_DISPOSITION_LOT_ID_TT_LOT_ID_fk",
+          "tableFrom": "TT_NG_DISPOSITION",
+          "tableTo": "TT_LOT",
+          "columnsFrom": [
+            "LOT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_NG_DISPOSITION_CONVERTED_TO_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_NG_DISPOSITION_CONVERTED_TO_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_NG_DISPOSITION",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "CONVERTED_TO_PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_NG_DISPOSITION_CONVERTED_LOT_ID_TT_LOT_ID_fk": {
+          "name": "TT_NG_DISPOSITION_CONVERTED_LOT_ID_TT_LOT_ID_fk",
+          "tableFrom": "TT_NG_DISPOSITION",
+          "tableTo": "TT_LOT",
+          "columnsFrom": [
+            "CONVERTED_LOT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_NG_DISPOSITION_USER_ID_TM_USER_ID_fk": {
+          "name": "TT_NG_DISPOSITION_USER_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_NG_DISPOSITION",
+          "tableTo": "TM_USER",
+          "columnsFrom": [
+            "USER_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_NG_DISPOSITION_ID": {
+          "name": "TT_NG_DISPOSITION_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_REPAIR_L": {
+      "name": "TT_REPAIR_L",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "REPAIR_ID": {
+          "name": "REPAIR_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "COMPONENT_PART_ID": {
+          "name": "COMPONENT_PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "REMOVED_SERIAL": {
+          "name": "REMOVED_SERIAL",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "REMOVED_LOT_ID": {
+          "name": "REMOVED_LOT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "REMOVED_DISPOSITION": {
+          "name": "REMOVED_DISPOSITION",
+          "type": "enum('REMELT','REPAIR','DISCARD','RETURN_SUPPLIER')",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "INSTALLED_SERIAL": {
+          "name": "INSTALLED_SERIAL",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "INSTALLED_LOT_ID": {
+          "name": "INSTALLED_LOT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "QTY": {
+          "name": "QTY",
+          "type": "decimal(14,4)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'1'"
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_REPAIR_L_REPAIR_IDX": {
+          "name": "TT_REPAIR_L_REPAIR_IDX",
+          "columns": [
+            "REPAIR_ID"
+          ],
+          "isUnique": false
+        },
+        "TT_REPAIR_L_COMPONENT_IDX": {
+          "name": "TT_REPAIR_L_COMPONENT_IDX",
+          "columns": [
+            "COMPONENT_PART_ID"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_REPAIR_L_REPAIR_ID_TT_REPAIR_H_ID_fk": {
+          "name": "TT_REPAIR_L_REPAIR_ID_TT_REPAIR_H_ID_fk",
+          "tableFrom": "TT_REPAIR_L",
+          "tableTo": "TT_REPAIR_H",
+          "columnsFrom": [
+            "REPAIR_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "TT_REPAIR_L_COMPONENT_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_REPAIR_L_COMPONENT_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_REPAIR_L",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "COMPONENT_PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_REPAIR_L_REMOVED_LOT_ID_TT_LOT_ID_fk": {
+          "name": "TT_REPAIR_L_REMOVED_LOT_ID_TT_LOT_ID_fk",
+          "tableFrom": "TT_REPAIR_L",
+          "tableTo": "TT_LOT",
+          "columnsFrom": [
+            "REMOVED_LOT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_REPAIR_L_INSTALLED_LOT_ID_TT_LOT_ID_fk": {
+          "name": "TT_REPAIR_L_INSTALLED_LOT_ID_TT_LOT_ID_fk",
+          "tableFrom": "TT_REPAIR_L",
+          "tableTo": "TT_LOT",
+          "columnsFrom": [
+            "INSTALLED_LOT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_REPAIR_L_ID": {
+          "name": "TT_REPAIR_L_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TT_REPAIR_H": {
+      "name": "TT_REPAIR_H",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "LINE_ID": {
+          "name": "LINE_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "PART_ID": {
+          "name": "PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "SERIAL_NUMBER": {
+          "name": "SERIAL_NUMBER",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "REASON": {
+          "name": "REASON",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "STATUS": {
+          "name": "STATUS",
+          "type": "enum('OPEN','DONE','SCRAPPED')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'OPEN'"
+        },
+        "STARTED_AT": {
+          "name": "STARTED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "FINISHED_AT": {
+          "name": "FINISHED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "USER_ID": {
+          "name": "USER_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_REPAIR_H_SERIAL_IDX": {
+          "name": "TT_REPAIR_H_SERIAL_IDX",
+          "columns": [
+            "SERIAL_NUMBER"
+          ],
+          "isUnique": false
+        },
+        "TT_REPAIR_H_STATUS_IDX": {
+          "name": "TT_REPAIR_H_STATUS_IDX",
+          "columns": [
+            "STATUS",
+            "STARTED_AT"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_REPAIR_H_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TT_REPAIR_H_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TT_REPAIR_H",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_REPAIR_H_LINE_ID_TM_LINE_ID_fk": {
+          "name": "TT_REPAIR_H_LINE_ID_TM_LINE_ID_fk",
+          "tableFrom": "TT_REPAIR_H",
+          "tableTo": "TM_LINE",
+          "columnsFrom": [
+            "LINE_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_REPAIR_H_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TT_REPAIR_H_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TT_REPAIR_H",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_REPAIR_H_USER_ID_TM_USER_ID_fk": {
+          "name": "TT_REPAIR_H_USER_ID_TM_USER_ID_fk",
+          "tableFrom": "TT_REPAIR_H",
+          "tableTo": "TM_USER",
+          "columnsFrom": [
+            "USER_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_REPAIR_H_ID": {
+          "name": "TT_REPAIR_H_ID",
+          "columns": [
+            "ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TM_SCRAP_RULE": {
+      "name": "TM_SCRAP_RULE",
+      "columns": {
+        "ID": {
+          "name": "ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "PLANT_ID": {
+          "name": "PLANT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "PART_ID": {
+          "name": "PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "DISPOSITION": {
+          "name": "DISPOSITION",
+          "type": "enum('REMELT','REPAIR','DISCARD','RETURN_SUPPLIER')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "CONVERTS_TO_PART_ID": {
+          "name": "CONVERTS_TO_PART_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CONVERSION_QTY": {
+          "name": "CONVERSION_QTY",
+          "type": "decimal(12,4)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CONVERSION_UOM": {
+          "name": "CONVERSION_UOM",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "NOTE": {
+          "name": "NOTE",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "IS_ACTIVE": {
+          "name": "IS_ACTIVE",
+          "type": "enum('0','1')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'1'"
+        },
+        "CREATED_AT": {
+          "name": "CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "UPDATED_AT": {
+          "name": "UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TM_SCRAP_RULE_PART_UNIQUE": {
+          "name": "TM_SCRAP_RULE_PART_UNIQUE",
+          "columns": [
+            "PLANT_ID",
+            "PART_ID"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "TM_SCRAP_RULE_PLANT_ID_TM_PLANT_ID_fk": {
+          "name": "TM_SCRAP_RULE_PLANT_ID_TM_PLANT_ID_fk",
+          "tableFrom": "TM_SCRAP_RULE",
+          "tableTo": "TM_PLANT",
+          "columnsFrom": [
+            "PLANT_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TM_SCRAP_RULE_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TM_SCRAP_RULE_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TM_SCRAP_RULE",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TM_SCRAP_RULE_CONVERTS_TO_PART_ID_TM_PARTS_ID_fk": {
+          "name": "TM_SCRAP_RULE_CONVERTS_TO_PART_ID_TM_PARTS_ID_fk",
+          "tableFrom": "TM_SCRAP_RULE",
+          "tableTo": "TM_PARTS",
+          "columnsFrom": [
+            "CONVERTS_TO_PART_ID"
+          ],
+          "columnsTo": [
+            "ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TM_SCRAP_RULE_ID": {
+          "name": "TM_SCRAP_RULE_ID",
+          "columns": [
+            "ID"
           ]
         }
       },

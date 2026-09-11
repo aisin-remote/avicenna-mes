@@ -262,7 +262,7 @@ export class ReceivingService {
           lotId,
           type: 'RECEIVING_IN',
           qty: String(line.qty),
-          sourceTable: 'receipts',
+          sourceTable: 'TT_PURCHASE_RECEIPT_H',
           sourceId: receiptId,
           npk: principal?.kind === 'user' ? principal.npk : null,
           userId: principal?.kind === 'user' ? principal.sub : null,
@@ -344,7 +344,7 @@ export class ReceivingService {
           lotId: old.lotId,
           type: 'ADJUSTMENT',
           qty: String(-Number(old.qty)),
-          sourceTable: 'receipts',
+          sourceTable: 'TT_PURCHASE_RECEIPT_H',
           sourceId: id,
           note: `${note} — baris dihapus`,
           npk: principal?.kind === 'user' ? principal.npk : null,
@@ -378,7 +378,7 @@ export class ReceivingService {
               lotId: old.lotId,
               type: 'ADJUSTMENT',
               qty: String(delta),
-              sourceTable: 'receipts',
+              sourceTable: 'TT_PURCHASE_RECEIPT_H',
               sourceId: id,
               note: `${note} — jumlah ${old.qty} menjadi ${line.qty}`,
               npk: principal?.kind === 'user' ? principal.npk : null,
@@ -442,7 +442,7 @@ export class ReceivingService {
           lotId,
           type: 'RECEIVING_IN',
           qty: String(line.qty),
-          sourceTable: 'receipts',
+          sourceTable: 'TT_PURCHASE_RECEIPT_H',
           sourceId: id,
           note: `${note} — baris ditambahkan`,
           npk: principal?.kind === 'user' ? principal.npk : null,
@@ -493,8 +493,11 @@ export class ReceivingService {
           supplierName: suppliers.name,
           receivedAt: receipts.receivedAt,
           status: receipts.status,
-          lineCount: sql<number>`(SELECT COUNT(*) FROM receipt_lines rl WHERE rl.receipt_id = ${receipts.id})`,
-          totalQty: sql<string>`(SELECT COALESCE(SUM(rl.qty), 0) FROM receipt_lines rl WHERE rl.receipt_id = ${receipts.id})`,
+          // Nama tabel ditulis langsung karena subquery berkorelasi belum bisa
+          // dibentuk lewat pembangun query Drizzle. Ikut berubah bila tabelnya
+          // diganti nama — tidak ada yang mengingatkan, jadi dicatat di sini.
+          lineCount: sql<number>`(SELECT COUNT(*) FROM TT_PURCHASE_RECEIPT_L rl WHERE rl.RECEIPT_ID = ${receipts.id})`,
+          totalQty: sql<string>`(SELECT COALESCE(SUM(rl.QTY), 0) FROM TT_PURCHASE_RECEIPT_L rl WHERE rl.RECEIPT_ID = ${receipts.id})`,
         })
         .from(receipts)
         .leftJoin(suppliers, eq(receipts.supplierId, suppliers.id))

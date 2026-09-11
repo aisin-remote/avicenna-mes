@@ -36,27 +36,27 @@ export const DISPOSITIONS = ['REMELT', 'REPAIR', 'DISCARD', 'RETURN_SUPPLIER'] a
  * terlihat lebih banyak daripada kenyataan.
  */
 export const scrapRules = mysqlTable(
-  'scrap_rules',
+  'TM_SCRAP_RULE',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
     /** Part yang dinyatakan NG. */
-    partId: fk('part_id')
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
-    disposition: mysqlEnum('disposition', DISPOSITIONS).notNull(),
+    disposition: mysqlEnum('DISPOSITION', DISPOSITIONS).notNull(),
     /** Untuk REMELT: part hasil peleburan. */
-    convertsToPartId: fk('converts_to_part_id').references(() => parts.id),
+    convertsToPartId: fk('CONVERTS_TO_PART_ID').references(() => parts.id),
     /** Untuk REMELT: berapa banyak part tujuan dihasilkan dari satu unit NG. */
-    conversionQty: decimal('conversion_qty', { precision: 12, scale: 4 }),
-    conversionUom: varchar('conversion_uom', { length: 16 }),
-    note: varchar('note', { length: 255 }),
-    isActive: mysqlEnum('is_active', ['0', '1']).notNull().default('1'),
+    conversionQty: decimal('CONVERSION_QTY', { precision: 12, scale: 4 }),
+    conversionUom: varchar('CONVERSION_UOM', { length: 16 }),
+    note: varchar('NOTE', { length: 255 }),
+    isActive: mysqlEnum('IS_ACTIVE', ['0', '1']).notNull().default('1'),
     ...timestamps,
   },
-  (t) => [uniqueIndex('scrap_rules_part_unique').on(t.plantId, t.partId)],
+  (t) => [uniqueIndex('TM_SCRAP_RULE_PART_UNIQUE').on(t.plantId, t.partId)],
 );
 
 /**
@@ -70,37 +70,37 @@ export const scrapRules = mysqlTable(
  * masih bernilai akan hilang dari pembukuan.
  */
 export const ngDispositions = mysqlTable(
-  'ng_dispositions',
+  'TT_NG_DISPOSITION',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    lineId: fk('line_id').references(() => lines.id),
-    partId: fk('part_id')
+    lineId: fk('LINE_ID').references(() => lines.id),
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Diisi untuk part berseri. */
-    serialNumber: varchar('serial_number', { length: 64 }),
+    serialNumber: varchar('SERIAL_NUMBER', { length: 64 }),
     /** Diisi untuk part ber-lot. */
-    lotId: fk('lot_id').references(() => lots.id),
-    qty: decimal('qty', { precision: 14, scale: 4 }).notNull(),
-    disposition: mysqlEnum('disposition', DISPOSITIONS).notNull(),
+    lotId: fk('LOT_ID').references(() => lots.id),
+    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull(),
+    disposition: mysqlEnum('DISPOSITION', DISPOSITIONS).notNull(),
 
     /** Hasil peleburan — hanya untuk REMELT. */
-    convertedToPartId: fk('converted_to_part_id').references(() => parts.id),
-    convertedQty: decimal('converted_qty', { precision: 14, scale: 4 }),
-    convertedLotId: fk('converted_lot_id').references(() => lots.id),
+    convertedToPartId: fk('CONVERTED_TO_PART_ID').references(() => parts.id),
+    convertedQty: decimal('CONVERTED_QTY', { precision: 14, scale: 4 }),
+    convertedLotId: fk('CONVERTED_LOT_ID').references(() => lots.id),
 
-    reason: varchar('reason', { length: 255 }),
-    occurredAt: timestamp('occurred_at').notNull(),
-    userId: fk('user_id').references(() => users.id),
+    reason: varchar('REASON', { length: 255 }),
+    occurredAt: timestamp('OCCURRED_AT').notNull(),
+    userId: fk('USER_ID').references(() => users.id),
     ...timestamps,
   },
   (t) => [
-    index('ng_dispositions_part_time_idx').on(t.partId, t.occurredAt),
-    index('ng_dispositions_serial_idx').on(t.serialNumber),
-    index('ng_dispositions_disposition_idx').on(t.disposition, t.occurredAt),
+    index('TT_NG_DISPOSITION_PART_TIME_IDX').on(t.partId, t.occurredAt),
+    index('TT_NG_DISPOSITION_SERIAL_IDX').on(t.serialNumber),
+    index('TT_NG_DISPOSITION_DISPOSITION_IDX').on(t.disposition, t.occurredAt),
   ],
 );
 
@@ -110,28 +110,28 @@ export const ngDispositions = mysqlTable(
  * Unit barang jadi yang NG diperbaiki dengan mengganti komponen tertentu.
  */
 export const repairs = mysqlTable(
-  'repairs',
+  'TT_REPAIR_H',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    lineId: fk('line_id').references(() => lines.id),
-    partId: fk('part_id')
+    lineId: fk('LINE_ID').references(() => lines.id),
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Nomor seri unit yang diperbaiki. */
-    serialNumber: varchar('serial_number', { length: 64 }).notNull(),
-    reason: varchar('reason', { length: 255 }),
-    status: mysqlEnum('status', ['OPEN', 'DONE', 'SCRAPPED']).notNull().default('OPEN'),
-    startedAt: timestamp('started_at').notNull(),
-    finishedAt: timestamp('finished_at'),
-    userId: fk('user_id').references(() => users.id),
+    serialNumber: varchar('SERIAL_NUMBER', { length: 64 }).notNull(),
+    reason: varchar('REASON', { length: 255 }),
+    status: mysqlEnum('STATUS', ['OPEN', 'DONE', 'SCRAPPED']).notNull().default('OPEN'),
+    startedAt: timestamp('STARTED_AT').notNull(),
+    finishedAt: timestamp('FINISHED_AT'),
+    userId: fk('USER_ID').references(() => users.id),
     ...timestamps,
   },
   (t) => [
-    index('repairs_serial_idx').on(t.serialNumber),
-    index('repairs_status_idx').on(t.status, t.startedAt),
+    index('TT_REPAIR_H_SERIAL_IDX').on(t.serialNumber),
+    index('TT_REPAIR_H_STATUS_IDX').on(t.status, t.startedAt),
   ],
 );
 
@@ -144,32 +144,32 @@ export const repairs = mysqlTable(
  * harus tetap bisa dijawab.
  */
 export const repairLines = mysqlTable(
-  'repair_lines',
+  'TT_REPAIR_L',
   {
     id: pk(),
-    repairId: fk('repair_id')
+    repairId: fk('REPAIR_ID')
       .notNull()
       .references(() => repairs.id, { onDelete: 'cascade' }),
-    componentPartId: fk('component_part_id')
+    componentPartId: fk('COMPONENT_PART_ID')
       .notNull()
       .references(() => parts.id),
 
     /** Komponen yang dilepas. */
-    removedSerial: varchar('removed_serial', { length: 64 }),
-    removedLotId: fk('removed_lot_id').references(() => lots.id),
+    removedSerial: varchar('REMOVED_SERIAL', { length: 64 }),
+    removedLotId: fk('REMOVED_LOT_ID').references(() => lots.id),
     /** Apa yang dilakukan terhadap komponen yang dilepas. */
-    removedDisposition: mysqlEnum('removed_disposition', DISPOSITIONS),
+    removedDisposition: mysqlEnum('REMOVED_DISPOSITION', DISPOSITIONS),
 
     /** Komponen pengganti yang dipasang. */
-    installedSerial: varchar('installed_serial', { length: 64 }),
-    installedLotId: fk('installed_lot_id').references(() => lots.id),
+    installedSerial: varchar('INSTALLED_SERIAL', { length: 64 }),
+    installedLotId: fk('INSTALLED_LOT_ID').references(() => lots.id),
 
-    qty: decimal('qty', { precision: 14, scale: 4 }).notNull().default('1'),
+    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull().default('1'),
     ...timestamps,
   },
   (t) => [
-    index('repair_lines_repair_idx').on(t.repairId),
-    index('repair_lines_component_idx').on(t.componentPartId),
+    index('TT_REPAIR_L_REPAIR_IDX').on(t.repairId),
+    index('TT_REPAIR_L_COMPONENT_IDX').on(t.componentPartId),
   ],
 );
 

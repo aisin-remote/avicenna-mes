@@ -125,7 +125,7 @@ export class BackflushService {
         // Bertanda negatif: material keluar dari stok. TIDAK dibulatkan —
         // kolomnya desimal justru supaya pecahan kilogram tidak hilang.
         qty: String(-c.qty),
-        sourceTable: 'scan_events',
+        sourceTable: 'TT_HISTORY_SCAN',
         sourceId: scan.id,
         occurredAt: scan.scannedAt,
       });

@@ -75,24 +75,59 @@ ke SAP — SAP hanya butuh pergerakan stoknya.
 Perbedaan ini disengaja. Menelusuri part NG sampai ke lot raw material adalah
 alasan sistem ini dibangun; SAP tidak menyimpan jejak itu.
 
-## Pemetaan tabel
+## Penamaan tabel dan kolom
+
+Tabel memakai awalan **TM_** (master) dan **TT_** (transaksi), kolomnya HURUF
+BESAR — mengikuti konvensi yang sudah dipakai di lingkungan PT. Aisin, supaya
+skema ini bisa dibaca orang MIS tanpa kamus penerjemah.
+
+Nama properti TypeScript TETAP camelCase. Drizzle memisahkan nama properti dari
+nama kolom, jadi kode tetap menulis `parts.partNumber` sementara databasenya
+menyimpan `TM_PARTS.PART_NUMBER`. Penggantian nama ini karena itu tidak
+menyentuh satu baris pun kode query.
+
+Nama dari diagram MIS dipakai APA ADANYA bila tabel kita memang benda yang
+sama. Sisanya memakai awalan yang sama dengan aturan mereka.
 
 | Diagram | Di sini |
 |---------|---------|
-| TM_PARTS, TM_CUST | `parts`, `customers` |
-| TM_VENDOR | `suppliers` |
+| TM_PARTS | `TM_PARTS` |
+| TM_CUST | `TM_CUST` |
+| TM_VENDOR | `TM_VENDOR` |
+| TM_SHIPPING_PARTS | `TM_SHIPPING_PARTS` |
+| TM_KANBAN | `TM_KANBAN` + `TT_KANBAN_EVENT` |
+| TT_PURCHASE_RECEIPT_H / _L | `TT_PURCHASE_RECEIPT_H` / `_L` |
+| TT_GOODS_MOVEMENT_H / _L | `TT_GOODS_MOVEMENT_H` / `_L` |
+| TT_DELIVERY / TT_DELIVERY_ITEM | `TT_DELIVERY` / `TT_DELIVERY_ITEM` |
+| TT_HISTORY_IN_LINE_SCAN | `TT_HISTORY_SCAN` (kind = PRODUCTION) |
+| TT_HISTORY_SCAN_KANBAN_SD | `TT_HISTORY_SCAN` (kind = DELIVERY) |
+| TT_PRODUCTION_RESULT | `TT_HISTORY_SCAN` + `TT_STOCK_MUTATION` |
 | TM_VENDOR_PARTS | *belum ada* |
-| TM_SHIPPING_PARTS | `customer_parts` |
-| TM_KANBAN | `kanbans` + `kanban_events` |
 | TT_PO_HEADER / TT_PO_LINE | *belum ada* |
-| TT_PURCHASE_RECEIPT_H / _L | `receipts` / `receipt_lines` |
 | TT_ELINA_H / _L | *belum ada* |
-| TT_GOODS_MOVEMENT_H / _L | `transfers` / `transfer_lines` + `mutations` |
-| TT_PRODUCTION_RESULT | `scan_events` + `mutations` |
-| TT_HISTORY_IN_LINE_SCAN | `scan_events` (kind = PRODUCTION) |
 | TT_SETUP_CHUTE, TT_DATA_TESTER, TT_ONE_WAY_KANBAN | *belum ada* |
-| TT_DELIVERY / TT_DELIVERY_ITEM | `deliveries` / `delivery_lines` |
-| TT_HISTORY_SCAN_KANBAN_SD | `scan_events` (kind = DELIVERY) |
+
+Tabel yang tidak punya padanan di diagram memakai awalan yang sama:
+`TM_PLANT`, `TM_LINE`, `TM_LOCATION`, `TM_NG`, `TM_BOM`, `TM_SCRAP_RULE`,
+`TM_MACHINE`, `TM_TOOLING`, `TM_USER`, `TM_ROLE`, `TM_DEVICE`,
+`TT_STOCK_MUTATION`, `TT_STOCK_BALANCE`, `TT_LOT`, `TT_CONSUMPTION`,
+`TT_GENEALOGY`, `TT_INSPECTION_H` / `_L`, `TT_NG_DISPOSITION`,
+`TT_REPAIR_H` / `_L`, `TT_PRODUCTION_PLAN`, `TT_MACHINE_EVENT`.
+
+### Satu jebakan yang perlu diingat
+
+Nama TABEL huruf besar berperilaku berbeda antar sistem operasi. Di macOS
+`lower_case_table_names` bernilai 2 — nama disimpan apa adanya tetapi
+dibandingkan tanpa peduli besar-kecil. Di Linux nilainya biasanya 0 —
+dibandingkan PEKA besar-kecil. Akibatnya `SELECT * FROM tm_parts` jalan di
+laptop tetapi gagal di server.
+
+Drizzle selalu memakai nama persis seperti didefinisikan di skema, jadi kode
+aplikasi aman. Yang perlu hati-hati adalah query yang diketik manual — untuk
+laporan, perbaikan data, atau pemeriksaan cepat.
+
+Nama KOLOM selalu tidak peka besar-kecil di MySQL, jadi bagian itu bebas
+masalah.
 
 ## Urutan pengerjaan
 

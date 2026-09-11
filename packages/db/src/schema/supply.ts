@@ -31,38 +31,38 @@ import { lines } from './master';
  * pertanyaan audit menjadi salah tanpa ada yang menyadarinya.
  */
 export const bomLines = mysqlTable(
-  'bom_lines',
+  'TM_BOM',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
     /** Part yang dibuat. */
-    parentPartId: fk('parent_part_id')
+    parentPartId: fk('PARENT_PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Part yang dibutuhkan. */
-    componentPartId: fk('component_part_id')
+    componentPartId: fk('COMPONENT_PART_ID')
       .notNull()
       .references(() => parts.id),
     /**
      * Jumlah komponen per satu induk. Desimal karena raw material dipakai
      * dalam kilogram, bukan pcs.
      */
-    qtyPer: decimal('qty_per', { precision: 12, scale: 4 }).notNull(),
-    uom: varchar('uom', { length: 16 }).notNull().default('pcs'),
+    qtyPer: decimal('QTY_PER', { precision: 12, scale: 4 }).notNull(),
+    uom: varchar('UOM', { length: 16 }).notNull().default('pcs'),
     /** Persentase susut yang wajar, dipakai saat menghitung kebutuhan material. */
-    scrapPct: decimal('scrap_pct', { precision: 5, scale: 2 }).notNull().default('0'),
-    sequence: int('sequence').notNull().default(0),
-    effectiveFrom: date('effective_from', { mode: 'string' }).notNull(),
+    scrapPct: decimal('SCRAP_PCT', { precision: 5, scale: 2 }).notNull().default('0'),
+    sequence: int('SEQUENCE').notNull().default(0),
+    effectiveFrom: date('EFFECTIVE_FROM', { mode: 'string' }).notNull(),
     /** NULL berarti masih berlaku. */
-    effectiveTo: date('effective_to', { mode: 'string' }),
-    note: varchar('note', { length: 255 }),
+    effectiveTo: date('EFFECTIVE_TO', { mode: 'string' }),
+    note: varchar('NOTE', { length: 255 }),
     ...timestamps,
   },
   (t) => [
-    index('bom_lines_parent_idx').on(t.parentPartId, t.effectiveFrom),
-    index('bom_lines_component_idx').on(t.componentPartId),
+    index('TM_BOM_PARENT_IDX').on(t.parentPartId, t.effectiveFrom),
+    index('TM_BOM_COMPONENT_IDX').on(t.componentPartId),
   ],
 );
 
@@ -76,22 +76,22 @@ export const bomLines = mysqlTable(
  * atau menormalkannya akan memutus rujukan tersebut.
  */
 export const lots = mysqlTable(
-  'lots',
+  'TT_LOT',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    partId: fk('part_id')
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Nomor lot internal. */
-    lotNumber: varchar('lot_number', { length: 64 }).notNull(),
+    lotNumber: varchar('LOT_NUMBER', { length: 64 }).notNull(),
     /** Nomor lot dari supplier, apa adanya. */
-    supplierLotNumber: varchar('supplier_lot_number', { length: 64 }),
-    supplierId: fk('supplier_id').references(() => suppliers.id),
-    receivedAt: timestamp('received_at'),
-    expiresAt: date('expires_at', { mode: 'string' }),
+    supplierLotNumber: varchar('SUPPLIER_LOT_NUMBER', { length: 64 }),
+    supplierId: fk('SUPPLIER_ID').references(() => suppliers.id),
+    receivedAt: timestamp('RECEIVED_AT'),
+    expiresAt: date('EXPIRES_AT', { mode: 'string' }),
     /**
      * Jumlah yang tertulis saat barang datang. CATATAN SAJA, BUKAN SALDO.
      *
@@ -99,16 +99,16 @@ export const lots = mysqlTable(
      * lot ini. Menjumlahkan kolom ini dengan mutasi akan menghitung barang
      * yang sama dua kali.
      */
-    initialQty: decimal('initial_qty', { precision: 14, scale: 4 }).notNull().default('0'),
-    status: mysqlEnum('status', ['OPEN', 'CONSUMED', 'BLOCKED', 'RETURNED'])
+    initialQty: decimal('INITIAL_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
+    status: mysqlEnum('STATUS', ['OPEN', 'CONSUMED', 'BLOCKED', 'RETURNED'])
       .notNull()
       .default('OPEN'),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('lots_plant_number_unique').on(t.plantId, t.lotNumber),
-    index('lots_part_idx').on(t.partId),
-    index('lots_supplier_lot_idx').on(t.supplierLotNumber),
+    uniqueIndex('TT_LOT_PLANT_NUMBER_UNIQUE').on(t.plantId, t.lotNumber),
+    index('TT_LOT_PART_IDX').on(t.partId),
+    index('TT_LOT_SUPPLIER_LOT_IDX').on(t.supplierLotNumber),
   ],
 );
 
@@ -116,48 +116,48 @@ export const lots = mysqlTable(
  * ─── Penerimaan dari supplier ─────────────────────────────────────────────
  */
 export const receipts = mysqlTable(
-  'receipts',
+  'TT_PURCHASE_RECEIPT_H',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    supplierId: fk('supplier_id')
+    supplierId: fk('SUPPLIER_ID')
       .notNull()
       .references(() => suppliers.id),
-    documentNumber: varchar('document_number', { length: 64 }).notNull(),
+    documentNumber: varchar('DOCUMENT_NUMBER', { length: 64 }).notNull(),
     /** Nomor surat jalan supplier. */
-    supplierDocNumber: varchar('supplier_doc_number', { length: 64 }),
-    receivedAt: timestamp('received_at').notNull(),
-    locationId: fk('location_id').references(() => locations.id),
-    status: mysqlEnum('status', ['DRAFT', 'RECEIVED', 'CANCELLED']).notNull().default('DRAFT'),
-    receivedById: fk('received_by_id').references(() => users.id),
-    note: varchar('note', { length: 255 }),
+    supplierDocNumber: varchar('SUPPLIER_DOC_NUMBER', { length: 64 }),
+    receivedAt: timestamp('RECEIVED_AT').notNull(),
+    locationId: fk('LOCATION_ID').references(() => locations.id),
+    status: mysqlEnum('STATUS', ['DRAFT', 'RECEIVED', 'CANCELLED']).notNull().default('DRAFT'),
+    receivedById: fk('RECEIVED_BY_ID').references(() => users.id),
+    note: varchar('NOTE', { length: 255 }),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('receipts_plant_document_unique').on(t.plantId, t.documentNumber),
-    index('receipts_supplier_date_idx').on(t.supplierId, t.receivedAt),
+    uniqueIndex('TT_PURCHASE_RECEIPT_H_PLANT_DOCUMENT_UNIQUE').on(t.plantId, t.documentNumber),
+    index('TT_PURCHASE_RECEIPT_H_SUPPLIER_DATE_IDX').on(t.supplierId, t.receivedAt),
   ],
 );
 
 export const receiptLines = mysqlTable(
-  'receipt_lines',
+  'TT_PURCHASE_RECEIPT_L',
   {
     id: pk(),
-    receiptId: fk('receipt_id')
+    receiptId: fk('RECEIPT_ID')
       .notNull()
       .references(() => receipts.id, { onDelete: 'cascade' }),
-    partId: fk('part_id')
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Lot yang terbentuk dari baris ini. Kosong untuk part berseri. */
-    lotId: fk('lot_id').references(() => lots.id),
-    qty: decimal('qty', { precision: 14, scale: 4 }).notNull(),
-    uom: varchar('uom', { length: 16 }).notNull().default('pcs'),
+    lotId: fk('LOT_ID').references(() => lots.id),
+    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull(),
+    uom: varchar('UOM', { length: 16 }).notNull().default('pcs'),
     ...timestamps,
   },
-  (t) => [index('receipt_lines_receipt_idx').on(t.receiptId), index('receipt_lines_part_idx').on(t.partId)],
+  (t) => [index('TT_PURCHASE_RECEIPT_L_RECEIPT_IDX').on(t.receiptId), index('TT_PURCHASE_RECEIPT_L_PART_IDX').on(t.partId)],
 );
 
 /**
@@ -175,33 +175,33 @@ export const receiptLines = mysqlTable(
  * kerja di lapangan, bukan keputusan teknis.
  */
 export const consumptions = mysqlTable(
-  'consumptions',
+  'TT_CONSUMPTION',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    lineId: fk('line_id').references(() => lines.id),
+    lineId: fk('LINE_ID').references(() => lines.id),
     /** Part yang sedang diproduksi. */
-    producedPartId: fk('produced_part_id')
+    producedPartId: fk('PRODUCED_PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Material yang terpakai. */
-    componentPartId: fk('component_part_id')
+    componentPartId: fk('COMPONENT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    lotId: fk('lot_id').references(() => lots.id),
-    qty: decimal('qty', { precision: 14, scale: 4 }).notNull(),
-    uom: varchar('uom', { length: 16 }).notNull().default('pcs'),
-    source: mysqlEnum('source', ['BACKFLUSH', 'MANUAL', 'ADJUSTMENT']).notNull(),
-    occurredAt: timestamp('occurred_at').notNull(),
-    userId: fk('user_id').references(() => users.id),
+    lotId: fk('LOT_ID').references(() => lots.id),
+    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull(),
+    uom: varchar('UOM', { length: 16 }).notNull().default('pcs'),
+    source: mysqlEnum('SOURCE', ['BACKFLUSH', 'MANUAL', 'ADJUSTMENT']).notNull(),
+    occurredAt: timestamp('OCCURRED_AT').notNull(),
+    userId: fk('USER_ID').references(() => users.id),
     ...timestamps,
   },
   (t) => [
-    index('consumptions_produced_idx').on(t.producedPartId, t.occurredAt),
-    index('consumptions_component_idx').on(t.componentPartId, t.occurredAt),
-    index('consumptions_lot_idx').on(t.lotId),
+    index('TT_CONSUMPTION_PRODUCED_IDX').on(t.producedPartId, t.occurredAt),
+    index('TT_CONSUMPTION_COMPONENT_IDX').on(t.componentPartId, t.occurredAt),
+    index('TT_CONSUMPTION_LOT_IDX').on(t.lotId),
   ],
 );
 
@@ -221,25 +221,25 @@ export const consumptions = mysqlTable(
  * Kedua arah itu sama pentingnya, jadi keduanya diberi index.
  */
 export const genealogy = mysqlTable(
-  'genealogy',
+  'TT_GENEALOGY',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
     /** Nomor seri unit yang dibuat. */
-    parentSerial: varchar('parent_serial', { length: 64 }).notNull(),
-    parentPartId: fk('parent_part_id')
+    parentSerial: varchar('PARENT_SERIAL', { length: 64 }).notNull(),
+    parentPartId: fk('PARENT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    componentPartId: fk('component_part_id')
+    componentPartId: fk('COMPONENT_PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Diisi untuk komponen berseri. */
-    componentSerial: varchar('component_serial', { length: 64 }),
+    componentSerial: varchar('COMPONENT_SERIAL', { length: 64 }),
     /** Diisi untuk komponen ber-lot. */
-    componentLotId: fk('component_lot_id').references(() => lots.id),
-    qty: decimal('qty', { precision: 14, scale: 4 }).notNull().default('1'),
+    componentLotId: fk('COMPONENT_LOT_ID').references(() => lots.id),
+    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull().default('1'),
     /**
      * Seberapa kuat buktinya.
      *   SCANNED  operator benar-benar men-scan komponennya — bukti kuat.
@@ -247,8 +247,8 @@ export const genealogy = mysqlTable(
      *            cukup untuk kebanyakan kasus, tapi TIDAK cukup saat customer
      *            menuntut bukti. Bedanya harus terlihat, bukan disamarkan.
      */
-    evidence: mysqlEnum('evidence', ['SCANNED', 'INFERRED']).notNull().default('INFERRED'),
-    occurredAt: timestamp('occurred_at').notNull(),
+    evidence: mysqlEnum('EVIDENCE', ['SCANNED', 'INFERRED']).notNull().default('INFERRED'),
+    occurredAt: timestamp('OCCURRED_AT').notNull(),
     /**
      * Ditandai saat komponen ini diganti lewat perbaikan.
      *
@@ -257,16 +257,16 @@ export const genealogy = mysqlTable(
      * justru itu yang sering dicari ketika masalah muncul belakangan.
      * Tautan yang masih berlaku adalah yang superseded_at-nya kosong.
      */
-    supersededAt: timestamp('superseded_at'),
-    supersededByRepairId: fk('superseded_by_repair_id'),
-    meta: json('meta'),
+    supersededAt: timestamp('SUPERSEDED_AT'),
+    supersededByRepairId: fk('SUPERSEDED_BY_REPAIR_ID'),
+    meta: json('META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [
-    index('genealogy_parent_idx').on(t.parentSerial),
-    index('genealogy_lot_idx').on(t.componentLotId),
-    index('genealogy_component_serial_idx').on(t.componentSerial),
-    index('genealogy_part_time_idx').on(t.parentPartId, t.occurredAt),
+    index('TT_GENEALOGY_PARENT_IDX').on(t.parentSerial),
+    index('TT_GENEALOGY_LOT_IDX').on(t.componentLotId),
+    index('TT_GENEALOGY_COMPONENT_SERIAL_IDX').on(t.componentSerial),
+    index('TT_GENEALOGY_PART_TIME_IDX').on(t.parentPartId, t.occurredAt),
   ],
 );
 
@@ -274,45 +274,45 @@ export const genealogy = mysqlTable(
  * ─── Perpindahan antar lokasi / line ──────────────────────────────────────
  */
 export const transfers = mysqlTable(
-  'transfers',
+  'TT_GOODS_MOVEMENT_H',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    documentNumber: varchar('document_number', { length: 64 }).notNull(),
-    fromLocationId: fk('from_location_id').references(() => locations.id),
-    toLocationId: fk('to_location_id').references(() => locations.id),
-    fromLineId: fk('from_line_id').references(() => lines.id),
-    toLineId: fk('to_line_id').references(() => lines.id),
-    movedAt: timestamp('moved_at').notNull(),
-    status: mysqlEnum('status', ['DRAFT', 'MOVED', 'CANCELLED']).notNull().default('DRAFT'),
-    userId: fk('user_id').references(() => users.id),
-    note: varchar('note', { length: 255 }),
+    documentNumber: varchar('DOCUMENT_NUMBER', { length: 64 }).notNull(),
+    fromLocationId: fk('FROM_LOCATION_ID').references(() => locations.id),
+    toLocationId: fk('TO_LOCATION_ID').references(() => locations.id),
+    fromLineId: fk('FROM_LINE_ID').references(() => lines.id),
+    toLineId: fk('TO_LINE_ID').references(() => lines.id),
+    movedAt: timestamp('MOVED_AT').notNull(),
+    status: mysqlEnum('STATUS', ['DRAFT', 'MOVED', 'CANCELLED']).notNull().default('DRAFT'),
+    userId: fk('USER_ID').references(() => users.id),
+    note: varchar('NOTE', { length: 255 }),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('transfers_plant_document_unique').on(t.plantId, t.documentNumber),
-    index('transfers_moved_idx').on(t.movedAt),
+    uniqueIndex('TT_GOODS_MOVEMENT_H_PLANT_DOCUMENT_UNIQUE').on(t.plantId, t.documentNumber),
+    index('TT_GOODS_MOVEMENT_H_MOVED_IDX').on(t.movedAt),
   ],
 );
 
 export const transferLines = mysqlTable(
-  'transfer_lines',
+  'TT_GOODS_MOVEMENT_L',
   {
     id: pk(),
-    transferId: fk('transfer_id')
+    transferId: fk('TRANSFER_ID')
       .notNull()
       .references(() => transfers.id, { onDelete: 'cascade' }),
-    partId: fk('part_id')
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
-    lotId: fk('lot_id').references(() => lots.id),
-    serialNumber: varchar('serial_number', { length: 64 }),
-    qty: decimal('qty', { precision: 14, scale: 4 }).notNull(),
+    lotId: fk('LOT_ID').references(() => lots.id),
+    serialNumber: varchar('SERIAL_NUMBER', { length: 64 }),
+    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull(),
     ...timestamps,
   },
-  (t) => [index('transfer_lines_transfer_idx').on(t.transferId), index('transfer_lines_part_idx').on(t.partId)],
+  (t) => [index('TT_GOODS_MOVEMENT_L_TRANSFER_IDX').on(t.transferId), index('TT_GOODS_MOVEMENT_L_PART_IDX').on(t.partId)],
 );
 
 // ─── Relasi ─────────────────────────────────────────────────────────────────

@@ -523,7 +523,7 @@ export class LoadingService {
         const dasar = {
           plantId: doc.plantId,
           partId: line.partId,
-          sourceTable: 'deliveries',
+          sourceTable: 'TT_DELIVERY',
           sourceId: id,
           note,
           npk: principal?.kind === 'user' ? principal.npk : null,
@@ -670,7 +670,7 @@ export class LoadingService {
            */
           locationId: doc.stagingLocationId ?? doc.locationId ?? null,
           type: 'DELIVERY_OUT' as const,
-          sourceTable: 'deliveries',
+          sourceTable: 'TT_DELIVERY',
           sourceId: id,
           note,
           npk: principal?.kind === 'user' ? principal.npk : null,
@@ -831,8 +831,10 @@ export class LoadingService {
       .from(deliveries)
       .leftJoin(customers, eq(deliveries.customerId, customers.id))
       .leftJoin(locations, eq(deliveries.locationId, locations.id))
-      // Alias tersendiri: tabel locations dipakai dua kali dalam query yang sama.
-      .leftJoin(sql`locations AS staging`, sql`staging.id = ${deliveries.stagingLocationId}`)
+      // Alias tersendiri: tabel lokasi dipakai dua kali dalam query yang sama.
+      // Nama tabelnya ditulis langsung di sini — satu-satunya tempat begitu —
+      // karena Drizzle belum bisa menjadikan tabel yang sama dua alias berbeda.
+      .leftJoin(sql`TM_LOCATION AS staging`, sql`staging.id = ${deliveries.stagingLocationId}`)
       .where(eq(deliveries.id, id))
       .limit(1);
 

@@ -15,49 +15,49 @@ import { plants, users } from './org';
 
 /** Master jenis NG (defect). Gabungan avi_trace_ng_master + master_item_checks bella. */
 export const ngMasters = mysqlTable(
-  'ng_masters',
+  'TM_NG',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    code: varchar('code', { length: 32 }).notNull(),
-    name: varchar('name', { length: 128 }).notNull(),
-    processType: mysqlEnum('process_type', PROCESS_TYPES),
-    category: varchar('category', { length: 64 }),
-    sortOrder: int('sort_order').notNull().default(0),
-    isActive: mysqlEnum('is_active', ['0', '1']).notNull().default('1'),
+    code: varchar('CODE', { length: 32 }).notNull(),
+    name: varchar('NAME', { length: 128 }).notNull(),
+    processType: mysqlEnum('PROCESS_TYPE', PROCESS_TYPES),
+    category: varchar('CATEGORY', { length: 64 }),
+    sortOrder: int('SORT_ORDER').notNull().default(0),
+    isActive: mysqlEnum('IS_ACTIVE', ['0', '1']).notNull().default('1'),
     ...timestamps,
   },
-  (t) => [uniqueIndex('ng_masters_plant_code_unique').on(t.plantId, t.code)],
+  (t) => [uniqueIndex('TM_NG_PLANT_CODE_UNIQUE').on(t.plantId, t.code)],
 );
 
 /** Header pemeriksaan kualitas: satu sesi inspeksi. */
 export const qualityInspections = mysqlTable(
-  'quality_inspections',
+  'TT_INSPECTION_H',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    partId: fk('part_id')
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
-    lineId: fk('line_id').references(() => lines.id),
-    machineId: fk('machine_id').references(() => machines.id),
-    processType: mysqlEnum('process_type', PROCESS_TYPES).notNull(),
-    inspectedAt: timestamp('inspected_at').notNull(),
-    shift: mysqlEnum('shift', ['1', '2', '3']),
-    checkedQty: int('checked_qty').notNull().default(0),
-    okQty: int('ok_qty').notNull().default(0),
-    ngQty: int('ng_qty').notNull().default(0),
-    inspectorId: fk('inspector_id').references(() => users.id),
-    note: varchar('note', { length: 255 }),
+    lineId: fk('LINE_ID').references(() => lines.id),
+    machineId: fk('MACHINE_ID').references(() => machines.id),
+    processType: mysqlEnum('PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    inspectedAt: timestamp('INSPECTED_AT').notNull(),
+    shift: mysqlEnum('SHIFT', ['1', '2', '3']),
+    checkedQty: int('CHECKED_QTY').notNull().default(0),
+    okQty: int('OK_QTY').notNull().default(0),
+    ngQty: int('NG_QTY').notNull().default(0),
+    inspectorId: fk('INSPECTOR_ID').references(() => users.id),
+    note: varchar('NOTE', { length: 255 }),
     ...timestamps,
   },
   (t) => [
-    index('quality_inspections_part_time_idx').on(t.partId, t.inspectedAt),
-    index('quality_inspections_line_time_idx').on(t.lineId, t.inspectedAt),
+    index('TT_INSPECTION_H_PART_TIME_IDX').on(t.partId, t.inspectedAt),
+    index('TT_INSPECTION_H_LINE_TIME_IDX').on(t.lineId, t.inspectedAt),
   ],
 );
 
@@ -70,20 +70,20 @@ export const qualityInspections = mysqlTable(
  * Jalankan `pnpm db:check-names` setelah menambah tabel baru.
  */
 export const inspectionDetails = mysqlTable(
-  'inspection_details',
+  'TT_INSPECTION_L',
   {
     id: pk(),
-    inspectionId: fk('inspection_id')
+    inspectionId: fk('INSPECTION_ID')
       .notNull()
       .references(() => qualityInspections.id, { onDelete: 'cascade' }),
-    ngMasterId: fk('ng_master_id')
+    ngMasterId: fk('NG_MASTER_ID')
       .notNull()
       .references(() => ngMasters.id),
-    qty: int('qty').notNull().default(0),
-    meta: json('meta'),
+    qty: int('QTY').notNull().default(0),
+    meta: json('META'),
     createdAt: timestamps.createdAt,
   },
-  (t) => [index('inspection_details_inspection_idx').on(t.inspectionId)],
+  (t) => [index('TT_INSPECTION_L_INSPECTION_IDX').on(t.inspectionId)],
 );
 
 export const qualityInspectionsRelations = relations(qualityInspections, ({ one, many }) => ({

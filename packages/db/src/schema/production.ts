@@ -23,43 +23,43 @@ import { plants, users, devices } from './org';
  * dan report bisa join tanpa pencocokan string.
  */
 export const productionPlans = mysqlTable(
-  'production_plans',
+  'TT_PRODUCTION_PLAN',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    lineId: fk('line_id')
+    lineId: fk('LINE_ID')
       .notNull()
       .references(() => lines.id),
-    partId: fk('part_id')
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
-    customerId: fk('customer_id').references(() => customers.id),
-    planDate: date('plan_date', { mode: 'string' }).notNull(),
+    customerId: fk('CUSTOMER_ID').references(() => customers.id),
+    planDate: date('PLAN_DATE', { mode: 'string' }).notNull(),
     /** Cycle / rit pengiriman ke berapa dalam satu hari. */
-    cycle: int('cycle').notNull().default(1),
-    seqNo: int('seq_no').notNull().default(0),
-    orderQty: int('order_qty').notNull().default(0),
-    directPullingQty: int('direct_pulling_qty').notNull().default(0),
-    stockChuteQty: int('stock_chute_qty').notNull().default(0),
-    dock: varchar('dock', { length: 32 }),
-    dnNumber: varchar('dn_number', { length: 64 }),
-    workingStart: time('working_start'),
-    workingEnd: time('working_end'),
-    deliveryTime: time('delivery_time'),
-    actualStartAt: timestamp('actual_start_at'),
-    actualEndAt: timestamp('actual_end_at'),
-    planSource: mysqlEnum('plan_source', ['MANUAL', 'IMPORT', 'STATIC_SEQ', 'API']).notNull().default('MANUAL'),
-    status: mysqlEnum('status', ['DRAFT', 'RELEASED', 'RUNNING', 'DONE', 'CANCELLED'])
+    cycle: int('CYCLE').notNull().default(1),
+    seqNo: int('SEQ_NO').notNull().default(0),
+    orderQty: int('ORDER_QTY').notNull().default(0),
+    directPullingQty: int('DIRECT_PULLING_QTY').notNull().default(0),
+    stockChuteQty: int('STOCK_CHUTE_QTY').notNull().default(0),
+    dock: varchar('DOCK', { length: 32 }),
+    dnNumber: varchar('DN_NUMBER', { length: 64 }),
+    workingStart: time('WORKING_START'),
+    workingEnd: time('WORKING_END'),
+    deliveryTime: time('DELIVERY_TIME'),
+    actualStartAt: timestamp('ACTUAL_START_AT'),
+    actualEndAt: timestamp('ACTUAL_END_AT'),
+    planSource: mysqlEnum('PLAN_SOURCE', ['MANUAL', 'IMPORT', 'STATIC_SEQ', 'API']).notNull().default('MANUAL'),
+    status: mysqlEnum('STATUS', ['DRAFT', 'RELEASED', 'RUNNING', 'DONE', 'CANCELLED'])
       .notNull()
       .default('DRAFT'),
     ...timestamps,
   },
   (t) => [
-    index('production_plans_date_line_idx').on(t.planDate, t.lineId),
-    index('production_plans_part_date_idx').on(t.partId, t.planDate),
-    uniqueIndex('production_plans_slot_unique').on(t.lineId, t.planDate, t.cycle, t.seqNo),
+    index('TT_PRODUCTION_PLAN_DATE_LINE_IDX').on(t.planDate, t.lineId),
+    index('TT_PRODUCTION_PLAN_PART_DATE_IDX').on(t.partId, t.planDate),
+    uniqueIndex('TT_PRODUCTION_PLAN_SLOT_UNIQUE').on(t.lineId, t.planDate, t.cycle, t.seqNo),
   ],
 );
 
@@ -85,39 +85,39 @@ export const SCAN_KINDS = [
  * ATURAN: append-only, sama seperti kanban_events.
  */
 export const scanEvents = mysqlTable(
-  'scan_events',
+  'TT_HISTORY_SCAN',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    kind: mysqlEnum('kind', SCAN_KINDS).notNull(),
-    processType: mysqlEnum('process_type', PROCESS_TYPES),
-    lineId: fk('line_id').references(() => lines.id),
-    partId: fk('part_id').references(() => parts.id),
-    machineId: fk('machine_id').references(() => machines.id),
-    productionPlanId: fk('production_plan_id').references(() => productionPlans.id),
+    kind: mysqlEnum('KIND', SCAN_KINDS).notNull(),
+    processType: mysqlEnum('PROCESS_TYPE', PROCESS_TYPES),
+    lineId: fk('LINE_ID').references(() => lines.id),
+    partId: fk('PART_ID').references(() => parts.id),
+    machineId: fk('MACHINE_ID').references(() => machines.id),
+    productionPlanId: fk('PRODUCTION_PLAN_ID').references(() => productionPlans.id),
     /** Isi barcode mentah, disimpan apa adanya untuk audit & investigasi. */
-    rawCode: varchar('raw_code', { length: 255 }).notNull(),
-    serialNumber: varchar('serial_number', { length: 64 }),
-    qty: int('qty').notNull().default(1),
-    userId: fk('user_id').references(() => users.id),
-    deviceId: fk('device_id').references(() => devices.id),
-    scannedAt: timestamp('scanned_at').notNull(),
+    rawCode: varchar('RAW_CODE', { length: 255 }).notNull(),
+    serialNumber: varchar('SERIAL_NUMBER', { length: 64 }),
+    qty: int('QTY').notNull().default(1),
+    userId: fk('USER_ID').references(() => users.id),
+    deviceId: fk('DEVICE_ID').references(() => devices.id),
+    scannedAt: timestamp('SCANNED_AT').notNull(),
     /**
      * Kunci idempoten. Scanner di pabrik sering mengirim ulang saat jaringan
      * putus-nyambung; unique index di sini yang mencegah dobel, bukan logika app.
      */
-    dedupeKey: varchar('dedupe_key', { length: 128 }).notNull(),
-    meta: json('meta'),
+    dedupeKey: varchar('DEDUPE_KEY', { length: 128 }).notNull(),
+    meta: json('META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [
-    uniqueIndex('scan_events_dedupe_unique').on(t.dedupeKey),
-    index('scan_events_time_idx').on(t.scannedAt),
-    index('scan_events_line_kind_time_idx').on(t.lineId, t.kind, t.scannedAt),
-    index('scan_events_part_time_idx').on(t.partId, t.scannedAt),
-    index('scan_events_serial_idx').on(t.serialNumber),
+    uniqueIndex('TT_HISTORY_SCAN_DEDUPE_UNIQUE').on(t.dedupeKey),
+    index('TT_HISTORY_SCAN_TIME_IDX').on(t.scannedAt),
+    index('TT_HISTORY_SCAN_LINE_KIND_TIME_IDX').on(t.lineId, t.kind, t.scannedAt),
+    index('TT_HISTORY_SCAN_PART_TIME_IDX').on(t.partId, t.scannedAt),
+    index('TT_HISTORY_SCAN_SERIAL_IDX').on(t.serialNumber),
   ],
 );
 

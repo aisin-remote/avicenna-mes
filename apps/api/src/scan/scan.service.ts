@@ -205,7 +205,7 @@ export class ScanService {
         locationId: line?.outputLocationId ?? null,
         type: 'PRODUCTION_IN',
         qty: String(signedQty('PRODUCTION_IN', parsed.qty ?? normalized.qty)),
-        sourceTable: 'scan_events',
+        sourceTable: 'TT_HISTORY_SCAN',
         // Tanpa sourceId, mutasi ini tidak bisa ditelusuri balik ke scan-nya —
         // sourceTable saja tidak menunjuk baris mana pun.
         sourceId: insertedId,

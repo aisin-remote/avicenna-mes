@@ -5,71 +5,8 @@
     {
       "idx": 0,
       "version": "5",
-      "when": 1789029799031,
-      "tag": "0000_initial_schema",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1789042867920,
-      "tag": "0001_supply_chain",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1789044251926,
-      "tag": "0002_scrap_and_repair",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1789044357358,
-      "tag": "0003_mutation_lot",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "5",
-      "when": 1789044573369,
-      "tag": "0004_decimal_qty",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "5",
-      "when": 1789051605154,
-      "tag": "0005_loading_list",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "5",
-      "when": 1789051923857,
-      "tag": "0006_delivery_location",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "5",
-      "when": 1789120116847,
-      "tag": "0007_line_sloc",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "5",
-      "when": 1789120263516,
-      "tag": "0008_sloc_kinds",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "5",
-      "when": 1789128047922,
-      "tag": "0009_picking_pp04",
+      "when": 1789138206258,
+      "tag": "0000_skema_awal",
       "breakpoints": true
     }
   ]

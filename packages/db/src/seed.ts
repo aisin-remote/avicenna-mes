@@ -12,6 +12,8 @@ import {
   customerParts,
   ngMasters,
   locations,
+  bomLines,
+  suppliers,
 } from './schema/index';
 
 /**
@@ -153,6 +155,17 @@ async function main() {
     console.log(`[seed]   ~ SLOC line ${line.code} dilengkapi`);
   }
 
+  /*
+   * ── Suppliers ─────────────────────────────────────────────────────────────
+   *
+   * Dua part pada rantai contoh dibeli (RM-D-001 dan CMP-B-001), jadi tanpa
+   * supplier layar penerimaan barang tidak bisa dipakai sama sekali.
+   */
+  await insertMissing('suppliers', suppliers, 'code', [
+    { code: 'SUP-01', name: 'PT Sumber Logam Nusantara' },
+    { code: 'SUP-02', name: 'PT Komponen Presisi' },
+  ]);
+
   // ── Customers ─────────────────────────────────────────────────────────────
   await insertMissing('customers', customers, 'code', [
     { code: 'TMMIN', name: 'Toyota Motor Manufacturing Indonesia', dock: 'A1' },
@@ -163,8 +176,57 @@ async function main() {
   const lineRows = await db.select().from(lines);
   const dc01 = mustFind(lineRows, (l) => l.code === 'DC-01', 'line DC-01');
   const inj01 = mustFind(lineRows, (l) => l.code === 'INJ-01', 'line INJ-01');
+  const as01 = mustFind(lineRows, (l) => l.code === 'AS-01', 'line AS-01');
 
-  await insertMissing('parts', parts, 'partNumber', [
+  /*
+   * Part contoh mengikuti rantai pada docs/traceability-model.md:
+   *
+   *   RM-D-001  raw material aluminium  (dibeli, kg)
+   *      v  dilebur di die casting
+   *   WIP-A-001 housing cast A          (setengah jadi)
+   *      +  CMP-B-001 bracket B (dibeli)
+   *      v  dirakit
+   *   AV-12345-001 housing cover A      (barang jadi, dikirim ke customer)
+   *
+   * Rantai ini ada di seed supaya begitu database dibuat, BOM, backflush, dan
+   * telusur silsilah bisa langsung diperagakan tanpa mengetik master dulu.
+   */
+  await insertMissing('parts', parts, ['plantId', 'partNumber'], [
+    {
+      plantId: avicenna.id,
+      lineId: dc01.id,
+      partNumber: 'RM-D-001',
+      name: 'Aluminium Ingot D',
+      processType: 'CASTING' as const,
+      partType: 'RAW_MATERIAL' as const,
+      sourceType: 'PURCHASED' as const,
+      trackingMode: 'LOT' as const,
+      uom: 'kg',
+      standardStock: 1000,
+    },
+    {
+      plantId: avicenna.id,
+      lineId: dc01.id,
+      partNumber: 'WIP-A-001',
+      name: 'Housing Cast A',
+      processType: 'CASTING' as const,
+      partType: 'WIP' as const,
+      qtyPerKanban: 20,
+      standardStock: 200,
+    },
+    {
+      plantId: avicenna.id,
+      lineId: as01.id,
+      partNumber: 'CMP-B-001',
+      backNumber: 'BN-B',
+      name: 'Bracket B',
+      processType: 'ASSEMBLING' as const,
+      partType: 'COMPONENT' as const,
+      sourceType: 'PURCHASED' as const,
+      trackingMode: 'LOT' as const,
+      qtyPerKanban: 100,
+      standardStock: 500,
+    },
     {
       plantId: avicenna.id,
       lineId: dc01.id,
@@ -186,6 +248,32 @@ async function main() {
       standardStock: 500,
     },
   ]);
+
+  // ── BOM: WIP-A-001 dibuat dari RM-D-001 ───────────────────────────────────
+  const partRowsForBom = await db.select().from(parts);
+  const findPart = (pn: string) =>
+    mustFind(partRowsForBom, (p) => p.partNumber === pn, `part ${pn}`);
+  const wipA = findPart('WIP-A-001');
+  const rmD = findPart('RM-D-001');
+
+  const bomAda = await db
+    .select()
+    .from(bomLines)
+    .where(eq(bomLines.parentPartId, wipA.id))
+    .limit(1);
+  if (bomAda.length === 0) {
+    await db.insert(bomLines).values({
+      plantId: avicenna.id,
+      parentPartId: wipA.id,
+      componentPartId: rmD.id,
+      // 1,7 kg aluminium per housing, ditambah 2% susut pembakaran.
+      qtyPer: '1.7000',
+      scrapPct: '2.00',
+      uom: 'kg',
+      effectiveFrom: '2026-01-01',
+    });
+    console.log('[seed]   + BOM WIP-A-001 <- RM-D-001');
+  }
 
   // ── Mapping part <-> customer ─────────────────────────────────────────────
   const partRows = await db.select().from(parts);

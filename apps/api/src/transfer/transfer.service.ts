@@ -138,7 +138,7 @@ export class TransferService {
           plantId: input.plantId,
           partId: line.partId,
           lotId: line.lotId ?? null,
-          sourceTable: 'transfers' as const,
+          sourceTable: 'TT_GOODS_MOVEMENT_H' as const,
           sourceId: transferId,
           npk: principal?.kind === 'user' ? principal.npk : null,
           userId: principal?.kind === 'user' ? principal.sub : null,
@@ -187,10 +187,13 @@ export class TransferService {
 
   async list(params: { page: number; perPage: number }) {
     const offset = (params.page - 1) * params.perPage;
-    const fromLine = sql<string>`(SELECT l.name FROM \`lines\` l WHERE l.id = ${transfers.fromLineId})`;
-    const toLine = sql<string>`(SELECT l.name FROM \`lines\` l WHERE l.id = ${transfers.toLineId})`;
-    const fromLoc = sql<string>`(SELECT lo.name FROM locations lo WHERE lo.id = ${transfers.fromLocationId})`;
-    const toLoc = sql<string>`(SELECT lo.name FROM locations lo WHERE lo.id = ${transfers.toLocationId})`;
+    // Nama tabel ditulis langsung karena subquery berkorelasi belum bisa
+    // dibentuk lewat pembangun query Drizzle. Ikut berubah bila tabelnya
+    // diganti nama — tidak ada yang mengingatkan, jadi dicatat di sini.
+    const fromLine = sql<string>`(SELECT l.NAME FROM TM_LINE l WHERE l.ID = ${transfers.fromLineId})`;
+    const toLine = sql<string>`(SELECT l.NAME FROM TM_LINE l WHERE l.ID = ${transfers.toLineId})`;
+    const fromLoc = sql<string>`(SELECT lo.NAME FROM TM_LOCATION lo WHERE lo.ID = ${transfers.fromLocationId})`;
+    const toLoc = sql<string>`(SELECT lo.NAME FROM TM_LOCATION lo WHERE lo.ID = ${transfers.toLocationId})`;
 
     const [rows, totalRows] = await Promise.all([
       this.db
@@ -201,8 +204,8 @@ export class TransferService {
           toName: sql<string>`COALESCE(${toLine}, ${toLoc})`,
           movedAt: transfers.movedAt,
           status: transfers.status,
-          lineCount: sql<number>`(SELECT COUNT(*) FROM transfer_lines tl WHERE tl.transfer_id = ${transfers.id})`,
-          totalQty: sql<string>`(SELECT COALESCE(SUM(tl.qty), 0) FROM transfer_lines tl WHERE tl.transfer_id = ${transfers.id})`,
+          lineCount: sql<number>`(SELECT COUNT(*) FROM TT_GOODS_MOVEMENT_L tl WHERE tl.TRANSFER_ID = ${transfers.id})`,
+          totalQty: sql<string>`(SELECT COALESCE(SUM(tl.QTY), 0) FROM TT_GOODS_MOVEMENT_L tl WHERE tl.TRANSFER_ID = ${transfers.id})`,
         })
         .from(transfers)
         .orderBy(desc(transfers.movedAt))

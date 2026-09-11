@@ -28,28 +28,28 @@ export const KANBAN_STATUSES = [
  * Kolom `status` adalah state saat ini; riwayat lengkapnya ada di `kanban_events`.
  */
 export const kanbans = mysqlTable(
-  'kanbans',
+  'TM_KANBAN',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    partId: fk('part_id')
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
-    customerId: fk('customer_id').references(() => customers.id),
+    customerId: fk('CUSTOMER_ID').references(() => customers.id),
     /** Nomor seri tercetak di kartu — unik per pabrik, dipakai saat scan. */
-    serialNumber: varchar('serial_number', { length: 64 }).notNull(),
-    qty: int('qty').notNull(),
-    status: mysqlEnum('status', KANBAN_STATUSES).notNull().default('CREATED'),
-    producedAt: timestamp('produced_at'),
-    deliveredAt: timestamp('delivered_at'),
+    serialNumber: varchar('SERIAL_NUMBER', { length: 64 }).notNull(),
+    qty: int('QTY').notNull(),
+    status: mysqlEnum('STATUS', KANBAN_STATUSES).notNull().default('CREATED'),
+    producedAt: timestamp('PRODUCED_AT'),
+    deliveredAt: timestamp('DELIVERED_AT'),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('kanbans_plant_serial_unique').on(t.plantId, t.serialNumber),
-    index('kanbans_part_status_idx').on(t.partId, t.status),
-    index('kanbans_status_created_idx').on(t.status, t.createdAt),
+    uniqueIndex('TM_KANBAN_PLANT_SERIAL_UNIQUE').on(t.plantId, t.serialNumber),
+    index('TM_KANBAN_PART_STATUS_IDX').on(t.partId, t.status),
+    index('TM_KANBAN_STATUS_CREATED_IDX').on(t.status, t.createdAt),
   ],
 );
 
@@ -79,27 +79,27 @@ export const KANBAN_EVENT_TYPES = [
  * dilakukan dengan menambah event ADJUSTED.
  */
 export const kanbanEvents = mysqlTable(
-  'kanban_events',
+  'TT_KANBAN_EVENT',
   {
     id: pk(),
-    kanbanId: fk('kanban_id')
+    kanbanId: fk('KANBAN_ID')
       .notNull()
       .references(() => kanbans.id, { onDelete: 'cascade' }),
-    type: mysqlEnum('type', KANBAN_EVENT_TYPES).notNull(),
-    lineId: fk('line_id').references(() => lines.id),
+    type: mysqlEnum('TYPE', KANBAN_EVENT_TYPES).notNull(),
+    lineId: fk('LINE_ID').references(() => lines.id),
     /** Kanban pasangan, dipakai saat type = PAIRED (body <-> part). */
-    pairedKanbanId: fk('paired_kanban_id'),
-    qty: int('qty'),
-    userId: fk('user_id').references(() => users.id),
-    deviceId: fk('device_id').references(() => devices.id),
-    occurredAt: timestamp('occurred_at').notNull(),
+    pairedKanbanId: fk('PAIRED_KANBAN_ID'),
+    qty: int('QTY'),
+    userId: fk('USER_ID').references(() => users.id),
+    deviceId: fk('DEVICE_ID').references(() => devices.id),
+    occurredAt: timestamp('OCCURRED_AT').notNull(),
     /** Payload tambahan spesifik per tipe event. Jangan taruh data yang perlu di-query di sini. */
-    meta: json('meta'),
+    meta: json('META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [
-    index('kanban_events_kanban_idx').on(t.kanbanId, t.occurredAt),
-    index('kanban_events_type_time_idx').on(t.type, t.occurredAt),
+    index('TT_KANBAN_EVENT_KANBAN_IDX').on(t.kanbanId, t.occurredAt),
+    index('TT_KANBAN_EVENT_TYPE_TIME_IDX').on(t.type, t.occurredAt),
   ],
 );
 

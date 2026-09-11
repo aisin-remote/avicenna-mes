@@ -28,26 +28,26 @@ import { locations } from './inventory';
  * ditanya pertama kali ketika kiriman tidak sesuai.
  */
 export const deliveries = mysqlTable(
-  'deliveries',
+  'TT_DELIVERY',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    customerId: fk('customer_id')
+    customerId: fk('CUSTOMER_ID')
       .notNull()
       .references(() => customers.id),
     /** Nomor surat jalan / DN. */
-    documentNumber: varchar('document_number', { length: 64 }).notNull(),
-    manifestNumber: varchar('manifest_number', { length: 64 }),
+    documentNumber: varchar('DOCUMENT_NUMBER', { length: 64 }).notNull(),
+    manifestNumber: varchar('MANIFEST_NUMBER', { length: 64 }),
     /** Nomor PDS dari customer — rujukan ke dokumen mereka. */
-    pdsNumber: varchar('pds_number', { length: 64 }),
-    deliveryDate: date('delivery_date', { mode: 'string' }).notNull(),
-    cycle: int('cycle').notNull().default(1),
-    dock: varchar('dock', { length: 32 }),
-    planTime: time('plan_time'),
-    departedAt: timestamp('departed_at'),
-    arrivedAt: timestamp('arrived_at'),
+    pdsNumber: varchar('PDS_NUMBER', { length: 64 }),
+    deliveryDate: date('DELIVERY_DATE', { mode: 'string' }).notNull(),
+    cycle: int('CYCLE').notNull().default(1),
+    dock: varchar('DOCK', { length: 32 }),
+    planTime: time('PLAN_TIME'),
+    departedAt: timestamp('DEPARTED_AT'),
+    arrivedAt: timestamp('ARRIVED_AT'),
     /*
      * Tahapan dokumen, mengikuti rantai SLOC:
      *
@@ -60,7 +60,7 @@ export const deliveries = mysqlTable(
      * 'LOADED' dari versi sebelumnya dihapus: tidak pernah dipakai, dan
      * perannya kini diisi PICKED yang punya arti stok yang jelas.
      */
-    status: mysqlEnum('status', [
+    status: mysqlEnum('STATUS', [
       'DRAFT',
       'PICKING',
       'PICKED',
@@ -78,7 +78,7 @@ export const deliveries = mysqlTable(
      * diadopsi, barang lebih dulu berpindah ke staging, dan dari sanalah ia
      * keluar. Lihat docs/sap-integration.md.
      */
-    locationId: fk('location_id').references(() => locations.id),
+    locationId: fk('LOCATION_ID').references(() => locations.id),
     /**
      * SLOC staging (PP04): tempat barang menunggu setelah dipick.
      *
@@ -87,22 +87,22 @@ export const deliveries = mysqlTable(
      * bukan pula barang yang sudah terkirim. Tanpa tempat ini, selisih di
      * antara keduanya tidak punya rumah.
      */
-    stagingLocationId: fk('staging_location_id'),
-    truckNumber: varchar('truck_number', { length: 32 }),
-    driverName: varchar('driver_name', { length: 128 }),
+    stagingLocationId: fk('STAGING_LOCATION_ID'),
+    truckNumber: varchar('TRUCK_NUMBER', { length: 32 }),
+    driverName: varchar('DRIVER_NAME', { length: 128 }),
     /** Status truk terpisah dari status dokumen — truk bisa datang sebelum muat. */
-    truckStatus: mysqlEnum('truck_status', ['PENDING', 'ARRIVED', 'LOADING', 'DEPARTED'])
+    truckStatus: mysqlEnum('TRUCK_STATUS', ['PENDING', 'ARRIVED', 'LOADING', 'DEPARTED'])
       .notNull()
       .default('PENDING'),
-    truckPickedAt: timestamp('truck_picked_at'),
-    truckPickedById: fk('truck_picked_by_id').references(() => users.id),
-    createdById: fk('created_by_id').references(() => users.id),
+    truckPickedAt: timestamp('TRUCK_PICKED_AT'),
+    truckPickedById: fk('TRUCK_PICKED_BY_ID').references(() => users.id),
+    createdById: fk('CREATED_BY_ID').references(() => users.id),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('deliveries_plant_document_unique').on(t.plantId, t.documentNumber),
-    index('deliveries_date_customer_idx').on(t.deliveryDate, t.customerId),
-    index('deliveries_status_idx').on(t.status),
+    uniqueIndex('TT_DELIVERY_PLANT_DOCUMENT_UNIQUE').on(t.plantId, t.documentNumber),
+    index('TT_DELIVERY_DATE_CUSTOMER_IDX').on(t.deliveryDate, t.customerId),
+    index('TT_DELIVERY_STATUS_IDX').on(t.status),
   ],
 );
 
@@ -118,39 +118,32 @@ export const deliveries = mysqlTable(
  * dikirim tidak boleh ikut berubah angkanya.
  */
 export const deliveryLines = mysqlTable(
-  'delivery_lines',
+  'TT_DELIVERY_ITEM',
   {
     id: pk(),
-    deliveryId: fk('delivery_id')
+    deliveryId: fk('DELIVERY_ID')
       .notNull()
       .references(() => deliveries.id, { onDelete: 'cascade' }),
-    partId: fk('part_id')
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Penomoran customer untuk part ini, dipakai mencocokkan barcode saat muat. */
-    customerPartId: fk('customer_part_id'),
-    /*
-     * Nama kolom lama dipertahankan (plan_qty, kanban_count) meski nama di
-     * TypeScript diperjelas. Mengganti nama kolom membuat drizzle-kit tidak
-     * bisa membedakan "rename" dari "hapus lalu tambah" tanpa dikonfirmasi
-     * manusia, dan itu bukan keputusan yang boleh diambil alat secara diam-diam
-     * pada tabel yang kelak berisi data pengiriman.
-     */
+    customerPartId: fk('CUSTOMER_PART_ID'),
     /** Rencana: berapa kanban yang harus dimuat. */
-    plannedKanban: int('kanban_count').notNull().default(0),
-    plannedQty: int('plan_qty').notNull().default(0),
-    qtyPerKanban: int('qty_per_kanban').notNull().default(0),
+    plannedKanban: int('PLANNED_KANBAN').notNull().default(0),
+    plannedQty: int('PLANNED_QTY').notNull().default(0),
+    qtyPerKanban: int('QTY_PER_KANBAN').notNull().default(0),
     /** Pulling: berapa kanban yang diambil dari PP02 ke PP04. */
-    pickedKanban: int('picked_kanban').notNull().default(0),
-    pickedQty: int('picked_qty').notNull().default(0),
+    pickedKanban: int('PICKED_KANBAN').notNull().default(0),
+    pickedQty: int('PICKED_QTY').notNull().default(0),
     /** Aktual: berapa kanban yang benar-benar naik truk. */
-    actualKanban: int('actual_kanban').notNull().default(0),
-    actualQty: int('actual_qty').notNull().default(0),
+    actualKanban: int('ACTUAL_KANBAN').notNull().default(0),
+    actualQty: int('ACTUAL_QTY').notNull().default(0),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('delivery_lines_unique').on(t.deliveryId, t.partId),
-    index('delivery_lines_part_idx').on(t.partId),
+    uniqueIndex('TT_DELIVERY_ITEM_UNIQUE').on(t.deliveryId, t.partId),
+    index('TT_DELIVERY_ITEM_PART_IDX').on(t.partId),
   ],
 );
 

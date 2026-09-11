@@ -21,15 +21,15 @@ import { plants } from './org';
 
 /** Line produksi. Satu line terikat pada satu pabrik dan satu jenis proses. */
 export const lines = mysqlTable(
-  'lines',
+  'TM_LINE',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    code: varchar('code', { length: 32 }).notNull(),
-    name: varchar('name', { length: 128 }).notNull(),
-    processType: mysqlEnum('process_type', PROCESS_TYPES).notNull(),
+    code: varchar('CODE', { length: 32 }).notNull(),
+    name: varchar('NAME', { length: 128 }).notNull(),
+    processType: mysqlEnum('PROCESS_TYPE', PROCESS_TYPES).notNull(),
     /*
      * SLOC asal dan tujuan line ini.
      *
@@ -48,26 +48,26 @@ export const lines = mysqlTable(
      * impor berputar. Keutuhannya dijaga di service — lokasi wajib milik pabrik
      * yang sama, dan itu memang pemeriksaan yang tidak bisa dilakukan FK.
      */
-    inputLocationId: fk('input_location_id'),
-    outputLocationId: fk('output_location_id'),
-    sortOrder: int('sort_order').notNull().default(0),
-    isActive: boolean('is_active').notNull().default(true),
+    inputLocationId: fk('INPUT_LOCATION_ID'),
+    outputLocationId: fk('OUTPUT_LOCATION_ID'),
+    sortOrder: int('SORT_ORDER').notNull().default(0),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('lines_plant_code_unique').on(t.plantId, t.code),
-    index('lines_process_idx').on(t.processType),
+    uniqueIndex('TM_LINE_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
+    index('TM_LINE_PROCESS_IDX').on(t.processType),
   ],
 );
 
 export const customers = mysqlTable(
-  'customers',
+  'TM_CUST',
   {
     id: pk(),
-    code: varchar('code', { length: 32 }).notNull(),
-    name: varchar('name', { length: 128 }).notNull(),
+    code: varchar('CODE', { length: 32 }).notNull(),
+    name: varchar('NAME', { length: 128 }).notNull(),
     /** Dock tujuan pengiriman (TMMIN dsb). */
-    dock: varchar('dock', { length: 32 }),
+    dock: varchar('DOCK', { length: 32 }),
     /**
      * Aturan penulisan nomor part pada barcode customer.
      *
@@ -76,7 +76,7 @@ export const customers = mysqlTable(
      * setelah data dipindah, dan aturan yang bergantung pada nomor baris
      * database akan diam-diam salah begitu urutannya berubah.
      */
-    partNumberFormat: mysqlEnum('part_number_format', [
+    partNumberFormat: mysqlEnum('PART_NUMBER_FORMAT', [
       'TMMIN',
       'SUZUKI',
       'MMKI',
@@ -85,22 +85,22 @@ export const customers = mysqlTable(
     ])
       .notNull()
       .default('NONE'),
-    isActive: boolean('is_active').notNull().default(true),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('customers_code_unique').on(t.code)],
+  (t) => [uniqueIndex('TM_CUST_CODE_UNIQUE').on(t.code)],
 );
 
 export const suppliers = mysqlTable(
-  'suppliers',
+  'TM_VENDOR',
   {
     id: pk(),
-    code: varchar('code', { length: 32 }).notNull(),
-    name: varchar('name', { length: 128 }).notNull(),
-    isActive: boolean('is_active').notNull().default(true),
+    code: varchar('CODE', { length: 32 }).notNull(),
+    name: varchar('NAME', { length: 128 }).notNull(),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('suppliers_code_unique').on(t.code)],
+  (t) => [uniqueIndex('TM_VENDOR_CODE_UNIQUE').on(t.code)],
 );
 
 /**
@@ -108,117 +108,117 @@ export const suppliers = mysqlTable(
  * `back_number` dipertahankan karena dipakai di seluruh proses scan kedua pabrik.
  */
 export const parts = mysqlTable(
-  'parts',
+  'TM_PARTS',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    lineId: fk('line_id').references(() => lines.id),
-    partNumber: varchar('part_number', { length: 64 }).notNull(),
-    backNumber: varchar('back_number', { length: 64 }),
-    name: varchar('name', { length: 191 }).notNull(),
-    processType: mysqlEnum('process_type', PROCESS_TYPES).notNull(),
+    lineId: fk('LINE_ID').references(() => lines.id),
+    partNumber: varchar('PART_NUMBER', { length: 64 }).notNull(),
+    backNumber: varchar('BACK_NUMBER', { length: 64 }),
+    name: varchar('NAME', { length: 191 }).notNull(),
+    processType: mysqlEnum('PROCESS_TYPE', PROCESS_TYPES).notNull(),
     /** Posisi part di rantai pasok — menentukan aturan apa yang berlaku baginya. */
-    partType: mysqlEnum('part_type', PART_TYPES).notNull().default('FINISHED_GOOD'),
+    partType: mysqlEnum('PART_TYPE', PART_TYPES).notNull().default('FINISHED_GOOD'),
     /** Dibeli atau diproduksi sendiri. */
-    sourceType: mysqlEnum('source_type', SOURCE_TYPES).notNull().default('MANUFACTURED'),
+    sourceType: mysqlEnum('SOURCE_TYPE', SOURCE_TYPES).notNull().default('MANUFACTURED'),
     /**
      * Cara part ini ditelusuri. Lihat docs/traceability-model.md.
      * Raw material yang dilebur tidak mungkin berseri; part casting justru
      * sudah discan satu per satu.
      */
-    trackingMode: mysqlEnum('tracking_mode', TRACKING_MODES).notNull().default('SERIAL'),
+    trackingMode: mysqlEnum('TRACKING_MODE', TRACKING_MODES).notNull().default('SERIAL'),
     /** Satuan. Raw material sering kilogram, bukan pcs. */
-    uom: varchar('uom', { length: 16 }).notNull().default('pcs'),
+    uom: varchar('UOM', { length: 16 }).notNull().default('pcs'),
     /** Jumlah pcs per kanban standar (bisa dioverride per customer di customer_parts). */
-    qtyPerKanban: int('qty_per_kanban'),
-    standardStock: int('standard_stock').notNull().default(0),
-    photoPath: varchar('photo_path', { length: 255 }),
-    isActive: boolean('is_active').notNull().default(true),
+    qtyPerKanban: int('QTY_PER_KANBAN'),
+    standardStock: int('STANDARD_STOCK').notNull().default(0),
+    photoPath: varchar('PHOTO_PATH', { length: 255 }),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('parts_plant_partnumber_unique').on(t.plantId, t.partNumber),
-    index('parts_back_number_idx').on(t.backNumber),
-    index('parts_line_idx').on(t.lineId),
+    uniqueIndex('TM_PARTS_PLANT_PARTNUMBER_UNIQUE').on(t.plantId, t.partNumber),
+    index('TM_PARTS_BACK_NUMBER_IDX').on(t.backNumber),
+    index('TM_PARTS_LINE_IDX').on(t.lineId),
   ],
 );
 
 /** Pemetaan part internal -> penomoran milik customer. */
 export const customerParts = mysqlTable(
-  'customer_parts',
+  'TM_SHIPPING_PARTS',
   {
     id: pk(),
-    partId: fk('part_id')
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id, { onDelete: 'cascade' }),
-    customerId: fk('customer_id')
+    customerId: fk('CUSTOMER_ID')
       .notNull()
       .references(() => customers.id, { onDelete: 'cascade' }),
-    customerPartNumber: varchar('customer_part_number', { length: 64 }).notNull(),
-    customerBackNumber: varchar('customer_back_number', { length: 64 }),
-    qtyPerKanban: int('qty_per_kanban'),
+    customerPartNumber: varchar('CUSTOMER_PART_NUMBER', { length: 64 }).notNull(),
+    customerBackNumber: varchar('CUSTOMER_BACK_NUMBER', { length: 64 }),
+    qtyPerKanban: int('QTY_PER_KANBAN'),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('customer_parts_unique').on(t.customerId, t.customerPartNumber),
-    index('customer_parts_part_idx').on(t.partId),
+    uniqueIndex('TM_SHIPPING_PARTS_UNIQUE').on(t.customerId, t.customerPartNumber),
+    index('TM_SHIPPING_PARTS_PART_IDX').on(t.partId),
   ],
 );
 
 /** Mesin produksi. `externalRef` menautkan ke ID mesin di SQL Server J922. */
 export const machines = mysqlTable(
-  'machines',
+  'TM_MACHINE',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    lineId: fk('line_id').references(() => lines.id),
-    code: varchar('code', { length: 32 }).notNull(),
-    name: varchar('name', { length: 128 }).notNull(),
-    externalRef: varchar('external_ref', { length: 64 }),
-    isActive: boolean('is_active').notNull().default(true),
+    lineId: fk('LINE_ID').references(() => lines.id),
+    code: varchar('CODE', { length: 32 }).notNull(),
+    name: varchar('NAME', { length: 128 }).notNull(),
+    externalRef: varchar('EXTERNAL_REF', { length: 64 }),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('machines_plant_code_unique').on(t.plantId, t.code),
-    index('machines_external_ref_idx').on(t.externalRef),
+    uniqueIndex('TM_MACHINE_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
+    index('TM_MACHINE_EXTERNAL_REF_IDX').on(t.externalRef),
   ],
 );
 
 /** Tooling: mold (injection) dan dies (casting) disatukan di sini. */
 export const toolings = mysqlTable(
-  'toolings',
+  'TM_TOOLING',
   {
     id: pk(),
-    plantId: fk('plant_id')
+    plantId: fk('PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    code: varchar('code', { length: 32 }).notNull(),
-    name: varchar('name', { length: 128 }).notNull(),
-    kind: mysqlEnum('kind', ['MOLD', 'DIES', 'JIG']).notNull(),
-    cavity: int('cavity').notNull().default(1),
-    isActive: boolean('is_active').notNull().default(true),
+    code: varchar('CODE', { length: 32 }).notNull(),
+    name: varchar('NAME', { length: 128 }).notNull(),
+    kind: mysqlEnum('KIND', ['MOLD', 'DIES', 'JIG']).notNull(),
+    cavity: int('CAVITY').notNull().default(1),
+    isActive: boolean('IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('toolings_plant_code_unique').on(t.plantId, t.code)],
+  (t) => [uniqueIndex('TM_TOOLING_PLANT_CODE_UNIQUE').on(t.plantId, t.code)],
 );
 
 export const toolingParts = mysqlTable(
-  'tooling_parts',
+  'TM_TOOLING_PARTS',
   {
     id: pk(),
-    toolingId: fk('tooling_id')
+    toolingId: fk('TOOLING_ID')
       .notNull()
       .references(() => toolings.id, { onDelete: 'cascade' }),
-    partId: fk('part_id')
+    partId: fk('PART_ID')
       .notNull()
       .references(() => parts.id, { onDelete: 'cascade' }),
     ...timestamps,
   },
-  (t) => [uniqueIndex('tooling_parts_unique').on(t.toolingId, t.partId)],
+  (t) => [uniqueIndex('TM_TOOLING_PARTS_UNIQUE').on(t.toolingId, t.partId)],
 );
 
 export const linesRelations = relations(lines, ({ one, many }) => ({
