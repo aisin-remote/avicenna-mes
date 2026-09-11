@@ -61,9 +61,9 @@ Supplier → [WH00] → [WP01] → [PP02] → [PP04] → Customer
 | 1 | Good Receipt | Ada. Belum ada PO untuk dicocokkan. |
 | 2 | Good Movement | Ada (`transfers`). |
 | 3 | Production Result | **Ada dan ber-SLOC.** WP01 (−) lewat backflush, PP02 (+) lewat scan. |
-| 4 | Pulling / Shopping | Belum dipisah dari Loading; PP04 dan picking list belum ada. |
+| 4 | Pulling / Shopping | **Ada dan ber-SLOC.** PP02 (−) → PP04 (+) saat pulling ditutup. |
 | 5 | Delivery Preparation | Dikerjakan lewat SAP GUI — di luar cakupan sistem ini. |
-| 6 | Loading to Truck | Ada sebagai loading list. RFID gate belum. |
+| 6 | Loading to Truck | Ada sebagai loading list; stok keluar dari PP04. RFID gate belum. |
 
 ## Yang sengaja berbeda dari diagram
 
@@ -98,10 +98,31 @@ alasan sistem ini dibangun; SAP tidak menyimpan jejak itu.
 
 1. ~~**SLOC pada produksi**~~ — selesai. `lines.inputLocationId` / `outputLocationId`
    menentukan SLOC asal dan tujuan tiap line.
-2. **Pisahkan Pulling dari Loading** — PP04 dan picking list.
+2. ~~**Pisahkan Pulling dari Loading**~~ — selesai. Dokumen kini melewati
+   DRAFT → PICKING → PICKED → LOADING → SHIPPED, dan stok berpindah
+   PP02 → PP04 → keluar.
 3. **Lapisan SAP** — outbox, movement type, status posting, penulis ke MS SQL.
 4. **PO** — supaya penerimaan bisa dicocokkan ke pesanan.
 5. **RFID gate** — paling akhir; di diagram pun tidak terhubung ke SAP.
+
+## Tahapan dokumen pengiriman
+
+```
+DRAFT ──scan pulling──> PICKING ──tutup pulling──> PICKED
+                                   PP02 (-) PP04 (+)
+
+PICKED ──scan muat──> LOADING ──nyatakan berangkat──> SHIPPED
+                                      PP04 (-)
+```
+
+Urutannya **ditegakkan**, bukan sekadar disarankan. Memuat barang yang belum
+pernah diambil dari gudang berarti memotong stok dari staging yang isinya nol:
+saldo PP04 menjadi minus, dan selisihnya baru ketahuan berbulan-bulan kemudian
+saat tidak ada lagi yang ingat dokumen mana penyebabnya.
+
+Sasaran tiap tahap juga berbeda. Saat pulling, sasarannya RENCANA. Saat memuat,
+sasarannya yang BENAR-BENAR terambil — memuat lebih banyak daripada isi staging
+tidak mungkin benar, berapa pun rencananya.
 
 ## Catatan dari pengerjaan
 

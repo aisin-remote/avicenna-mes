@@ -48,14 +48,46 @@ export const deliveries = mysqlTable(
     planTime: time('plan_time'),
     departedAt: timestamp('departed_at'),
     arrivedAt: timestamp('arrived_at'),
-    status: mysqlEnum('status', ['DRAFT', 'LOADING', 'LOADED', 'SHIPPED', 'RECEIVED', 'CANCELLED'])
+    /*
+     * Tahapan dokumen, mengikuti rantai SLOC:
+     *
+     *   DRAFT    rencana tersusun, barang belum disentuh
+     *   PICKING  sedang diambil dari gudang finish good (PP02)
+     *   PICKED   sudah pindah ke staging (PP04), menunggu truk
+     *   LOADING  sedang dimuat ke truk
+     *   SHIPPED  berangkat — stok keluar dari PP04
+     *
+     * 'LOADED' dari versi sebelumnya dihapus: tidak pernah dipakai, dan
+     * perannya kini diisi PICKED yang punya arti stok yang jelas.
+     */
+    status: mysqlEnum('status', [
+      'DRAFT',
+      'PICKING',
+      'PICKED',
+      'LOADING',
+      'SHIPPED',
+      'RECEIVED',
+      'CANCELLED',
+    ])
       .notNull()
       .default('DRAFT'),
     /**
-     * Lokasi asal barang. Mutasi DELIVERY_OUT mengurangi stok di lokasi ini —
-     * tanpa itu saldo total benar tetapi saldo per lokasi diam-diam melenceng.
+     * SLOC tempat barang jadi diambil saat pulling (PP02).
+     *
+     * Bukan lagi tempat stok dipotong saat berangkat — sejak model SLOC
+     * diadopsi, barang lebih dulu berpindah ke staging, dan dari sanalah ia
+     * keluar. Lihat docs/sap-integration.md.
      */
     locationId: fk('location_id').references(() => locations.id),
+    /**
+     * SLOC staging (PP04): tempat barang menunggu setelah dipick.
+     *
+     * Ada sebagai lokasi tersendiri karena barang yang sudah diambil dari
+     * gudang tetapi belum naik truk memang bukan lagi stok finish good, dan
+     * bukan pula barang yang sudah terkirim. Tanpa tempat ini, selisih di
+     * antara keduanya tidak punya rumah.
+     */
+    stagingLocationId: fk('staging_location_id'),
     truckNumber: varchar('truck_number', { length: 32 }),
     driverName: varchar('driver_name', { length: 128 }),
     /** Status truk terpisah dari status dokumen — truk bisa datang sebelum muat. */
@@ -108,7 +140,10 @@ export const deliveryLines = mysqlTable(
     plannedKanban: int('kanban_count').notNull().default(0),
     plannedQty: int('plan_qty').notNull().default(0),
     qtyPerKanban: int('qty_per_kanban').notNull().default(0),
-    /** Aktual: berapa kanban yang benar-benar discan saat muat. */
+    /** Pulling: berapa kanban yang diambil dari PP02 ke PP04. */
+    pickedKanban: int('picked_kanban').notNull().default(0),
+    pickedQty: int('picked_qty').notNull().default(0),
+    /** Aktual: berapa kanban yang benar-benar naik truk. */
     actualKanban: int('actual_kanban').notNull().default(0),
     actualQty: int('actual_qty').notNull().default(0),
     ...timestamps,

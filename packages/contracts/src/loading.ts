@@ -23,8 +23,10 @@ export const loadingCreateSchema = z.object({
   pdsNumber: z.string().trim().max(64).optional(),
   cycle: z.coerce.number().int().min(1).default(1),
   dock: z.string().trim().max(32).optional(),
-  /** Lokasi asal barang — stok di lokasi inilah yang berkurang saat berangkat. */
+  /** SLOC tempat barang jadi diambil saat pulling (PP02). */
   locationId: z.coerce.number().int().positive().optional(),
+  /** SLOC staging tempat barang menunggu truk (PP04). */
+  stagingLocationId: z.coerce.number().int().positive().optional(),
   deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal harus YYYY-MM-DD'),
   truckNumber: z.string().trim().max(32).optional(),
   driverName: z.string().trim().max(128).optional(),
@@ -32,9 +34,20 @@ export const loadingCreateSchema = z.object({
 });
 export type LoadingCreateInput = z.infer<typeof loadingCreateSchema>;
 
-/** Satu kanban discan saat muat barang. */
+/**
+ * Tahap mana yang sedang discan.
+ *
+ * PULLING mengambil barang dari gudang finish good ke staging; LOADING
+ * menaikkannya ke truk. Keduanya memakai layar dan cara scan yang sama, tapi
+ * menghitung kolom yang berbeda dan memindahkan stok antar SLOC yang berbeda.
+ */
+export const loadingPhaseSchema = z.enum(['PULLING', 'LOADING']);
+export type LoadingPhase = z.infer<typeof loadingPhaseSchema>;
+
+/** Satu kanban discan, entah saat pulling atau saat muat. */
 export const loadingScanSchema = z.object({
   deliveryId: z.coerce.number().int().positive(),
+  phase: loadingPhaseSchema.default('LOADING'),
   /** Nomor part pada barcode kanban — format customer. */
   customerPart: z.string().trim().min(1, 'Barcode kosong').max(64),
   /** Nomor part internal, bila barcode memuatnya. */
@@ -51,15 +64,18 @@ export type LoadingScanInput = z.infer<typeof loadingScanSchema>;
 
 export interface LoadingScanResult {
   status: 'ACCEPTED' | 'OVER' | 'REJECTED';
+  phase: LoadingPhase;
   message: string;
   /** Baris loading list yang bertambah — dipakai layar untuk memperbarui angkanya. */
   lineId: number | null;
   partNumber: string | null;
   convertedPartNumber: string | null;
+  /** Hitungan pada tahap yang sedang berjalan. */
   actualKanban: number;
+  /** Sasaran tahap ini: rencana saat pulling, hasil pulling saat muat. */
   plannedKanban: number;
   /** Ringkasan seluruh dokumen setelah scan ini. */
-  totals: { plannedKanban: number; actualKanban: number };
+  totals: { plannedKanban: number; pickedKanban: number; actualKanban: number };
 }
 
 export interface LoadingSummary {
@@ -72,5 +88,6 @@ export interface LoadingSummary {
   status: string;
   truckStatus: string;
   plannedKanban: number;
+  pickedKanban: number;
   actualKanban: number;
 }

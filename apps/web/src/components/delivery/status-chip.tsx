@@ -2,8 +2,9 @@ import { cn } from '../ui/cn';
 
 const DOC_LABEL: Record<string, string> = {
   DRAFT: 'Draf',
+  PICKING: 'Sedang diambil',
+  PICKED: 'Siap dimuat',
   LOADING: 'Sedang dimuat',
-  LOADED: 'Selesai dimuat',
   SHIPPED: 'Berangkat',
   RECEIVED: 'Diterima',
   CANCELLED: 'Dibatalkan',
@@ -11,8 +12,9 @@ const DOC_LABEL: Record<string, string> = {
 
 const DOC_TONE: Record<string, string> = {
   DRAFT: 'border-line text-ink-muted',
+  PICKING: 'border-warn/40 bg-warn/10 text-warn',
+  PICKED: 'border-accent/40 bg-accent/10 text-accent',
   LOADING: 'border-accent/40 bg-accent/10 text-accent',
-  LOADED: 'border-accent/40 bg-accent/10 text-accent',
   SHIPPED: 'border-ok/40 bg-ok/10 text-ok',
   RECEIVED: 'border-ok/40 bg-ok/10 text-ok',
   CANCELLED: 'border-ng/40 bg-ng/10 text-ng',

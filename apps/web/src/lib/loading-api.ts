@@ -19,9 +19,11 @@ export interface LoadingLineDetail {
   uom: string | null;
   customerPartNumber: string | null;
   plannedKanban: number;
+  pickedKanban: number;
   actualKanban: number;
   qtyPerKanban: number;
   plannedQty: number;
+  pickedQty: number;
   actualQty: number;
 }
 
@@ -39,6 +41,10 @@ export interface LoadingDetail {
   dock: string | null;
   locationId: number | null;
   locationName: string | null;
+  locationCode: string | null;
+  stagingLocationId: number | null;
+  stagingLocationName: string | null;
+  stagingLocationCode: string | null;
   status: string;
   truckStatus: string;
   truckNumber: string | null;

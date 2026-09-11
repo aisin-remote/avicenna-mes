@@ -65,6 +65,7 @@ export function LoadingForm({
   const [cycle, setCycle] = useState('1');
   const [dock, setDock] = useState('');
   const [locationId, setLocationId] = useState<number | ''>('');
+  const [stagingLocationId, setStagingLocationId] = useState<number | ''>('');
   const [truckNumber, setTruckNumber] = useState('');
   const [driverName, setDriverName] = useState('');
 
@@ -154,6 +155,7 @@ export function LoadingForm({
       cycle: Number(cycle) || 1,
       dock: dock.trim() || undefined,
       locationId: locationId ? Number(locationId) : undefined,
+      stagingLocationId: stagingLocationId ? Number(stagingLocationId) : undefined,
       deliveryDate,
       truckNumber: truckNumber.trim() || undefined,
       driverName: driverName.trim() || undefined,
@@ -260,14 +262,27 @@ export function LoadingForm({
             />
           </Field>
 
-          <Field
-            label="Lokasi asal barang"
-            hint="stok di lokasi inilah yang berkurang saat berangkat"
-          >
+          <Field label="SLOC asal" hint="gudang barang jadi, tempat barang diambil saat pulling">
             <select
               value={locationId}
               onChange={(e) => setLocationId(e.target.value ? Number(e.target.value) : '')}
-              aria-label="Lokasi asal barang"
+              aria-label="SLOC asal"
+              className={inputClass}
+            >
+              <option value="">— pilih —</option>
+              {locations.map((l) => (
+                <option key={l.value} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="SLOC staging" hint="tempat barang menunggu truk; stok di sinilah yang berkurang saat berangkat">
+            <select
+              value={stagingLocationId}
+              onChange={(e) => setStagingLocationId(e.target.value ? Number(e.target.value) : '')}
+              aria-label="SLOC staging"
               className={inputClass}
             >
               <option value="">— pilih —</option>

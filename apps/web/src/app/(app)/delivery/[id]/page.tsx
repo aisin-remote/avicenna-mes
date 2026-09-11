@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Truck, ScanLine, MapPin, FileText, User, Calendar } from 'lucide-react';
+import { Truck, ScanLine, MapPin, FileText, User, Calendar, PackageOpen } from 'lucide-react';
 import { getLoading } from '@/lib/loading-api';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -11,6 +11,12 @@ import { StatusChip, TruckChip } from '@/components/delivery/status-chip';
 import { LoadingActions } from '@/components/delivery/loading-actions';
 
 export const dynamic = 'force-dynamic';
+
+/** "PP02 — Finish Good", atau penanda bila belum ditentukan. */
+function sloc(code: string | null, name: string | null, peran: string): string {
+  if (!code) return `${peran} belum ditentukan`;
+  return name ? `${code} — ${name}` : code;
+}
 
 export default async function LoadingDetailPage({
   params,
@@ -29,8 +35,12 @@ export default async function LoadingDetailPage({
   }
 
   const totalPlanned = doc.lines.reduce((s, l) => s + l.plannedKanban, 0);
+  const totalPicked = doc.lines.reduce((s, l) => s + l.pickedKanban, 0);
   const totalActual = doc.lines.reduce((s, l) => s + l.actualKanban, 0);
   const open = doc.status !== 'SHIPPED' && doc.status !== 'RECEIVED' && doc.status !== 'CANCELLED';
+  // Tahap yang sedang berjalan menentukan tombol mana yang ditawarkan — dua
+  // tombol scan sekaligus hanya membuat orang menebak mana yang benar.
+  const tahapPulling = doc.status === 'DRAFT' || doc.status === 'PICKING';
 
   return (
     <>
@@ -44,11 +54,15 @@ export default async function LoadingDetailPage({
             <TruckChip status={doc.truckStatus} />
             {open ? (
               <Link
-                href={`/loading/${doc.id}`}
+                href={tahapPulling ? `/picking/${doc.id}` : `/loading/${doc.id}`}
                 className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
               >
-                <ScanLine className="size-[18px]" strokeWidth={2.2} aria-hidden />
-                Mulai Muat
+                {tahapPulling ? (
+                  <PackageOpen className="size-[18px]" strokeWidth={2.2} aria-hidden />
+                ) : (
+                  <ScanLine className="size-[18px]" strokeWidth={2.2} aria-hidden />
+                )}
+                {tahapPulling ? 'Mulai Pulling' : 'Mulai Muat'}
               </Link>
             ) : null}
           </div>
@@ -71,8 +85,14 @@ export default async function LoadingDetailPage({
               <InfoRow icon={FileText} label="Nomor PDS">
                 {doc.pdsNumber ?? '—'}
               </InfoRow>
-              <InfoRow icon={MapPin} label="Dock / lokasi asal">
-                {doc.dock ?? '—'} · {doc.locationName ?? 'lokasi belum ditentukan'}
+              <InfoRow icon={MapPin} label="Dock">
+                {doc.dock ?? '—'}
+              </InfoRow>
+              {/* Kode SLOC di depan namanya: nama seperti "Finish Good" berulang
+                  di tiap pabrik, sedangkan kode inilah yang dicocokkan dengan SAP. */}
+              <InfoRow icon={PackageOpen} label="Alur SLOC">
+                {sloc(doc.locationCode, doc.locationName, 'asal')} →{' '}
+                {sloc(doc.stagingLocationCode, doc.stagingLocationName, 'staging')}
               </InfoRow>
               <InfoRow icon={Truck} label="Truk">
                 {doc.truckNumber ?? '—'}
@@ -92,7 +112,7 @@ export default async function LoadingDetailPage({
             <CardHeader
               icon={Truck}
               title="Muatan"
-              subtitle={`${doc.lines.length} part · ${totalActual} dari ${totalPlanned} kanban dimuat`}
+              subtitle={`${doc.lines.length} part · rencana ${totalPlanned} · diambil ${totalPicked} · dimuat ${totalActual} kanban`}
             />
             <Table>
               <thead>
@@ -101,9 +121,10 @@ export default async function LoadingDetailPage({
                   <Th>No. Customer</Th>
                   <Th align="right">Isi / kanban</Th>
                   <Th align="right">Rencana</Th>
-                  <Th align="right">Aktual</Th>
+                  <Th align="right">Diambil</Th>
+                  <Th align="right">Dimuat</Th>
                   <Th align="right">Selisih</Th>
-                  <Th align="right">Pcs aktual</Th>
+                  <Th align="right">Pcs dimuat</Th>
                 </tr>
               </thead>
               <tbody>
@@ -121,6 +142,9 @@ export default async function LoadingDetailPage({
                       </Td>
                       <Td align="right" className="tabular">
                         {l.plannedKanban.toLocaleString('id-ID')}
+                      </Td>
+                      <Td align="right" className="tabular">
+                        {l.pickedKanban.toLocaleString('id-ID')}
                       </Td>
                       <Td align="right" strong className="tabular">
                         {l.actualKanban.toLocaleString('id-ID')}
@@ -149,8 +173,9 @@ export default async function LoadingDetailPage({
             id={doc.id}
             status={doc.status}
             truckStatus={doc.truckStatus}
-            totalActual={totalActual}
             totalPlanned={totalPlanned}
+            totalPicked={totalPicked}
+            totalActual={totalActual}
           />
         </Reveal>
       </div>

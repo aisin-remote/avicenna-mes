@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import type { LoadingScanResult } from '@avicenna/contracts';
+import type { LoadingPhase, LoadingScanResult } from '@avicenna/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 import type { CatalogPart } from '@/lib/loading-api';
 
@@ -35,6 +35,7 @@ export interface SubmitLoadingInput {
   cycle: number;
   dock?: string;
   locationId?: number;
+  stagingLocationId?: number;
   deliveryDate: string;
   truckNumber?: string;
   driverName?: string;
@@ -61,9 +62,10 @@ export async function submitLoadingAction(
   }
 }
 
-/** Scan satu kanban saat muat barang. */
+/** Scan satu kanban — saat pulling maupun saat muat. */
 export async function scanKanbanAction(input: {
   deliveryId: number;
+  phase: LoadingPhase;
   customerPart: string;
   internalPart?: string;
   serialNumber?: string;
@@ -79,14 +81,43 @@ export async function scanKanbanAction(input: {
   }
 }
 
+interface UndoResult {
+  lineId: number;
+  actualKanban: number;
+  totals: { plannedKanban: number; pickedKanban: number; actualKanban: number };
+}
+
 export async function undoKanbanAction(
   deliveryId: number,
   lineId: number,
-): Promise<
-  { lineId: number; actualKanban: number; totals: { plannedKanban: number; actualKanban: number } } | { error: string }
-> {
+  phase: LoadingPhase,
+): Promise<UndoResult | { error: string }> {
   try {
-    return await apiFetch(`/loading/${deliveryId}/lines/${lineId}/undo`, { method: 'POST' });
+    return await apiFetch<UndoResult>(
+      `/loading/${deliveryId}/lines/${lineId}/undo?phase=${phase}`,
+      { method: 'POST' },
+    );
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+}
+
+export interface PickResult {
+  id: number;
+  documentNumber: string;
+  pickedLines: number;
+  shortages: ShipResult['shortages'];
+}
+
+/** Menutup pulling: barang berpindah dari gudang finish good ke staging. */
+export async function completePickingAction(
+  id: number,
+): Promise<PickResult | { error: string }> {
+  try {
+    const res = await apiFetch<PickResult>(`/loading/${id}/pick`, { method: 'POST' });
+    revalidatePath('/delivery');
+    revalidatePath(`/delivery/${id}`);
+    return res;
   } catch (err) {
     return { error: toMessage(err) };
   }

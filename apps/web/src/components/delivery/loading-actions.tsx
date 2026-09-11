@@ -3,11 +3,12 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { Truck, Check, AlertCircle, Ban, AlertTriangle } from 'lucide-react';
+import { Truck, Check, AlertCircle, Ban, AlertTriangle, PackageOpen } from 'lucide-react';
 import {
   shipLoadingAction,
   setTruckStatusAction,
   cancelLoadingAction,
+  completePickingAction,
   type ShipResult,
 } from '@/app/(app)/delivery/actions';
 import { durations, easeSoft } from '../motion/transitions';
@@ -31,22 +32,39 @@ export function LoadingActions({
   id,
   status,
   truckStatus,
-  totalActual,
   totalPlanned,
+  totalPicked,
+  totalActual,
 }: {
   id: number;
   status: string;
   truckStatus: string;
-  totalActual: number;
   totalPlanned: number;
+  totalPicked: number;
+  totalActual: number;
 }) {
-  const [confirming, setConfirming] = useState<'ship' | 'cancel' | null>(null);
+  const [confirming, setConfirming] = useState<'pick' | 'ship' | 'cancel' | null>(null);
   const [message, setMessage] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   const [shortages, setShortages] = useState<ShipResult['shortages']>([]);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
   const closed = status === 'SHIPPED' || status === 'RECEIVED' || status === 'CANCELLED';
+  // Satu tahap, satu tombol. Menawarkan "tutup pulling" dan "nyatakan berangkat"
+  // berdampingan hanya membuat orang menebak mana yang berlaku sekarang.
+  const tahapPulling = status === 'DRAFT' || status === 'PICKING';
+
+  async function pick() {
+    setConfirming(null);
+    const res = await completePickingAction(id);
+    if ('error' in res) return setMessage({ tone: 'bad', text: res.error });
+    setShortages(res.shortages);
+    setMessage({
+      tone: 'ok',
+      text: `Pulling ${res.documentNumber} ditutup — ${res.pickedLines} baris pindah ke staging.`,
+    });
+    startTransition(() => router.refresh());
+  }
 
   async function ship() {
     setConfirming(null);
@@ -151,15 +169,27 @@ export function LoadingActions({
 
       {!closed ? (
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setConfirming('ship')}
-            disabled={pending || totalActual === 0}
-            className="inline-flex h-12 items-center gap-2 rounded-full bg-accent px-7 text-[15px] font-semibold text-white transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Truck className="size-[18px]" strokeWidth={2.2} aria-hidden />
-            Nyatakan berangkat
-          </button>
+          {tahapPulling ? (
+            <button
+              type="button"
+              onClick={() => setConfirming('pick')}
+              disabled={pending || totalPicked === 0}
+              className="inline-flex h-12 items-center gap-2 rounded-full bg-accent px-7 text-[15px] font-semibold text-white transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <PackageOpen className="size-[18px]" strokeWidth={2.2} aria-hidden />
+              Tutup pulling
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirming('ship')}
+              disabled={pending || totalActual === 0}
+              className="inline-flex h-12 items-center gap-2 rounded-full bg-accent px-7 text-[15px] font-semibold text-white transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Truck className="size-[18px]" strokeWidth={2.2} aria-hidden />
+              Nyatakan berangkat
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setConfirming('cancel')}
@@ -169,9 +199,13 @@ export function LoadingActions({
             <Ban className="size-[18px]" strokeWidth={1.9} aria-hidden />
             Batalkan
           </button>
-          {totalActual === 0 ? (
+          {tahapPulling && totalPicked === 0 ? (
             <span className="text-[13px] text-ink-muted">
-              Belum ada kanban yang discan — muat barangnya dulu.
+              Belum ada kanban yang diambil — scan barangnya di layar pulling dulu.
+            </span>
+          ) : !tahapPulling && totalActual === 0 ? (
+            <span className="text-[13px] text-ink-muted">
+              Belum ada kanban yang dimuat — scan barangnya di layar muat dulu.
             </span>
           ) : null}
         </div>
@@ -186,16 +220,25 @@ export function LoadingActions({
             transition={{ duration: durations.base, ease: easeSoft }}
             className="rounded-card border border-line bg-card p-5"
           >
-            {confirming === 'ship' ? (
+            {confirming === 'pick' ? (
+              <>
+                <p className="text-[15px] font-bold">Tutup pulling?</p>
+                <p className="mt-1 text-[14px] text-ink-soft">
+                  <span className="tabular font-semibold text-ink">{totalPicked} kanban</span> dari
+                  rencana {totalPlanned} akan berpindah dari gudang barang jadi ke staging. Setelah
+                  ini barangnya siap dimuat, dan pulling tidak bisa dilanjutkan lagi.
+                </p>
+              </>
+            ) : confirming === 'ship' ? (
               <>
                 <p className="text-[15px] font-bold">Nyatakan berangkat?</p>
                 {/* Angka aktual ditegaskan di sini: yang keluar stok adalah yang
                     benar-benar discan, bukan rencananya. */}
                 <p className="mt-1 text-[14px] text-ink-soft">
-                  Stok akan berkurang sesuai jumlah yang benar-benar discan —{' '}
+                  Stok staging akan berkurang sesuai jumlah yang benar-benar dimuat —{' '}
                   <span className="tabular font-semibold text-ink">{totalActual} kanban</span> dari
-                  rencana {totalPlanned}. Setelah ini dokumen tidak bisa diubah lagi; koreksi harus
-                  dicatat sebagai penyesuaian stok.
+                  {' '}{totalPicked} yang diambil. Setelah ini dokumen tidak bisa diubah lagi;
+                  koreksi harus dicatat sebagai penyesuaian stok.
                 </p>
               </>
             ) : (
@@ -209,10 +252,14 @@ export function LoadingActions({
             <div className="mt-4 flex gap-3">
               <button
                 type="button"
-                onClick={() => void (confirming === 'ship' ? ship() : cancel())}
+                onClick={() =>
+                  void (confirming === 'pick' ? pick() : confirming === 'ship' ? ship() : cancel())
+                }
                 className={cn(
                   'inline-flex h-11 items-center rounded-full px-6 text-[14px] font-semibold text-white transition-colors',
-                  confirming === 'ship' ? 'bg-accent hover:bg-accent-soft' : 'bg-ng hover:opacity-90',
+                  confirming === 'cancel'
+                    ? 'bg-ng hover:opacity-90'
+                    : 'bg-accent hover:bg-accent-soft',
                 )}
               >
                 Ya, lanjutkan

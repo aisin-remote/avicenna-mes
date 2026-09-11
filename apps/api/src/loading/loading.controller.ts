@@ -72,13 +72,20 @@ export class LoadingController {
     return this.loading.scan(body, req.principal);
   }
 
-  /** Batalkan satu kanban terakhir pada sebuah baris. */
+  /** Batalkan satu kanban terakhir pada sebuah baris, pada tahap yang disebut. */
   @Post(':id/lines/:lineId/undo')
   undo(
     @Param('id', ParseIntPipe) id: number,
     @Param('lineId', ParseIntPipe) lineId: number,
+    @Query('phase') phase?: string,
   ) {
-    return this.loading.undoScan(id, lineId);
+    return this.loading.undoScan(id, lineId, phase === 'PULLING' ? 'PULLING' : 'LOADING');
+  }
+
+  /** Tutup pulling: barang berpindah dari gudang finish good ke staging. */
+  @Post(':id/pick')
+  pick(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+    return this.loading.completePicking(id, req.principal);
   }
 
   /** Tutup dokumen: barang berangkat, stok berkurang. */

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ScanLine, CheckCircle2, XCircle, AlertTriangle, Volume2, VolumeX, Undo2 } from 'lucide-react';
-import type { LoadingScanResult } from '@avicenna/contracts';
+import type { LoadingPhase, LoadingScanResult } from '@avicenna/contracts';
 import { scanKanbanAction, undoKanbanAction } from '@/app/(app)/delivery/actions';
 import type { LoadingDetail } from '@/lib/loading-api';
 import { useScanSound } from '../scan/use-scan-sound';
@@ -16,10 +16,27 @@ interface LineState {
   partNumber: string | null;
   partName: string | null;
   customerPartNumber: string | null;
+  /** Sasaran tahap ini: rencana saat pulling, hasil pulling saat muat. */
   plannedKanban: number;
   actualKanban: number;
   qtyPerKanban: number;
 }
+
+/** Kata-kata yang berbeda antara kedua tahap. Sisanya identik. */
+const KATA = {
+  PULLING: {
+    judul: 'Ambil dari gudang',
+    sisa: 'Sisa diambil',
+    muatan: 'Yang harus diambil',
+    selesai: 'Semua kanban sudah diambil. Tutup pulling di halaman pengiriman.',
+  },
+  LOADING: {
+    judul: 'Scan barcode kanban',
+    sisa: 'Sisa kanban',
+    muatan: 'Muatan',
+    selesai: 'Semua kanban sudah dimuat. Tutup dokumennya di halaman pengiriman.',
+  },
+} as const;
 
 /**
  * Layar muat barang — satu kanban satu scan.
@@ -36,9 +53,16 @@ interface LineState {
  * "diterima atau tidak", melainkan SISA — berapa kanban lagi yang harus naik ke
  * truk. Itu yang ditaruh paling besar.
  */
-export function LoadingScan({ doc }: { doc: LoadingDetail }) {
+export function LoadingScan({
+  doc,
+  phase = 'LOADING',
+}: {
+  doc: LoadingDetail;
+  phase?: LoadingPhase;
+}) {
+  const kata = KATA[phase];
   const [code, setCode] = useState('');
-  const [lines, setLines] = useState<LineState[]>(doc.lines.map(toLineState));
+  const [lines, setLines] = useState<LineState[]>(doc.lines.map((l) => toLineState(l, phase)));
   const [result, setResult] = useState<LoadingScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -119,6 +143,7 @@ export function LoadingScan({ doc }: { doc: LoadingDetail }) {
 
         const res = await scanKanbanAction({
           deliveryId: doc.id,
+          phase,
           customerPart: value,
           // Kunci idempoten dari sisi klien: kalau jaringan putus dan
           // permintaan dikirim ulang, kanban yang sama tidak terhitung dua kali.
@@ -150,7 +175,7 @@ export function LoadingScan({ doc }: { doc: LoadingDetail }) {
   }
 
   async function undo(lineId: number) {
-    const res = await undoKanbanAction(doc.id, lineId);
+    const res = await undoKanbanAction(doc.id, lineId, phase);
     focusInput();
     if ('error' in res) {
       setError(res.error);
@@ -174,7 +199,7 @@ export function LoadingScan({ doc }: { doc: LoadingDetail }) {
         <section className="rounded-card border border-line bg-card p-6">
           <div className="flex items-center justify-between">
             <label htmlFor="kanban" className="text-[15px] font-bold">
-              Scan barcode kanban
+              {kata.judul}
             </label>
             <button
               type="button"
@@ -300,7 +325,7 @@ export function LoadingScan({ doc }: { doc: LoadingDetail }) {
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-[13px] font-semibold uppercase tracking-wide text-ink-muted">
-                Sisa kanban
+                {kata.sisa}
               </p>
               {/* Angka terpenting di layar ini: berapa lagi yang harus naik truk. */}
               <p
@@ -321,14 +346,14 @@ export function LoadingScan({ doc }: { doc: LoadingDetail }) {
           </div>
           {done ? (
             <p className="mt-3 text-[14px] font-semibold text-ok">
-              Semua kanban sudah dimuat. Tutup dokumennya di halaman pengiriman.
+              {kata.selesai}
             </p>
           ) : null}
         </section>
 
         <section className="rounded-card border border-line bg-card">
           <header className="border-b border-line px-5 py-4">
-            <h2 className="text-[15px] font-bold">Muatan</h2>
+            <h2 className="text-[15px] font-bold">{kata.muatan}</h2>
           </header>
           <div className="scroll-slim overflow-x-auto">
             <table className="w-full text-[14px]">
@@ -406,14 +431,16 @@ export function LoadingScan({ doc }: { doc: LoadingDetail }) {
   );
 }
 
-function toLineState(l: LoadingDetail['lines'][number]): LineState {
+function toLineState(l: LoadingDetail['lines'][number], phase: LoadingPhase): LineState {
   return {
     id: l.id,
     partNumber: l.partNumber,
     partName: l.partName,
     customerPartNumber: l.customerPartNumber,
-    plannedKanban: l.plannedKanban,
-    actualKanban: l.actualKanban,
+    // Saat memuat, sasarannya bukan rencana melainkan yang benar-benar sudah
+    // diambil dari gudang — barang yang tidak ada di staging tidak bisa dimuat.
+    plannedKanban: phase === 'PULLING' ? l.plannedKanban : l.pickedKanban,
+    actualKanban: phase === 'PULLING' ? l.pickedKanban : l.actualKanban,
     qtyPerKanban: l.qtyPerKanban,
   };
 }

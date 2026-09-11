@@ -46,14 +46,15 @@ export default async function DeliveryListPage({
                 <Th>Customer</Th>
                 <Th>Tanggal</Th>
                 <Th align="right">Rit</Th>
-                <Th align="right">Kanban</Th>
+                <Th align="right">Diambil</Th>
+                <Th align="right">Dimuat</Th>
                 <Th>Status</Th>
                 <Th>Truk</Th>
               </tr>
             </thead>
             <tbody>
               {data.length === 0 ? (
-                <EmptyState colSpan={8}>
+                <EmptyState colSpan={9}>
                   Belum ada loading list. Tekan{' '}
                   <span className="font-semibold text-ink">Buat Loading List</span> untuk membuat
                   yang pertama.
@@ -78,13 +79,19 @@ export default async function DeliveryListPage({
                     <Td align="right" className="tabular">
                       {d.cycle}
                     </Td>
-                    {/* Aktual dan rencana berdampingan — selisihnya yang pertama ditanya
-                        ketika kiriman tidak sesuai. */}
+                    {/* Tiap tahap berdampingan dengan sasarannya — selisihnya yang
+                        pertama ditanya ketika kiriman tidak sesuai. */}
+                    <Td align="right" className="tabular whitespace-nowrap">
+                      <span className={d.pickedKanban > d.plannedKanban ? 'text-ng' : undefined}>
+                        {d.pickedKanban}
+                      </span>
+                      <span className="text-ink-muted"> / {d.plannedKanban}</span>
+                    </Td>
                     <Td align="right" strong className="tabular whitespace-nowrap">
-                      <span className={d.actualKanban > d.plannedKanban ? 'text-ng' : undefined}>
+                      <span className={d.actualKanban > d.pickedKanban ? 'text-ng' : undefined}>
                         {d.actualKanban}
                       </span>
-                      <span className="font-normal text-ink-muted"> / {d.plannedKanban}</span>
+                      <span className="font-normal text-ink-muted"> / {d.pickedKanban}</span>
                     </Td>
                     <Td>
                       <StatusChip status={d.status} />
