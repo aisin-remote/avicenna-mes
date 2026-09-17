@@ -31,6 +31,9 @@ export const timestamps = {
  *   UNIT  MELTING -> CASTING -> MACHINING -> ASSEMBLING_UNIT -> DELIVERY
  *   BODY  INJECTION -> PAINTING -> ASSEMBLING_BODY -> DELIVERY
  *
+ * Casting dan machining masing-masing punya lini WIP dan lini FG yang TERPISAH
+ * secara fisik — lihat FINISH_GOOD_PROCESSES di bawah.
+ *
  * ── Kenapa ASSEMBLING dipecah dua ───────────────────────────────────────────
  *
  * Di tabel rute AIIA, "Assembling" muncul sebagai DUA kolom terpisah: satu
@@ -46,29 +49,19 @@ export const timestamps = {
  * melewati Injection lalu langsung Assembling, sedangkan HANDLE melewati
  * Painting lebih dulu. Daftar ini hanya kosakata yang sah, bukan urutannya.
  */
-export const PROCESS_TYPES = [
-  'MELTING',
-  'CASTING',
-  'MACHINING',
-  'ASSEMBLING_UNIT',
-  'INJECTION',
-  'PAINTING',
-  'ASSEMBLING_BODY',
-  'DELIVERY',
-] as const;
-export type ProcessType = (typeof PROCESS_TYPES)[number];
-
-/** Label untuk layar. Dipisah supaya penggantian nama tidak menyentuh data. */
-export const PROCESS_LABELS: Record<ProcessType, string> = {
-  MELTING: 'Melting',
-  CASTING: 'Casting',
-  MACHINING: 'Machining',
-  ASSEMBLING_UNIT: 'Assembling (Unit)',
-  INJECTION: 'Injection',
-  PAINTING: 'Painting',
-  ASSEMBLING_BODY: 'Assembling (Body)',
-  DELIVERY: 'Delivery',
-};
+/*
+ * Diimpor dari @avicenna/contracts, TIDAK didefinisikan ulang di sini.
+ *
+ * Kolom enum di database dan pilihan di formulir harus selalu sama persis;
+ * dua daftar terpisah pernah menyimpang dua kali.
+ */
+export {
+  PROCESS_TYPES,
+  FINISH_GOOD_PROCESSES,
+  PROCESS_LABELS,
+  menghasilkanFinishGood,
+  type ProcessType,
+} from '@avicenna/contracts';
 
 /**
  * Jenis part menurut posisinya di rantai pasok.

@@ -3,13 +3,14 @@
 import { useActionState } from 'react';
 import { motion } from 'motion/react';
 import { AlertCircle, ArrowRight } from 'lucide-react';
-import { loginAction, type LoginState } from './actions';
+import { loginAction, loginQrAction, type LoginState } from './actions';
 import { durations, easeSoft } from '@/components/motion/transitions';
 
 const initial: LoginState = {};
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(loginAction, initial);
+  const [qrState, qrAction, qrPending] = useActionState(loginQrAction, initial);
 
   return (
     <main className="grid min-h-screen place-items-center p-5">
@@ -28,7 +29,49 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form action={formAction} className="mt-8 space-y-4">
+        {/*
+          Scan kartu ditaruh PALING ATAS.
+          Inilah cara masuk yang sebenarnya dipakai di lantai produksi — operator
+          memegang scanner, bukan papan ketik. Form NPK di bawahnya untuk saat
+          kartunya tertinggal atau rusak.
+        */}
+        <form action={qrAction} className="mt-8">
+          <label htmlFor="kartu" className="mb-2 block text-[14px] font-semibold">
+            Scan kartu
+          </label>
+          <input
+            id="kartu"
+            name="kartu"
+            autoComplete="off"
+            autoFocus
+            disabled={qrPending}
+            placeholder="arahkan scanner ke kartu"
+            className="w-full rounded-card border-2 border-line bg-card px-4 py-4 text-center text-[18px] font-bold tracking-wider outline-none focus-visible:border-ink"
+            onChange={(e) => {
+              /*
+               * Scanner mengetik lalu menekan Enter. Sebagian model tidak
+               * mengirim Enter sama sekali, jadi form dikirim begitu isinya
+               * lengkap — ada pemisah dan ada isi di kedua sisinya.
+               */
+              const v = e.currentTarget.value;
+              const p = v.indexOf('|');
+              if (p > 0 && v.length > p + 1) e.currentTarget.form?.requestSubmit();
+            }}
+          />
+          {qrState.error ? (
+            <p className="mt-2 text-[14px] text-ng" role="alert">
+              {qrState.error}
+            </p>
+          ) : null}
+        </form>
+
+        <div className="mt-6 flex items-center gap-3 text-[13px] text-ink-muted">
+          <span className="h-px flex-1 bg-line" />
+          atau masuk manual
+          <span className="h-px flex-1 bg-line" />
+        </div>
+
+        <form action={formAction} className="mt-6 space-y-4">
           <div>
             <label htmlFor="npk" className="mb-2 block text-[14px] font-semibold">
               NPK
@@ -37,7 +80,6 @@ export default function LoginPage() {
               id="npk"
               name="npk"
               autoComplete="username"
-              autoFocus
               required
               className="h-12 w-full rounded-2xl border border-line bg-surface px-4 text-[15px] outline-none transition-colors duration-200 focus:border-line-strong focus:bg-card"
             />

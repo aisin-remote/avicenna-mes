@@ -79,7 +79,7 @@ describe('pemilihan aturan', () => {
     try {
       expect(bacaBarcode('INJ-777', { processType: 'INJECTION' }).aturan).toBe('UJI_INJECTION');
       // Proses lain tidak boleh ikut memakainya.
-      expect(bacaBarcode('INJ-777', { processType: 'MACHINING' }).aturan).toBe('SERIAL_SAJA');
+      expect(bacaBarcode('INJ-777', { processType: 'MACHINING_WIP' }).aturan).toBe('SERIAL_SAJA');
       // Tanpa konteks pun tidak dipakai — lingkupnya belum terpenuhi.
       expect(bacaBarcode('INJ-777').aturan).toBe('SERIAL_SAJA');
     } finally {
@@ -117,7 +117,7 @@ describe('pemilihan aturan', () => {
 
   it('aturanBerlaku menyaring menurut keadaan', () => {
     expect(aturanBerlaku().map((a) => a.nama)).toContain('SERIAL_SAJA');
-    expect(aturanBerlaku({ processType: 'CASTING' }).length).toBe(DAFTAR_ATURAN.length);
+    expect(aturanBerlaku({ processType: 'CASTING_WIP' }).length).toBe(DAFTAR_ATURAN.length);
   });
 });
 
@@ -132,5 +132,48 @@ describe('punyaIdentitasPart', () => {
 
   it('salah bila hanya nomor seri — produksi tidak boleh lolos dengan ini', () => {
     expect(punyaIdentitasPart(bacaBarcode('SN00042'))).toBe(false);
+  });
+});
+
+describe('ATURAN_PROGRAM_15 — barcode produksi nyata', () => {
+  it('membaca 2 digit pertama sebagai program number', () => {
+    // Contoh nyata dari data sistem lama.
+    const h = bacaBarcode('12051421B22A276');
+    expect(h.aturan).toBe('PROGRAM_15');
+    expect(h.programCode).toBe('12');
+    expect(h.serialNumber).toBe('12051421B22A276');
+  });
+
+  it('SELURUH barcode menjadi identitas unit, bukan potongannya', () => {
+    /*
+     * Sistem lama menyimpan seluruh barcode sebagai kode unit dan tidak pernah
+     * membaca sisanya. Memotongnya di sini akan membuat dua unit berbeda
+     * terlihat sama.
+     */
+    const a = bacaBarcode('12051421B22A276');
+    const b = bacaBarcode('12051421B22A463');
+    expect(a.serialNumber).not.toBe(b.serialNumber);
+    expect(a.programCode).toBe(b.programCode);
+  });
+
+  it('tidak memuat nomor part — part diterjemahkan dari program number', () => {
+    const h = bacaBarcode('17041521B24A121');
+    expect(h.partNumber).toBeUndefined();
+    expect(h.backNumber).toBeUndefined();
+    expect(h.programCode).toBe('17');
+  });
+
+  it('panjang selain 15 tidak dipakai aturan ini', () => {
+    expect(bacaBarcode('12051421B22A27').aturan).toBe('SERIAL_SAJA');
+    expect(bacaBarcode('12051421B22A2765').aturan).toBe('SERIAL_SAJA');
+  });
+
+  it('dua karakter pertama harus angka', () => {
+    expect(bacaBarcode('AB051421B22A276').aturan).toBe('SERIAL_SAJA');
+  });
+
+  it('format berpemisah tetap menang', () => {
+    // Barcode ber-"|" 15 karakter tidak boleh direbut aturan program.
+    expect(bacaBarcode('12|B1|S1|3456').aturan).toBe('BERPEMISAH');
   });
 });

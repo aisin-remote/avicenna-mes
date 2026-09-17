@@ -85,6 +85,17 @@ export const customers = mysqlTable(
     ])
       .notNull()
       .default('NONE'),
+    /**
+     * Customer yang memakai kanban miliknya sendiri.
+     *
+     * Bedanya di dua tempat:
+     *   lini FG   yang ditempel kartu customer, bukan kartu internal
+     *   delivery  tidak scan apa pun — pasangannya sudah terbentuk sejak lini FG
+     *
+     * Customer biasa menempel kartu internal di lini FG, lalu di delivery
+     * dicocokkan tiga arah: loading list, kanban internal, kanban customer.
+     */
+    directKanban: boolean('FLG_DIRECT_KANBAN').notNull().default(false),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
@@ -225,6 +236,58 @@ export const partProcessesRelations = relations(partProcesses, ({ one }) => ({
   plant: one(plants, { fields: [partProcesses.plantId], references: [plants.id] }),
   part: one(parts, { fields: [partProcesses.partId], references: [parts.id] }),
   line: one(lines, { fields: [partProcesses.lineId], references: [lines.id] }),
+}));
+
+/**
+ * PROGRAM NUMBER — dua digit pertama pada barcode part.
+ *
+ * Diambil dari `avi_trace_program_number` sistem lama (944 baris). Dua digit itu
+ * yang menerjemahkan barcode menjadi part: sisa barcode tidak memuat nomor part
+ * sama sekali, hanya identitas unitnya.
+ *
+ * ── Kenapa berdiri sendiri, bukan kolom di TM_PARTS ─────────────────────────
+ *
+ * Satu part bisa punya BEBERAPA program number, satu per model. Pada data lama,
+ * kode "10" dan "15" sama-sama menunjuk part 243202-10630 tetapi model
+ * "OPN 889F" dan "OPN D81F". Menyimpannya sebagai kolom di part memaksa memilih
+ * salah satu, dan modelnya hilang.
+ *
+ * ── Dipakai untuk apa ───────────────────────────────────────────────────────
+ *
+ * 1. Menerjemahkan barcode 15 karakter menjadi part saat scan produksi.
+ * 2. Mencocokkan model part dengan kanban — kartu kanban terikat pada back
+ *    number, dan back number itu datang dari sini.
+ */
+export const programNumbers = mysqlTable(
+  'TM_PROGRAM_NUMBER',
+  {
+    id: pk(),
+    plantId: fk('INT_PLANT_ID')
+      .notNull()
+      .references(() => plants.id),
+    /** Dua digit pertama barcode. Unik per pabrik. */
+    code: varchar('CHR_CODE', { length: 4 }).notNull(),
+    partId: fk('INT_PART_ID')
+      .notNull()
+      .references(() => parts.id),
+    /** Model, mis. "OPN 889F". Inilah yang membedakan dua kode pada part yang sama. */
+    product: varchar('CHR_PRODUCT', { length: 64 }),
+    customerId: fk('INT_CUSTOMER_ID').references(() => customers.id),
+    /** Part rakitan — dipakai sistem lama membedakan perlakuan scan. */
+    isAssy: boolean('FLG_IS_ASSY').notNull().default(false),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('TM_PROGRAM_NUMBER_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
+    index('TM_PROGRAM_NUMBER_PART_IDX').on(t.partId),
+  ],
+);
+
+export const programNumbersRelations = relations(programNumbers, ({ one }) => ({
+  plant: one(plants, { fields: [programNumbers.plantId], references: [plants.id] }),
+  part: one(parts, { fields: [programNumbers.partId], references: [parts.id] }),
+  customer: one(customers, { fields: [programNumbers.customerId], references: [customers.id] }),
 }));
 
 /** Pemetaan part internal -> penomoran milik customer. */

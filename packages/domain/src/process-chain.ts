@@ -1,4 +1,11 @@
-import type { ProcessType } from '@avicenna/contracts';
+import { menghasilkanFinishGood, type ProcessType } from '@avicenna/contracts';
+
+/*
+ * Di-re-ekspor supaya pemakainya cukup satu impor: aturan rute dan pertanyaan
+ * "apakah lini ini menghasilkan finish good" selalu dipakai bersamaan.
+ * Definisinya tetap satu, di @avicenna/contracts.
+ */
+export { menghasilkanFinishGood };
 
 /**
  * Aturan urutan proses produksi.
@@ -84,7 +91,13 @@ export type ScanRejectReason =
   | 'PLANT_UNKNOWN'
   | 'BARCODE_UNREADABLE'
   | 'PART_NOT_RECOGNIZED'
-  | 'PROCESS_NOT_IN_ROUTE';
+  | 'PROCESS_NOT_IN_ROUTE'
+  | 'KANBAN_REQUIRED'
+  | 'KANBAN_UNREADABLE'
+  | 'KANBAN_NOT_REGISTERED'
+  | 'KANBAN_PART_MISMATCH'
+  | 'KANBAN_FULL'
+  | 'KANBAN_NOT_EXPECTED';
 
 /** Pesan untuk operator. Ditulis sebagai instruksi, bukan sekadar keterangan. */
 export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
@@ -102,6 +115,18 @@ export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
    */
   PART_NOT_RECOGNIZED: 'Part tidak dikenali dari barcode ini. JANGAN diproses — laporkan ke leader.',
   PROCESS_NOT_IN_ROUTE: 'Part ini tidak melewati proses di lini ini. Periksa part-nya.',
+
+  /*
+   * Enam alasan seputar kanban. Dipisah sedetail ini karena operator harus tahu
+   * APA yang keliru tanpa memanggil siapa pun: kartunya, part-nya, atau
+   * kartunya sudah terpakai — masing-masing tindakannya berbeda.
+   */
+  KANBAN_REQUIRED: 'Lini ini wajib scan kanban. Scan kartu kanbannya.',
+  KANBAN_UNREADABLE: 'Barcode kanban tidak terbaca. Scan ulang kartunya.',
+  KANBAN_NOT_REGISTERED: 'Kartu kanban ini belum terdaftar. Laporkan ke leader.',
+  KANBAN_PART_MISMATCH: 'Kartu kanban ini bukan untuk part tersebut. Ambil kartu yang benar.',
+  KANBAN_FULL: 'Kartu kanban ini sudah terisi penuh. Ambil kartu kosong.',
+  KANBAN_NOT_EXPECTED: 'Lini ini tidak memakai kanban. Cukup scan part code.',
 };
 
 /**
@@ -115,4 +140,69 @@ export function programCodeOf(barcode: string): string | undefined {
   const trimmed = barcode.trim();
   if (trimmed.length < 2) return undefined;
   return trimmed.slice(0, 2);
+}
+
+/**
+ * Memeriksa kewajaran sebuah rute.
+ *
+ * ── Aturan yang diperiksa ───────────────────────────────────────────────────
+ *
+ * 1. Langkah TEPAT SEBELUM Delivery harus lini FG. Sejak titik itu barang
+ *    berpindah sebagai kanban, dan di delivery part code sudah tidak discan
+ *    sama sekali — rute yang berakhir di lini WIP menghasilkan barang yang
+ *    tidak punya kanban, dan barang itu tidak akan pernah bisa dikirim.
+ *
+ * 2. Lini FG tidak boleh berada di tengah rute. Kanban ditempel sekali, di
+ *    langkah terakhir; menempelkannya lalu memprosesnya lagi membuat kanban
+ *    menunjuk barang yang sudah berubah bentuk.
+ *
+ * 3. Rute yang memuat Delivery harus punya tepat satu lini FG.
+ *
+ * Mengembalikan daftar masalah dalam bahasa yang terbaca di layar; kosong
+ * berarti rutenya wajar.
+ */
+export function periksaRute(rute: readonly LangkahRute[]): string[] {
+  if (rute.length === 0) return [];
+
+  const urut = ruteTerurut(rute);
+  const fg = urut.filter((l) => menghasilkanFinishGood(l.processType));
+  const punyaDelivery = urut.some((l) => l.processType === 'DELIVERY');
+  const masalah: string[] = [];
+
+  if (!punyaDelivery) {
+    // Rute yang berhenti sebagai WIP memang ada — komponen setengah jadi yang
+    // dipakai proses lain. Yang tidak wajar justru bila ia punya lini FG.
+    if (fg.length > 0) {
+      masalah.push(
+        `rute tanpa Delivery tidak seharusnya melewati lini finish good (${fg
+          .map((l) => l.processType)
+          .join(', ')})`,
+      );
+    }
+    return masalah;
+  }
+
+  const posisiDelivery = urut.findIndex((l) => l.processType === 'DELIVERY');
+  if (posisiDelivery !== urut.length - 1) {
+    masalah.push('Delivery harus menjadi langkah terakhir');
+  }
+
+  if (fg.length === 0) {
+    masalah.push(
+      'rute berakhir di Delivery tetapi tidak melewati lini finish good — barangnya tidak akan punya kanban',
+    );
+  } else if (fg.length > 1) {
+    masalah.push(
+      `rute melewati lebih dari satu lini finish good (${fg.map((l) => l.processType).join(', ')})`,
+    );
+  } else {
+    const sebelumDelivery = urut[posisiDelivery - 1];
+    if (sebelumDelivery && sebelumDelivery.processType !== fg[0]!.processType) {
+      masalah.push(
+        `langkah sebelum Delivery adalah ${sebelumDelivery.processType}, bukan lini finish good`,
+      );
+    }
+  }
+
+  return masalah;
 }

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar } from './sidebar';
+import type { NavGroup } from './nav-config';
+import type { PenggunaShell } from './pengguna';
 import { Topbar } from './topbar';
 import { SettingsPanel } from './settings-panel';
 import { usePreferences } from './preferences-provider';
@@ -23,12 +25,14 @@ import { durations, easeSoft } from '../motion/transitions';
  * kolomnya banyak jadi tidak terbaca.
  */
 export function ShellFrame({
-  userName,
-  role,
+  pengguna,
+  navGroups,
   children,
 }: {
-  userName: string;
-  role: string | null;
+  /** Identitas yang sedang masuk — dibaca server dari database. */
+  pengguna: PenggunaShell;
+  /** Menu yang boleh dilihat orang ini — disusun di server. */
+  navGroups: NavGroup[];
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -71,7 +75,7 @@ export function ShellFrame({
 
   return (
     <div className="flex h-dvh overflow-hidden bg-shell">
-      <Sidebar userName={userName} role={role} open={menuOpen} mode={prefs.sidebar} />
+      <Sidebar pengguna={pengguna} groups={navGroups} open={menuOpen} mode={prefs.sidebar} />
 
       {/* Lapisan gelap hanya muncul saat panel geser terbuka di layar sempit. */}
       <AnimatePresence>
@@ -93,8 +97,7 @@ export function ShellFrame({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
-          userName={userName}
-          role={role}
+          pengguna={pengguna}
           navOpen={menuOpen}
           onToggleNav={() => setMenuOpen((v) => !v)}
           onOpenSettings={() => setSettingsOpen(true)}

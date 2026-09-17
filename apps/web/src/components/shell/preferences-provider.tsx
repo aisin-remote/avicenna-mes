@@ -3,10 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   DEFAULT_PREFERENCES,
-  PREFERENCES_KEY,
-  readPreferences,
+  PREFERENCES_COOKIE,
+  htmlAttributes,
   resolveTheme,
+  serializePreferences,
   type Preferences,
+  type StoredPreferences,
 } from '@/lib/preferences';
 
 interface PreferencesContextValue {
@@ -17,78 +19,79 @@ interface PreferencesContextValue {
 
 const PreferencesContext = createContext<PreferencesContextValue | null>(null);
 
+/** Cookie berumur panjang: ini pilihan perangkat, bukan sesi login. */
+const SETAHUN = 60 * 60 * 24 * 365;
+
+function tulisCookie(prefs: Preferences, resolved: 'light' | 'dark') {
+  try {
+    const nilai = encodeURIComponent(serializePreferences(prefs, resolved));
+    // SameSite=Lax sudah cukup: isinya hanya pilihan tampilan, bukan kredensial.
+    document.cookie = `${PREFERENCES_COOKIE}=${nilai}; path=/; max-age=${SETAHUN}; samesite=lax`;
+  } catch {
+    // Cookie bisa diblokir kebijakan perangkat. Pilihannya tetap berlaku untuk
+    // sesi ini; yang hilang hanya kemampuan server mengingatnya.
+  }
+}
+
 /**
  * Menyimpan dan menerapkan preferensi tampilan.
  *
- * Render pertama SELALU memakai nilai bawaan, lalu nilai tersimpan dibaca di
- * useEffect. Membaca localStorage saat render akan membuat hasil render server
- * dan klien berbeda, dan React membatalkan hidrasinya — halaman tetap tampil
- * tetapi tombol dan formulir diam saja tanpa pesan error apa pun.
+ * ── Nilai awal datang dari server ───────────────────────────────────────────
  *
- * Supaya tidak ada kedipan tema, atribut pada <html> sudah dipasang lebih dulu
- * oleh skrip kecil di root layout, sebelum halaman digambar. Efek di sini hanya
- * menyamakan keadaan React dengan apa yang sudah terpasang.
+ * Root layout membaca cookie dan sudah menstempel <html>, lalu mengoper hasil
+ * bacaan itu ke sini sebagai `initial`. Dengan begitu render pertama klien
+ * sama persis dengan render server — tidak ada ketidakcocokan hidrasi, dan
+ * tidak ada kedipan tema.
+ *
+ * ── Yang masih dikerjakan di klien ──────────────────────────────────────────
+ *
+ * Hanya pilihan 'ikut sistem'. Server tidak tahu pengaturan OS pengunjung, jadi
+ * klien yang menyelesaikannya lalu menuliskan hasilnya kembali ke cookie —
+ * supaya kunjungan berikutnya sudah benar sejak HTML pertama.
  */
-export function PreferencesProvider({ children }: { children: React.ReactNode }) {
-  const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
-  const [loaded, setLoaded] = useState(false);
+export function PreferencesProvider({
+  initial,
+  children,
+}: {
+  initial?: StoredPreferences;
+  children: React.ReactNode;
+}) {
+  const [prefs, setPrefs] = useState<Preferences>(initial ?? DEFAULT_PREFERENCES);
 
-  useEffect(() => {
-    let stored: string | null = null;
-    try {
-      stored = window.localStorage.getItem(PREFERENCES_KEY);
-    } catch {
-      // Penyimpanan bisa diblokir (mode privat, kebijakan perangkat). Bukan
-      // alasan untuk menggagalkan halaman — nilai bawaan tetap jalan.
+  const terapkan = useCallback((next: Preferences, resolved: 'light' | 'dark') => {
+    const root = document.documentElement;
+    for (const [nama, nilai] of Object.entries(htmlAttributes({ ...next, resolved }))) {
+      root.setAttribute(nama, nilai);
     }
-    setPrefs(readPreferences(stored));
-    setLoaded(true);
+    root.style.colorScheme = resolved;
   }, []);
 
-  // Menerapkan ke <html> supaya CSS yang mengurus tampilannya, dan preferensi
-  // ikut berlaku di layar stasiun yang tidak memakai kerangka aplikasi.
+  /*
+   * Menyelaraskan 'ikut sistem' dengan pengaturan OS.
+   *
+   * Dua peran: membetulkan stempel server bila OS ternyata berbeda dari yang
+   * tercatat di cookie, dan mengikuti perubahan pengaturan OS tanpa perlu
+   * memuat ulang halaman.
+   */
   useEffect(() => {
-    if (!loaded) return;
-    const root = document.documentElement;
     const media = window.matchMedia('(prefers-color-scheme: dark)');
-
-    const apply = () => {
-      root.dataset.theme = resolveTheme(prefs.theme, media.matches);
-      root.dataset.accent = prefs.accent;
-      root.dataset.sidebar = prefs.sidebar;
-      // Memberi tahu browser warna asli halaman, supaya scrollbar dan kolom
-      // isian bawaan ikut gelap alih-alih tetap putih menyilaukan.
-      root.style.colorScheme = resolveTheme(prefs.theme, media.matches);
+    const selaraskan = () => {
+      const resolved = resolveTheme(prefs.theme, media.matches);
+      terapkan(prefs, resolved);
+      tulisCookie(prefs, resolved);
     };
-    apply();
+    selaraskan();
 
-    // Saat mengikuti sistem, tema harus ikut berubah ketika pengaturan OS
-    // berganti — tanpa perlu memuat ulang halaman.
     if (prefs.theme !== 'system') return;
-    media.addEventListener('change', apply);
-    return () => media.removeEventListener('change', apply);
-  }, [prefs, loaded]);
+    media.addEventListener('change', selaraskan);
+    return () => media.removeEventListener('change', selaraskan);
+  }, [prefs, terapkan]);
 
   const set = useCallback<PreferencesContextValue['set']>((key, value) => {
-    setPrefs((prev) => {
-      const next = { ...prev, [key]: value };
-      try {
-        window.localStorage.setItem(PREFERENCES_KEY, JSON.stringify(next));
-      } catch {
-        // Tersimpan atau tidak, pilihannya tetap berlaku untuk sesi ini.
-      }
-      return next;
-    });
+    setPrefs((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const reset = useCallback(() => {
-    setPrefs(DEFAULT_PREFERENCES);
-    try {
-      window.localStorage.removeItem(PREFERENCES_KEY);
-    } catch {
-      /* lihat catatan di atas */
-    }
-  }, []);
+  const reset = useCallback(() => setPrefs(DEFAULT_PREFERENCES), []);
 
   const value = useMemo(() => ({ prefs, set, reset }), [prefs, set, reset]);
 

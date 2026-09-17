@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 
 interface Matriks {
   proses: string[];
+  finishGood: string[];
   baris: BarisMatriks[];
 }
 
@@ -18,6 +19,7 @@ export default async function RutePage() {
   ]);
 
   const tanpaRute = matriks.baris.filter((b) => Object.keys(b.rute).length === 0).length;
+  const bermasalah = matriks.baris.filter((b) => b.masalah.length > 0).length;
 
   return (
     <>
@@ -46,8 +48,22 @@ export default async function RutePage() {
             </p>
           ) : null}
 
+          {/* Rute yang melanggar aturan lini finish good perlu terlihat lebih
+              dulu: barangnya tidak akan punya kanban, dan itu baru ketahuan
+              saat truk sudah menunggu di dock. */}
+          {bermasalah > 0 ? (
+            <p className="mb-5 flex items-start gap-2 rounded-card border border-ng/40 bg-ng/10 px-4 py-3 text-[14px] text-ng">
+              <Route className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
+              <span>
+                <strong>{bermasalah} rute tidak wajar.</strong> Rincian masalahnya ada di kolom
+                paling kanan masing-masing baris.
+              </span>
+            </p>
+          ) : null}
+
           <MatriksRute
             proses={matriks.proses}
+            finishGood={matriks.finishGood}
             baris={matriks.baris}
             liniPerProses={liniPerProses}
           />

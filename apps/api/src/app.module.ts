@@ -6,7 +6,10 @@ import { QueueModule } from './queue/queue.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { AdminGuard } from './auth/admin.guard';
 import { ScanModule } from './scan/scan.module';
+import { NgModule } from './ng/ng.module';
+import { AdminModule } from './admin/admin.module';
 import { MasterModule } from './master/master.module';
 import { ReceivingModule } from './receiving/receiving.module';
 import { TraceModule } from './trace/trace.module';
@@ -33,6 +36,8 @@ import { loadEnv } from './config/env';
     RealtimeModule,
     AuthModule,
     ScanModule,
+    NgModule,
+    AdminModule,
     MasterModule,
     ReceivingModule,
     TraceModule,
@@ -49,6 +54,12 @@ import { loadEnv } from './config/env';
     // Semua endpoint butuh token kecuali yang ditandai @Public().
     // Default aman: endpoint baru tidak akan tidak sengaja terbuka.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    /*
+     * URUTAN PENTING: AdminGuard membaca req.principal yang baru diisi
+     * JwtAuthGuard. Dibalik, ia selalu melihat principal kosong dan menolak
+     * semua orang — termasuk admin.
+     */
+    { provide: APP_GUARD, useClass: AdminGuard },
   ],
 })
 export class AppModule {}

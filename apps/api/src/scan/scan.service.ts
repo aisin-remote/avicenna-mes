@@ -1,6 +1,9 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { eq, and, desc, gte, lt, count, type Database } from '@avicenna/db';
-import { scanEvents, lines, parts, machines, mutations, plants, partProcesses } from '@avicenna/db';
+import { Injectable, Logger, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { eq, and, desc, gte, lt, count, inArray, type Database } from '@avicenna/db';
+import {
+  scanEvents, lines, parts, machines, mutations, plants, partProcesses,
+  kanbans, kanbanItems, kanbanEvents, programNumbers, users, roles,
+} from '@avicenna/db';
 import {
   normalizeScan,
   bacaBarcode,
@@ -11,6 +14,13 @@ import {
   productionDayWindow,
   prosesSebelumnya,
   prosesAdaDiRute,
+  menghasilkanFinishGood,
+  grupProses,
+  prosesDalamGrup,
+  bolehScanDi,
+  PROCESS_GROUP_LABELS,
+  bacaKanban,
+  KanbanTidakTerbaca,
   programCodeOf,
   REJECT_MESSAGES,
   type ScanRejectReason,
@@ -143,7 +153,15 @@ export class ScanService {
       throw err;
     }
 
-    const part = await this.resolvePart(parsed.partNumber, parsed.backNumber, line?.plantId);
+    /*
+     * Barcode produksi 15 karakter TIDAK memuat nomor part.
+     *
+     * Yang ada hanya dua digit program number di depan, dan itulah yang
+     * menerjemahkannya lewat TM_PROGRAM_NUMBER. Tanpa penerjemahan ini, seluruh
+     * scan produksi di lantai akan ditolak sebagai "part tidak dikenali" —
+     * karena memang tidak ada nomor part untuk dicari.
+     */
+    const { part, model: programModel } = await this.kenaliPart(parsed, line?.plantId);
 
     /*
      * Produksi WAJIB mengenali part-nya.
@@ -157,9 +175,16 @@ export class ScanService {
      * bekerja per nomor seri dan tidak selalu menyebut part.
      */
     if (normalized.kind === 'PRODUCTION' && !part) {
-      const sebab = punyaIdentitasPart(parsed)
-        ? `part "${parsed.partNumber ?? parsed.backNumber}" tidak ada di master`
-        : `barcode terbaca aturan ${parsed.aturan} yang tidak memuat nomor part`;
+      /*
+       * Sebab disebut sejelas mungkin. Ketiganya menuntut tindakan berbeda:
+       * program number belum didaftarkan (urusan master), part memang tidak ada,
+       * atau barcodenya tidak memuat identitas part sama sekali.
+       */
+      const sebab = parsed.programCode
+        ? `program number "${parsed.programCode}" belum terdaftar di master`
+        : punyaIdentitasPart(parsed)
+          ? `part "${parsed.partNumber ?? parsed.backNumber}" tidak ada di master`
+          : `barcode terbaca aturan ${parsed.aturan} yang tidak memuat nomor part`;
       this.logger.warn(`scan produksi ditolak — ${sebab}: ${normalized.rawCode}`);
       throw new ScanRejected(
         'PART_NOT_RECOGNIZED',
@@ -257,6 +282,119 @@ export class ScanService {
       }
     }
 
+    /*
+     * ── Kanban di lini finish good ────────────────────────────────────────
+     *
+     * Lini FG menempelkan kartu kanban ke barang jadi; sejak titik itu barang
+     * berpindah sebagai kanban, dan di delivery part code tidak discan lagi.
+     * Lini WIP tidak memakai kanban sama sekali.
+     *
+     * Diperiksa SEBELUM scan ditulis. Menulis scan lebih dulu lalu menempel
+     * kanban sesudahnya membuka keadaan yang mustahil dibereskan: produksi
+     * tercatat, stok bertambah, tetapi barangnya tidak punya kanban dan tidak
+     * akan pernah bisa dikirim.
+     */
+    let kanbanTerpilih: { id: number; sisa: number } | undefined;
+
+    if (normalized.kind === 'PRODUCTION' && processType && part) {
+      const wajibKanban = menghasilkanFinishGood(processType);
+
+      if (!wajibKanban && normalized.kanbanCode) {
+        throw new ScanRejected('KANBAN_NOT_EXPECTED', REJECT_MESSAGES.KANBAN_NOT_EXPECTED);
+      }
+
+      if (wajibKanban) {
+        if (!normalized.kanbanCode) {
+          throw new ScanRejected('KANBAN_REQUIRED', REJECT_MESSAGES.KANBAN_REQUIRED);
+        }
+
+        let kb;
+        try {
+          kb = bacaKanban(normalized.kanbanCode, konteksBarcode);
+        } catch (err) {
+          if (err instanceof KanbanTidakTerbaca) {
+            throw new ScanRejected('KANBAN_UNREADABLE', REJECT_MESSAGES.KANBAN_UNREADABLE);
+          }
+          throw err;
+        }
+
+        /*
+         * Back number pada kartu WAJIB cocok dengan part-nya.
+         *
+         * Seri kanban tidak unik antar part: "1001" ada pada beberapa part
+         * sekaligus. Tanpa pemeriksaan ini, operator yang mengambil kartu part
+         * lain akan diterima begitu serinya kebetulan sama — dan barangnya
+         * terkirim atas nama part yang keliru.
+         *
+         * Ini padanan pemeriksaan "notmatch" di sistem lama, yang mencocokkan
+         * back number kartu dengan back number part sebelum menempel.
+         */
+        if (kb.backNumber && part.backNumber && kb.backNumber !== part.backNumber) {
+          throw new ScanRejected(
+            'KANBAN_PART_MISMATCH',
+            `${REJECT_MESSAGES.KANBAN_PART_MISMATCH} ` +
+              `(kartu untuk ${kb.backNumber}, part ini ${part.backNumber})`,
+          );
+        }
+
+        /*
+         * Kartu dicari dengan (part, seri) — bukan seri saja.
+         *
+         * Seri kanban TIDAK unik antar part: "1001" bisa ada pada beberapa part
+         * sekaligus. Mencarinya dengan seri saja akan menemukan kartu milik part
+         * lain, dan barangnya terkirim atas nama part yang keliru.
+         */
+        const [kartu] = await this.db
+          .select({
+            id: kanbans.id,
+            unitPerKanban: kanbans.unitPerKanban,
+            isActive: kanbans.isActive,
+          })
+          .from(kanbans)
+          .where(
+            and(
+              eq(kanbans.partId, part.id),
+              eq(kanbans.serialNumber, kb.serialNumber ?? ''),
+            ),
+          )
+          .limit(1);
+
+        if (!kartu || !kartu.isActive) {
+          /*
+           * Dibedakan: kartu yang serinya ada pada part LAIN adalah "salah
+           * kartu" (operator mengambil kartu yang keliru), sedangkan yang tidak
+           * ada di mana pun adalah "belum terdaftar". Tindakannya berbeda.
+           */
+          const [adaDiPartLain] = await this.db
+            .select({ id: kanbans.id })
+            .from(kanbans)
+            .where(eq(kanbans.serialNumber, kb.serialNumber ?? ''))
+            .limit(1);
+
+          throw new ScanRejected(
+            adaDiPartLain ? 'KANBAN_PART_MISMATCH' : 'KANBAN_NOT_REGISTERED',
+            adaDiPartLain
+              ? `${REJECT_MESSAGES.KANBAN_PART_MISMATCH} (seri ${kb.serialNumber} bukan milik ${part.partNumber})`
+              : `${REJECT_MESSAGES.KANBAN_NOT_REGISTERED} (seri ${kb.serialNumber})`,
+          );
+        }
+
+        const [terisi] = await this.db
+          .select({ n: count() })
+          .from(kanbanItems)
+          .where(eq(kanbanItems.kanbanId, kartu.id));
+
+        const sisa = kartu.unitPerKanban - Number(terisi?.n ?? 0);
+        if (sisa <= 0) {
+          throw new ScanRejected(
+            'KANBAN_FULL',
+            `${REJECT_MESSAGES.KANBAN_FULL} (seri ${kb.serialNumber}, muat ${kartu.unitPerKanban})`,
+          );
+        }
+        kanbanTerpilih = { id: kartu.id, sisa };
+      }
+    }
+
     let insertedId: number | undefined;
 
     try {
@@ -276,7 +414,12 @@ export class ScanService {
         dedupeKey: normalized.dedupeKey,
         // Aturan baca ikut dicatat: saat sebuah barcode terbaca keliru,
         // pertanyaan pertama selalu "dibaca pakai aturan mana".
-        meta: { ...(normalized.meta ?? {}), aturanBarcode: parsed.aturan },
+        meta: {
+          ...(normalized.meta ?? {}),
+          aturanBarcode: parsed.aturan,
+          ...(parsed.programCode ? { programNumber: parsed.programCode } : {}),
+          ...(programModel ? { model: programModel } : {}),
+        },
       });
       // mysql2 mengembalikan insertId pada elemen pertama hasil insert.
       insertedId = Number((inserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
@@ -285,6 +428,41 @@ export class ScanService {
         return { duplicated: true, productionDate: prodDate, qty: 0 };
       }
       throw err;
+    }
+
+    /*
+     * Menempelkan unit ke kartu.
+     *
+     * Sesudah scan tersimpan supaya bisa menunjuk balik ke scan-nya. Unique
+     * index pada nomor seri unit yang menjaga satu barang tidak ikut dua
+     * kanban — bukan pemeriksaan di sini, yang bisa kalah balapan saat dua
+     * operator men-scan bersamaan.
+     */
+    if (kanbanTerpilih && insertedId) {
+      const seriUnit = parsed.serialNumber ?? normalized.rawCode;
+      try {
+        await this.db.insert(kanbanItems).values({
+          kanbanId: kanbanTerpilih.id,
+          serialNumber: seriUnit,
+          scanEventId: insertedId,
+          attachedAt: normalized.scannedAt,
+        });
+        await this.db.insert(kanbanEvents).values({
+          kanbanId: kanbanTerpilih.id,
+          type: 'PAIRED',
+          lineId: line?.id ?? null,
+          userId: principal?.kind === 'user' ? principal.sub : null,
+          deviceId: principal?.kind === 'device' ? principal.sub : null,
+          occurredAt: normalized.scannedAt,
+          meta: { serialUnit: seriUnit, scanEventId: insertedId },
+        });
+      } catch (err) {
+        if (isDuplicateKey(err)) {
+          this.logger.warn(`unit ${seriUnit} sudah menempel pada kanban lain`);
+        } else {
+          throw err;
+        }
+      }
     }
 
     // Scan produksi menambah stok; jenis scan lain belum menulis mutasi
@@ -411,6 +589,49 @@ export class ScanService {
     }
 
     return undefined;
+  }
+
+  /**
+   * Mengenali part dari barcode yang SUDAH dibaca.
+   *
+   * Dua jalur, dalam urutan ini:
+   *   1. nomor part / back number yang tertulis di barcode
+   *   2. dua digit program number di depan barcode produksi 15 karakter
+   *
+   * Jalur kedua ada karena barcode produksi TIDAK memuat nomor part sama sekali
+   * — tanpa penerjemahan lewat TM_PROGRAM_NUMBER, seluruh scan di lantai akan
+   * ditolak sebagai "part tidak dikenali".
+   *
+   * Publik supaya pencatatan NG memakai pengenalan yang PERSIS SAMA. Menyalin
+   * logikanya ke sana berarti dua salinan yang akan menyimpang: barang yang
+   * dikenali saat discan baik bisa jadi tidak dikenali saat dinyatakan NG, dan
+   * operator ditolak tanpa sebab yang bisa ia perbaiki.
+   */
+  async kenaliPart(
+    parsed: { partNumber?: string; backNumber?: string; programCode?: string },
+    plantId?: number,
+  ): Promise<{ part?: typeof parts.$inferSelect; model: string | null }> {
+    const part = await this.resolvePart(parsed.partNumber, parsed.backNumber, plantId);
+    if (part) return { part, model: null };
+
+    if (!parsed.programCode) return { part: undefined, model: null };
+
+    const [pn] = await this.db
+      .select({ partId: programNumbers.partId, product: programNumbers.product })
+      .from(programNumbers)
+      .where(
+        plantId
+          ? and(
+              eq(programNumbers.code, parsed.programCode),
+              eq(programNumbers.plantId, plantId),
+              eq(programNumbers.isActive, true),
+            )
+          : and(eq(programNumbers.code, parsed.programCode), eq(programNumbers.isActive, true)),
+      )
+      .limit(1);
+
+    if (!pn) return { part: undefined, model: null };
+    return { part: await this.partById(pn.partId), model: pn.product };
   }
 
   /**
@@ -629,6 +850,131 @@ export class ScanService {
       .orderBy(desc(scanEvents.scannedAt))
       .limit(Math.min(limit, 200));
   }
+  /**
+   * Lini pada sebuah grup proses — isi modal pemilih lini.
+   *
+   * Disaring ke pabrik pengguna: operator di satu pabrik tidak pernah berdiri
+   * di lini pabrik lain, dan menampilkannya hanya memperbesar peluang salah
+   * pilih.
+   */
+  async liniGrup(grup: string, principal?: Principal) {
+    const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[0];
+    const jenis = prosesDalamGrup(g);
+    if (jenis.length === 0) {
+      throw new BadRequestException(`Grup proses "${grup}" tidak dikenal`);
+    }
+
+    const rows = await this.db
+      .select({
+        id: lines.id,
+        code: lines.code,
+        name: lines.name,
+        processType: lines.processType,
+        plantCode: plants.code,
+      })
+      .from(lines)
+      .leftJoin(plants, eq(lines.plantId, plants.id))
+      .where(
+        and(
+          inArray(lines.processType, jenis),
+          eq(lines.isActive, true),
+          ...(principal?.plantId ? [eq(lines.plantId, principal.plantId)] : []),
+        ),
+      )
+      .orderBy(lines.sortOrder);
+
+    return { grup: g, label: PROCESS_GROUP_LABELS[g], lines: rows };
+  }
+
+  /**
+   * Membuka lini dari barcode yang discan operator.
+   *
+   * Barcode lini hanya memuat kodenya (mis. "DCAA01"). Yang diperiksa di sini
+   * ada tiga, dan ketiganya menolak dengan sebab yang berbeda supaya operator
+   * tahu tindakannya:
+   *
+   *   1. Lini itu ada dan aktif
+   *   2. Lini itu memang bagian dari grup yang sedang dibuka
+   *   3. Role orangnya boleh men-scan di situ
+   *
+   * Pemeriksaan ketiga ada DI SERVER, bukan hanya di layar: endpoint scan bisa
+   * dipanggil langsung, dan pembatasan yang hanya ada di browser bukan
+   * pembatasan.
+   */
+  async bukaLini(kode: string, grup: string, principal?: Principal) {
+    const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[0];
+    const bersih = kode.trim();
+
+    const [line] = await this.db
+      .select()
+      .from(lines)
+      .where(and(eq(lines.code, bersih), eq(lines.isActive, true)))
+      .limit(1);
+
+    /*
+     * BadRequestException, bukan ScanRejected.
+     *
+     * ScanRejected adalah Error biasa: Nest menjadikannya 500 dan operator
+     * membaca "terjadi kesalahan pada server" — padahal sebabnya jelas dan
+     * tindakannya ada di tangannya. Di station() ia ditangkap dan dipetakan,
+     * di sini tidak ada yang menangkapnya.
+     */
+    if (!line) {
+      throw new BadRequestException(`${REJECT_MESSAGES.LINE_NOT_FOUND} (${bersih})`);
+    }
+
+    if (grupProses(line.processType) !== g) {
+      throw new BadRequestException(
+        `Lini ${bersih} bukan lini ${PROCESS_GROUP_LABELS[g] ?? grup}. Periksa barcode lininya.`,
+      );
+    }
+
+    if (principal?.kind === 'user') {
+      /*
+       * Jabatan dibaca dari DATABASE, bukan dari salinan di dalam token.
+       *
+       * Token memuat salinan pada saat login dan berlaku delapan jam. Salinan
+       * itu basi dalam dua keadaan yang dua-duanya nyata: role orangnya diubah
+       * siang ini, atau token diterbitkan API versi lama yang belum menyertakan
+       * jabatan sama sekali.
+       *
+       * Yang kedua pernah terjadi di layar pengaturan: administrator sungguhan
+       * dilempar kembali ke dashboard karena tokennya tidak menyebut jabatan
+       * apa pun. Di sini akibatnya jauh lebih mahal — `?? 'VIEW'` membuat lasman
+       * dengan token lama ditolak membuka lininya sendiri dengan pesan "tidak
+       * berwenang", dan satu lini berhenti berproduksi sampai ada yang menebak
+       * bahwa keluar-masuk lagi adalah jalan keluarnya.
+       *
+       * Dibaca sekali saat membuka lini, bukan tiap scan — biayanya satu query
+       * per shift.
+       */
+      const [aku] = await this.db
+        .select({ kind: roles.kind, processGroup: roles.processGroup, aktif: roles.isActive })
+        .from(users)
+        .leftJoin(roles, eq(users.roleId, roles.id))
+        .where(eq(users.id, principal.sub))
+        .limit(1);
+
+      if (!aku?.kind || !aku.aktif) {
+        throw new ForbiddenException(
+          'Akun Anda belum punya role yang aktif. Hubungi administrator.',
+        );
+      }
+
+      const boleh = bolehScanDi(
+        { kind: aku.kind, processGroup: aku.processGroup },
+        line.processType,
+      );
+      if (!boleh) {
+        throw new ForbiddenException(
+          `Role Anda tidak berwenang men-scan di lini ${bersih}. Hubungi leader.`,
+        );
+      }
+    }
+
+    // Ringkasan ikut dikirim supaya layar tidak perlu permintaan kedua.
+    return this.summary(line.code);
+  }
 }
 
 /**
@@ -651,4 +997,6 @@ function isDuplicateKey(err: unknown): boolean {
     }
   }
   return false;
+
+
 }

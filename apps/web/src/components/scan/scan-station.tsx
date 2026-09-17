@@ -2,9 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ScanLine, CheckCircle2, XCircle, CopyX, Volume2, VolumeX } from 'lucide-react';
-import type { StationResult, StationSummary } from '@avicenna/contracts';
+import {
+  ScanLine, CheckCircle2, XCircle, CopyX, Volume2, VolumeX, AlertTriangle, LogOut,
+} from 'lucide-react';
+import type { StationResult, StationSummary, ProcessType } from '@avicenna/contracts';
+import { grupProses, sepertiKartuLogin } from '@avicenna/domain';
 import { submitScanAction } from '@/app/(app)/scan/actions';
+import { keluarStasiunAction } from '@/app/(station)/scan/proses/[grup]/actions';
+import { NgInline } from './ng-inline';
 import { useScanSound } from './use-scan-sound';
 import { usePreferences } from '../shell/preferences-provider';
 import { springSoft, durations, easeSoft } from '../motion/transitions';
@@ -29,6 +34,15 @@ const MAX_RECENT = 12;
  *  3. Hasilnya harus terdengar, karena operator sering tidak menatap layar.
  */
 export function ScanStation({ summary }: { summary: StationSummary }) {
+  /*
+   * OK dan NG dalam SATU layar, bukan dua halaman.
+   *
+   * Lininya sudah dipilih dan tersimpan di layar ini. Halaman NG terpisah harus
+   * mengetahui lini itu lagi — sistem lama menitipkannya di localStorage
+   * (`avi_line_number`), dan nilai basi di situ membuat NG tercatat di lini yang
+   * sudah ditinggalkan operator, tanpa satu pun tanda di layar.
+   */
+  const [mode, setMode] = useState<'OK' | 'NG'>('OK');
   const [code, setCode] = useState('');
   const [result, setResult] = useState<StationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,9 +65,14 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
     setSoundOn(prefs.scanSound);
   }, [prefs.scanSound]);
 
+  /** Grup proses lini ini — dipakai layar NG dan serah terima operator. */
+  const grup = grupProses(summary.line.processType as ProcessType);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const sound = useScanSound(soundOn);
   const seq = useRef(0);
+  /** Sedang keluar karena kartu login discan — layar berpindah ke halaman login. */
+  const [sedangKeluar, setKeluar] = useState(false);
 
   /** Mengembalikan fokus ke input — dipanggil setelah setiap kejadian apa pun. */
   const focusInput = useCallback(() => {
@@ -62,8 +81,8 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
   }, []);
 
   useEffect(() => {
-    focusInput();
-  }, [focusInput]);
+    if (mode === 'OK') focusInput();
+  }, [focusInput, mode]);
 
   /*
    * Kembalikan fokus setiap kali proses pengiriman selesai.
@@ -77,12 +96,18 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
    * paling mahal di layar ini karena operator tidak menyadarinya.
    */
   useEffect(() => {
-    if (!busy) focusInput();
-  }, [busy, focusInput]);
+    if (!busy && mode === 'OK') focusInput();
+  }, [busy, focusInput, mode]);
 
   // Klik di mana pun pada layar mengembalikan fokus. Operator sering tidak
   // sengaja menyentuh area lain, dan tanpa ini scan berikutnya hilang diam-diam.
   useEffect(() => {
+    /*
+     * Hanya berlaku di mode OK. Tanpa penjagaan ini, kotak scan di sini akan
+     * merebut fokus dari kotak scan layar NG setiap kali operator menyentuh
+     * layar — dan scan NG berikutnya hilang tanpa jejak.
+     */
+    if (mode !== 'OK') return;
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as HTMLElement;
       if (target.closest('button') || target.closest('input')) return;
@@ -91,11 +116,28 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
     };
     window.addEventListener('pointerdown', onPointerDown);
     return () => window.removeEventListener('pointerdown', onPointerDown);
-  }, [focusInput]);
+  }, [focusInput, mode]);
 
   async function submit(raw: string) {
     const value = raw.trim();
     if (!value || busy) return;
+
+    /*
+     * Kartu login discan ke kotak yang sama, bukan ke tombol tersendiri.
+     *
+     * Di tengah pergantian shift, langkah tambahan adalah langkah yang
+     * dilewati — dan hasil produksi operator berikutnya tercatat atas nama orang
+     * yang sudah pulang. Men-scan kartu mengakhiri sesi ini; yang berikutnya
+     * masuk di halaman login.
+     *
+     * Penyaringnya ketat (lihat sepertiKartuLogin): kartu kanban dan barcode
+     * part berpemisah tidak ikut tersaring ke sini, karena tersaring berarti
+     * operator dikeluarkan di tengah shift oleh barcode barang biasa.
+     */
+    if (sepertiKartuLogin(value)) {
+      void keluar();
+      return;
+    }
 
     setBusy(true);
     setError(null);
@@ -144,6 +186,29 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
     }
   }
 
+  /**
+   * Mengakhiri sesi karena ada yang men-scan kartu login.
+   *
+   * Kartunya sendiri TIDAK dikirim ke mana pun — yang dilakukan hanya keluar.
+   * Orang berikutnya men-scan kartunya lagi di halaman login, tempat kredensial
+   * memang diperiksa.
+   */
+  async function keluar() {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    setKeluar(true);
+    sound.ok();
+
+    /*
+     * Aksi ini berakhir dengan redirect ke halaman login, jadi tidak ada yang
+     * perlu dikerjakan sesudahnya. `busy` sengaja dibiarkan menyala: layar
+     * sedang berpindah, dan mengembalikan fokus ke kotak scan hanya membuka
+     * peluang scan berikutnya terkirim ke sesi yang sudah berakhir.
+     */
+    await keluarStasiunAction();
+  }
+
   const tone = !result
     ? 'idle'
     : result.status === 'ACCEPTED'
@@ -152,8 +217,36 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
         ? 'dup'
         : 'bad';
 
+  const tab = (
+    <div className="flex gap-1.5" role="tablist" aria-label="Mode scan">
+      <TabMode
+        aktif={mode === 'OK'}
+        onClick={() => setMode('OK')}
+        label="Scan hasil OK"
+        nada="ok"
+      />
+      <TabMode
+        aktif={mode === 'NG'}
+        onClick={() => setMode('NG')}
+        label="Input NG"
+        nada="ng"
+        icon={AlertTriangle}
+      />
+    </div>
+  );
+
+  if (mode === 'NG') {
+    return (
+      <div className="space-y-5">
+        {tab}
+        <NgInline lineCode={summary.line.code} lineName={summary.line.name} grup={grup} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
+      {tab}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,260px)]">
         {/* ── Input ─────────────────────────────────────────────────────── */}
         <section className="rounded-card border border-line bg-card p-5">
@@ -162,6 +255,13 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
           </h2>
           <p className="mt-2 text-[13px] leading-snug text-ink-muted">
             Arahkan barcode ke scanner. Hasilnya muncul besar di sebelah kanan.
+          </p>
+          {/* Disebutkan di layar, bukan disimpan sebagai pengetahuan orang
+              dalam: operator berikutnya harus tahu kartunya discan ke kotak
+              yang sama, bukan lewat tombol keluar. */}
+          <p className="mt-1.5 text-[13px] leading-snug text-ink-muted">
+            Ganti shift? Scan kartu login di kotak ini untuk keluar, lalu masuk
+            lagi di halaman login.
           </p>
           <form
             onSubmit={(e) => {
@@ -214,14 +314,22 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
         >
           <AnimatePresence mode="wait">
             <motion.div
-              key={`${result?.rawCode ?? 'idle'}-${result?.status ?? ''}-${seq.current}`}
+              key={`${sedangKeluar ? 'keluar' : (result?.rawCode ?? 'idle')}-${result?.status ?? ''}-${seq.current}`}
               initial={{ opacity: 0, scale: 0.94, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={springSoft}
               className="flex flex-col items-center gap-3"
             >
-              {error ? (
+              {sedangKeluar ? (
+                <>
+                  <LogOut className="size-12 text-ink-muted" strokeWidth={1.6} aria-hidden />
+                  <div className="text-[26px] font-extrabold leading-tight">KELUAR</div>
+                  <p className="max-w-md text-[15px] text-ink-soft">
+                    Membuka halaman masuk. Scan kartu Anda di sana.
+                  </p>
+                </>
+              ) : error ? (
                 <>
                   <XCircle className="size-12 text-ng" strokeWidth={1.6} aria-hidden />
                   <div className="text-[26px] font-extrabold leading-tight text-ng">
@@ -344,5 +452,44 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * Pemilih mode OK / NG.
+ *
+ * NG diberi warnanya sendiri dan tidak pernah jadi mode awal: layar ini paling
+ * sering dipakai untuk mencatat hasil baik, dan mode NG yang tertinggal aktif
+ * akan membuat hasil produksi satu shift tercatat sebagai kerusakan.
+ */
+function TabMode({
+  aktif,
+  onClick,
+  label,
+  nada,
+  icon: Icon,
+}: {
+  aktif: boolean;
+  onClick: () => void;
+  label: string;
+  nada: 'ok' | 'ng';
+  icon?: typeof AlertTriangle;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={aktif}
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-2 rounded-full border-2 px-4 py-2 text-[14px] font-bold transition-colors',
+        !aktif && 'border-line text-ink-muted hover:border-ink hover:text-ink',
+        aktif && nada === 'ok' && 'border-ink bg-surface text-ink',
+        aktif && nada === 'ng' && 'border-ng bg-ng/10 text-ng',
+      )}
+    >
+      {Icon ? <Icon className="size-4" strokeWidth={2} aria-hidden /> : null}
+      {label}
+    </button>
   );
 }

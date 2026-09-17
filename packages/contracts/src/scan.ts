@@ -22,6 +22,15 @@ export const scanInputSchema = z.object({
   kind: scanKindSchema,
   processType: processTypeSchema.optional(),
   rawCode: z.string().trim().min(1, 'Barcode kosong').max(255),
+  /**
+   * Barcode kanban, dikirim BERSAMA barcode part dalam satu permintaan.
+   *
+   * Wajib di lini finish good, tidak boleh di lini WIP. Dikirim bersama, bukan
+   * sebagai langkah kedua yang terpisah: operator yang berpindah sebelum scan
+   * kedua akan meninggalkan unit tanpa kanban, dan tidak ada yang tahu sampai
+   * barang itu gagal dikirim.
+   */
+  kanbanCode: z.string().trim().max(255).optional(),
   lineCode: z.string().trim().max(32).optional(),
   machineCode: z.string().trim().max(32).optional(),
   qty: z.coerce.number().int().min(1).default(1),

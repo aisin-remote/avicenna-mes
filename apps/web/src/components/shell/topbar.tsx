@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, ChevronDown, Bell, Settings, Menu, X } from 'lucide-react';
 import { IconButton } from '../ui/icon-button';
+import { LABEL_JABATAN, type PenggunaShell } from './pengguna';
 import { durations, easeSoft } from '../motion/transitions';
 
 /**
@@ -18,14 +19,13 @@ import { durations, easeSoft } from '../motion/transitions';
  * sudah disembunyikan.
  */
 export function Topbar({
-  userName,
-  role,
+  pengguna,
   navOpen = false,
   onToggleNav,
   onOpenSettings,
 }: {
-  userName: string;
-  role: string | null;
+  /** Identitas yang sedang masuk — dibaca server dari database, bukan dari token. */
+  pengguna: PenggunaShell;
   /** Keadaan panel navigasi — hanya berpengaruh di bawah lg. */
   navOpen?: boolean;
   onToggleNav?: () => void;
@@ -103,11 +103,20 @@ export function Topbar({
             className="flex shrink-0 items-center gap-3 rounded-full py-1.5 pl-1.5 pr-1.5 outline-none transition-colors duration-200 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ink/20 sm:pr-3"
           >
             <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-[14px] font-bold text-white">
-              {initials(userName)}
+              {initials(pengguna.nama)}
             </span>
-            <span className="hidden text-left leading-tight sm:block">
-              <span className="block text-[14px] font-bold">{userName}</span>
-              <span className="block text-[12px] capitalize text-ink-muted">{role ?? '—'}</span>
+            <span className="hidden min-w-0 text-left leading-tight sm:block">
+              <span className="flex items-baseline gap-2">
+                <span className="truncate text-[14px] font-bold">{pengguna.nama}</span>
+                {/* NPK ikut di baris nama: di lantai produksi orang dikenali
+                    dari NPK, dan nama yang mirip lebih sering daripada yang
+                    dikira. */}
+                <span className="tabular shrink-0 text-[12px] text-ink-muted">{pengguna.npk}</span>
+              </span>
+              <span className="block truncate text-[12px] text-ink-muted">
+                {pengguna.role ?? 'tanpa role'}
+                {pengguna.pabrik ? ` · ${pengguna.pabrik}` : ''}
+              </span>
             </span>
             <motion.span
               animate={{ rotate: userMenuOpen ? 180 : 0 }}
@@ -137,9 +146,26 @@ export function Topbar({
                   className="absolute right-0 z-20 mt-2 w-56 origin-top-right rounded-2xl border border-line bg-card p-2 shadow-lift"
                 >
                   <div className="px-3 py-2">
-                    <div className="text-[14px] font-bold">{userName}</div>
-                    <div className="text-[12px] capitalize text-ink-muted">{role ?? '—'}</div>
+                    <div className="text-[14px] font-bold">{pengguna.nama}</div>
+                    <div className="tabular text-[12px] text-ink-muted">NPK {pengguna.npk}</div>
                   </div>
+                  <div className="my-1 h-px bg-line" />
+                  {/* Rincian lengkap ada di sini, bukan di bilahnya.
+                      Bilah atas dibaca sekilas; yang perlu dibaca teliti —
+                      lingkup proses, pabrik — hanya dicari saat ada yang
+                      dipertanyakan. */}
+                  <dl className="space-y-1.5 px-3 py-2 text-[12px]">
+                    <Rincian label="Role" nilai={pengguna.role} />
+                    <Rincian
+                      label="Jabatan"
+                      nilai={pengguna.jabatan ? LABEL_JABATAN[pengguna.jabatan] : null}
+                    />
+                    <Rincian
+                      label="Lingkup"
+                      nilai={pengguna.lingkupProses ?? 'Seluruh proses'}
+                    />
+                    <Rincian label="Pabrik" nilai={pengguna.pabrik} />
+                  </dl>
                   <div className="my-1 h-px bg-line" />
                   {/* Di layar sempit ikon pengaturan di bilah atas disembunyikan,
                       jadi ini satu-satunya jalan ke sana. */}
@@ -170,6 +196,22 @@ export function Topbar({
         </div>
       </div>
     </header>
+  );
+}
+
+/**
+ * Satu baris label/nilai di menu pengguna.
+ *
+ * Nilai kosong ditulis "—", bukan barisnya dihilangkan: baris yang hilang
+ * membuat orang mengira datanya belum dimuat, sedangkan "—" menyatakan bahwa
+ * memang belum diisi.
+ */
+function Rincian({ label, nilai }: { label: string; nilai: string | null }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="shrink-0 text-ink-muted">{label}</dt>
+      <dd className="truncate font-semibold">{nilai ?? '—'}</dd>
+    </div>
   );
 }
 

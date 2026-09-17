@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import { eq, and, type Database } from '@avicenna/db';
 import { users, roles, devices } from '@avicenna/db';
 import type { LoginInput, LoginResponse, DeviceLoginInput } from '@avicenna/contracts';
+import { halamanAwal, type RoleKind } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 import type { UserPrincipal, DevicePrincipal } from './auth.types';
 
@@ -25,6 +26,8 @@ export class AuthService {
         isActive: users.isActive,
         plantId: users.plantId,
         roleName: roles.name,
+        roleKind: roles.kind,
+        roleProcessGroup: roles.processGroup,
       })
       .from(users)
       .leftJoin(roles, eq(users.roleId, roles.id))
@@ -52,6 +55,8 @@ export class AuthService {
       npk: user.npk,
       name: user.name,
       role: user.roleName ?? null,
+      roleKind: (user.roleKind ?? null) as RoleKind | null,
+      roleProcessGroup: user.roleProcessGroup ?? null,
       plantId: user.plantId ?? null,
     };
 
@@ -64,6 +69,19 @@ export class AuthService {
         npk: user.npk,
         name: user.name,
         role: user.roleName ?? null,
+        roleKind: user.roleKind ?? null,
+        roleProcessGroup: user.roleProcessGroup ?? null,
+        /*
+         * Halaman awal dikirim server, bukan ditentukan browser.
+         *
+         * Aturannya ada di satu tempat (@avicenna/domain) dan ikut teruji.
+         * Menyalinnya ke sisi web berarti dua tempat yang harus dijaga sama,
+         * dan yang tertinggal akan mengirim orang ke halaman yang keliru.
+         */
+        landing: halamanAwal({
+          kind: (user.roleKind ?? 'VIEW') as RoleKind,
+          processGroup: user.roleProcessGroup ?? null,
+        }),
         plantId: user.plantId ?? null,
       },
     };

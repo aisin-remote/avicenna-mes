@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, UsePipes } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UsePipes } from '@nestjs/common';
 import type { Request } from 'express';
 import { scanInputSchema, scanBatchSchema } from '@avicenna/contracts';
 import type { ScanInput, ScanBatchInput } from '@avicenna/contracts';
@@ -8,6 +8,22 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 @Controller('scan')
 export class ScanController {
   constructor(private readonly scan: ScanService) {}
+
+  /** Lini pada sebuah grup proses — isi modal pemilih lini. */
+  @Get('proses/:grup/lines')
+  liniGrup(@Param('grup') grup: string, @Req() req: Request) {
+    return this.scan.liniGrup(grup, req.principal);
+  }
+
+  /** Membuka lini dari barcode yang discan operator. */
+  @Post('proses/:grup/open')
+  bukaLini(
+    @Param('grup') grup: string,
+    @Body() body: { code?: string },
+    @Req() req: Request,
+  ) {
+    return this.scan.bukaLini(String(body?.code ?? ''), grup, req.principal);
+  }
 
   /** Satu scan — jalur normal dari scanner saat jaringan normal. */
   @Post()

@@ -1,7 +1,8 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { eq, and, asc, inArray, type Database } from '@avicenna/db';
 import { partProcesses, parts, plants, lines } from '@avicenna/db';
-import { PROCESS_TYPES, type ProcessType } from '@avicenna/contracts';
+import { PROCESS_TYPES, menghasilkanFinishGood, type ProcessType } from '@avicenna/contracts';
+import { periksaRute } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 
 export interface BarisMatriks {
@@ -14,6 +15,15 @@ export interface BarisMatriks {
   plantCode: string | null;
   /** processType -> urutan. Tidak ada kunci = part tidak melewati proses itu. */
   rute: Record<string, number>;
+  /**
+   * Masalah pada rute ini, kosong bila wajar.
+   *
+   * Ikut dihitung saat MEMBACA, bukan hanya saat menyimpan: rute bisa tersimpan
+   * sebelum sebuah aturan ada, atau menjadi tidak wajar karena jenis proses
+   * berubah. Rute rusak yang tidak terlihat akan tetap rusak sampai ada yang
+   * kebetulan membukanya.
+   */
+  masalah: string[];
 }
 
 /**
@@ -39,6 +49,8 @@ export class RoutingService {
   /** Seluruh part beserta rutenya — bahan layar matriks. */
   async matriks(plantId?: number): Promise<{
     proses: readonly ProcessType[];
+    /** Proses yang lininya menghasilkan finish good — dipakai layar menandainya. */
+    finishGood: readonly ProcessType[];
     baris: BarisMatriks[];
   }> {
     const daftarPart = await this.db
@@ -58,7 +70,8 @@ export class RoutingService {
       )
       .orderBy(plants.code, parts.project, parts.partNumber);
 
-    if (daftarPart.length === 0) return { proses: PROCESS_TYPES, baris: [] };
+    const finishGood = PROCESS_TYPES.filter(menghasilkanFinishGood);
+    if (daftarPart.length === 0) return { proses: PROCESS_TYPES, finishGood, baris: [] };
 
     const langkah = await this.db
       .select({
@@ -87,7 +100,20 @@ export class RoutingService {
 
     return {
       proses: PROCESS_TYPES,
-      baris: daftarPart.map((p) => ({ ...p, rute: perPart.get(p.partId) ?? {} })),
+      finishGood,
+      baris: daftarPart.map((p) => {
+        const rute = perPart.get(p.partId) ?? {};
+        return {
+          ...p,
+          rute,
+          masalah: periksaRute(
+            Object.entries(rute).map(([processType, seqNo]) => ({
+              processType: processType as ProcessType,
+              seqNo,
+            })),
+          ),
+        };
+      }),
     };
   }
 
@@ -118,6 +144,19 @@ export class RoutingService {
       if (!PROCESS_TYPES.includes(p)) {
         throw new BadRequestException(`Jenis proses "${p}" tidak dikenal`);
       }
+    }
+
+    /*
+     * Aturan lini finish good diperiksa SEBELUM disimpan.
+     *
+     * Rute yang berakhir di lini WIP menghasilkan barang tanpa kanban, dan di
+     * delivery part code sudah tidak discan sama sekali — barang itu tidak akan
+     * pernah bisa dikirim, dan baru ketahuan saat truk sudah menunggu. Lebih
+     * baik ditolak sekarang, saat orang sedang menyunting rutenya.
+     */
+    const masalah = periksaRute(unik.map((processType, i) => ({ processType, seqNo: (i + 1) * 10 })));
+    if (masalah.length > 0) {
+      throw new BadRequestException(`Rute tidak wajar: ${masalah.join('; ')}`);
     }
 
     /*

@@ -1,5 +1,6 @@
-import { PipeTransform, Injectable, BadRequestException } from '@nestjs/common';
+import { PipeTransform, Injectable } from '@nestjs/common';
 import { ZodSchema, ZodError } from 'zod';
+import { validationError } from './validation-error';
 
 /**
  * Memvalidasi body/query memakai schema Zod dari @avicenna/contracts.
@@ -15,17 +16,9 @@ export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
     try {
       return this.schema.parse(value);
     } catch (err) {
-      if (err instanceof ZodError) {
-        throw new BadRequestException({
-          statusCode: 400,
-          error: 'ValidationError',
-          message: 'Data yang dikirim tidak valid',
-          details: err.issues.map((i) => ({
-            field: i.path.join('.'),
-            message: i.message,
-          })),
-        });
-      }
+      // Bentuknya ditulis sekali di validation-error.ts — sisi web membaca
+      // `details` untuk menempatkan pesan di bawah kolomnya masing-masing.
+      if (err instanceof ZodError) throw validationError(err);
       throw err;
     }
   }

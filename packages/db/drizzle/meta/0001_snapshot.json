@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "3bdd1aa4-448c-4ea7-afc2-a0a671470307",
-  "prevId": "faec2a9e-91d0-49b7-9f46-6e0fa9e792a8",
+  "id": "8ade310a-6a7d-4fb0-b38e-21154cce0fe3",
+  "prevId": "ca30a340-b2c8-46ba-b1a8-c6f2ac7d28d4",
   "tables": {
     "TM_DEVICE": {
       "name": "TM_DEVICE",
@@ -558,6 +558,14 @@
           "autoincrement": false,
           "default": "'NONE'"
         },
+        "FLG_DIRECT_KANBAN": {
+          "name": "FLG_DIRECT_KANBAN",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
         "FLG_IS_ACTIVE": {
           "name": "FLG_IS_ACTIVE",
           "type": "boolean",
@@ -637,7 +645,7 @@
         },
         "CHR_PROCESS_TYPE": {
           "name": "CHR_PROCESS_TYPE",
-          "type": "enum('MELTING','CASTING','MACHINING','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
+          "type": "enum('MELTING','CASTING_WIP','CASTING_FG','MACHINING_WIP','MACHINING_FG','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -884,7 +892,7 @@
         },
         "CHR_PROCESS_TYPE": {
           "name": "CHR_PROCESS_TYPE",
-          "type": "enum('MELTING','CASTING','MACHINING','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
+          "type": "enum('MELTING','CASTING_WIP','CASTING_FG','MACHINING_WIP','MACHINING_FG','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -1060,7 +1068,7 @@
         },
         "CHR_PROCESS_TYPE": {
           "name": "CHR_PROCESS_TYPE",
-          "type": "enum('MELTING','CASTING','MACHINING','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
+          "type": "enum('MELTING','CASTING_WIP','CASTING_FG','MACHINING_WIP','MACHINING_FG','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -1639,6 +1647,103 @@
       "uniqueConstraints": {},
       "checkConstraint": {}
     },
+    "TT_KANBAN_ITEM": {
+      "name": "TT_KANBAN_ITEM",
+      "columns": {
+        "INT_ID": {
+          "name": "INT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "INT_KANBAN_ID": {
+          "name": "INT_KANBAN_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "CHR_SERIAL_NUMBER": {
+          "name": "CHR_SERIAL_NUMBER",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "INT_SCAN_EVENT_ID": {
+          "name": "INT_SCAN_EVENT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "DTM_ATTACHED_AT": {
+          "name": "DTM_ATTACHED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "DTM_CREATED_AT": {
+          "name": "DTM_CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TT_KANBAN_ITEM_KANBAN_SERIAL_UNIQUE": {
+          "name": "TT_KANBAN_ITEM_KANBAN_SERIAL_UNIQUE",
+          "columns": [
+            "INT_KANBAN_ID",
+            "CHR_SERIAL_NUMBER"
+          ],
+          "isUnique": true
+        },
+        "TT_KANBAN_ITEM_SERIAL_UNIQUE": {
+          "name": "TT_KANBAN_ITEM_SERIAL_UNIQUE",
+          "columns": [
+            "CHR_SERIAL_NUMBER"
+          ],
+          "isUnique": true
+        },
+        "TT_KANBAN_ITEM_KANBAN_IDX": {
+          "name": "TT_KANBAN_ITEM_KANBAN_IDX",
+          "columns": [
+            "INT_KANBAN_ID"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "TT_KANBAN_ITEM_INT_KANBAN_ID_TM_KANBAN_INT_ID_fk": {
+          "name": "TT_KANBAN_ITEM_INT_KANBAN_ID_TM_KANBAN_INT_ID_fk",
+          "tableFrom": "TT_KANBAN_ITEM",
+          "tableTo": "TM_KANBAN",
+          "columnsFrom": [
+            "INT_KANBAN_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TT_KANBAN_ITEM_INT_ID": {
+          "name": "TT_KANBAN_ITEM_INT_ID",
+          "columns": [
+            "INT_ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
     "TM_KANBAN": {
       "name": "TM_KANBAN",
       "columns": {
@@ -1663,12 +1768,28 @@
           "notNull": true,
           "autoincrement": false
         },
-        "INT_CUSTOMER_ID": {
-          "name": "INT_CUSTOMER_ID",
-          "type": "bigint unsigned",
+        "INT_KANBAN_NO": {
+          "name": "INT_KANBAN_NO",
+          "type": "int",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "CHR_KANBAN_TYPE": {
+          "name": "CHR_KANBAN_TYPE",
+          "type": "enum('REGULER','SPARE')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'REGULER'"
+        },
+        "CHR_OWNER": {
+          "name": "CHR_OWNER",
+          "type": "enum('INTERNAL','CUSTOMER')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'INTERNAL'"
         },
         "CHR_SERIAL_NUMBER": {
           "name": "CHR_SERIAL_NUMBER",
@@ -1677,11 +1798,41 @@
           "notNull": true,
           "autoincrement": false
         },
-        "INT_QTY": {
-          "name": "INT_QTY",
+        "INT_QTY_PER_BOX": {
+          "name": "INT_QTY_PER_BOX",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "INT_UNIT_PER_KANBAN": {
+          "name": "INT_UNIT_PER_KANBAN",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "CHR_SIDE": {
+          "name": "CHR_SIDE",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_BOX_TYPE": {
+          "name": "CHR_BOX_TYPE",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "INT_CUSTOMER_ID": {
+          "name": "INT_CUSTOMER_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "CHR_STATUS": {
@@ -1706,6 +1857,14 @@
           "notNull": false,
           "autoincrement": false
         },
+        "FLG_IS_ACTIVE": {
+          "name": "FLG_IS_ACTIVE",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
         "DTM_CREATED_AT": {
           "name": "DTM_CREATED_AT",
           "type": "timestamp",
@@ -1724,24 +1883,24 @@
         }
       },
       "indexes": {
-        "TM_KANBAN_PLANT_SERIAL_UNIQUE": {
-          "name": "TM_KANBAN_PLANT_SERIAL_UNIQUE",
+        "TM_KANBAN_PART_SERIAL_UNIQUE": {
+          "name": "TM_KANBAN_PART_SERIAL_UNIQUE",
           "columns": [
-            "INT_PLANT_ID",
+            "INT_PART_ID",
             "CHR_SERIAL_NUMBER"
           ],
           "isUnique": true
         },
-        "TM_KANBAN_PART_STATUS_IDX": {
-          "name": "TM_KANBAN_PART_STATUS_IDX",
+        "TM_KANBAN_PLANT_PART_IDX": {
+          "name": "TM_KANBAN_PLANT_PART_IDX",
           "columns": [
-            "INT_PART_ID",
-            "CHR_STATUS"
+            "INT_PLANT_ID",
+            "INT_PART_ID"
           ],
           "isUnique": false
         },
-        "TM_KANBAN_STATUS_CREATED_IDX": {
-          "name": "TM_KANBAN_STATUS_CREATED_IDX",
+        "TM_KANBAN_STATUS_IDX": {
+          "name": "TM_KANBAN_STATUS_IDX",
           "columns": [
             "CHR_STATUS",
             "DTM_CREATED_AT"
@@ -2087,7 +2246,7 @@
         },
         "CHR_PROCESS_TYPE": {
           "name": "CHR_PROCESS_TYPE",
-          "type": "enum('MELTING','CASTING','MACHINING','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
+          "type": "enum('MELTING','CASTING_WIP','CASTING_FG','MACHINING_WIP','MACHINING_FG','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -2916,7 +3075,7 @@
         },
         "CHR_PROCESS_TYPE": {
           "name": "CHR_PROCESS_TYPE",
-          "type": "enum('MELTING','CASTING','MACHINING','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
+          "type": "enum('MELTING','CASTING_WIP','CASTING_FG','MACHINING_WIP','MACHINING_FG','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -3037,7 +3196,7 @@
         },
         "CHR_PROCESS_TYPE": {
           "name": "CHR_PROCESS_TYPE",
-          "type": "enum('MELTING','CASTING','MACHINING','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
+          "type": "enum('MELTING','CASTING_WIP','CASTING_FG','MACHINING_WIP','MACHINING_FG','ASSEMBLING_UNIT','INJECTION','PAINTING','ASSEMBLING_BODY','DELIVERY')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false

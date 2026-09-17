@@ -8,6 +8,8 @@ import {
   customerParts,
   parts,
   plants,
+  kanbans,
+  kanbanItems,
   locations,
   lots,
   mutations,
@@ -17,6 +19,12 @@ import {
   convertCustomerPartNumber,
   buildDocumentNumber,
   allocateFifo,
+  modeLoading,
+  perluKanbanInternal,
+  adaScanPerBox,
+  MODE_LOADING_INSTRUKSI,
+  bacaKanban,
+  KanbanTidakTerbaca,
   type PartNumberFormat,
 } from '@avicenna/domain';
 import type {
@@ -214,9 +222,12 @@ export class LoadingService {
         plantId: deliveries.plantId,
         status: deliveries.status,
         format: customers.partNumberFormat,
+        directKanban: customers.directKanban,
+        plantScanDirectKanban: plants.scanDirectKanbanSaatMuat,
       })
       .from(deliveries)
       .leftJoin(customers, eq(deliveries.customerId, customers.id))
+      .leftJoin(plants, eq(deliveries.plantId, plants.id))
       .where(eq(deliveries.id, input.deliveryId))
       .limit(1);
 
@@ -252,6 +263,39 @@ export class LoadingService {
       );
     }
 
+    /*
+     * ── Cara scan ditentukan customer DAN pabrik ──────────────────────────
+     *
+     * Customer biasa dicocokkan tiga arah. Customer direct kanban tidak punya
+     * kanban internal untuk dicocokkan, dan di sebagian pabrik bahkan tidak
+     * men-scan apa pun per box.
+     *
+     * Hanya berlaku saat MUAT. Pulling tetap men-scan seperti biasa: yang
+     * diambil dari gudang harus dihitung apa pun cara muatnya nanti.
+     */
+    const mode = modeLoading({
+      directKanban: doc.directKanban ?? false,
+      plantScanDirectKanban: doc.plantScanDirectKanban ?? false,
+    });
+
+    if (phase === 'LOADING') {
+      if (!adaScanPerBox(mode)) {
+        throw new BadRequestException(
+          `Customer ini tidak memakai scan per box saat muat. ${MODE_LOADING_INSTRUKSI[mode]}`,
+        );
+      }
+      if (perluKanbanInternal(mode) && !input.internalKanban) {
+        throw new BadRequestException(
+          `Kanban internal belum discan. ${MODE_LOADING_INSTRUKSI[mode]}`,
+        );
+      }
+      if (!perluKanbanInternal(mode) && input.internalKanban) {
+        throw new BadRequestException(
+          'Customer ini tidak memakai kanban internal. Cukup scan kanban customer.',
+        );
+      }
+    }
+
     const converted = convertCustomerPartNumber(
       input.customerPart,
       (doc.format ?? 'NONE') as PartNumberFormat,
@@ -280,6 +324,18 @@ export class LoadingService {
       candidates.find((c) => c.customerPartNumber === converted) ??
       candidates.find((c) => c.partNumber === converted) ??
       candidates.find((c) => c.customerPartNumber === input.customerPart.trim()) ??
+      /*
+       * Nomor part internal APA ADANYA, tanpa konversi.
+       *
+       * Aturan konversi menyisipkan tanda hubung pada kode 12 karakter, dan itu
+       * berlaku menurut PANJANG kode — bukan menurut format customer. Nomor
+       * part internal yang kebetulan 12 karakter ikut berubah bentuk, lalu
+       * tidak cocok dengan dirinya sendiri.
+       *
+       * Ditaruh paling belakang: hanya dipakai bila seluruh pencocokan yang
+       * lebih khas sudah gagal, jadi tidak bisa menyerobot padanan yang benar.
+       */
+      candidates.find((c) => c.partNumber === input.customerPart.trim()) ??
       (input.internalPart
         ? candidates.find((c) => c.partNumber === input.internalPart)
         : undefined);
@@ -296,6 +352,78 @@ export class LoadingService {
         plannedKanban: 0,
         totals: await this.totals(input.deliveryId),
       };
+    }
+
+    /*
+     * ── Pencocokan arah ketiga: kanban internal ───────────────────────────
+     *
+     * Kanban customer sudah mencocokkan barang dengan baris loading list. Yang
+     * dibuktikan di sini adalah bahwa KARTU INTERNAL yang menempel pada box itu
+     * juga milik part yang sama.
+     *
+     * Tanpa pemeriksaan ini, box berisi part A dengan kartu internal part B
+     * tetap lolos selama label customer-nya benar — dan barang yang keliru
+     * berangkat dengan dokumen yang terlihat rapi.
+     */
+    if (phase === 'LOADING' && perluKanbanInternal(mode) && input.internalKanban) {
+      let kb;
+      try {
+        kb = bacaKanban(input.internalKanban, {
+          customerFormat: (doc.format ?? 'NONE') as PartNumberFormat,
+        });
+      } catch (err) {
+        if (err instanceof KanbanTidakTerbaca) {
+          return this.tolakScan(
+            input.deliveryId,
+            phase,
+            converted,
+            'Barcode kanban internal tidak terbaca. Scan ulang kartunya.',
+          );
+        }
+        throw err;
+      }
+
+      const [kartu] = await this.db
+        .select({ id: kanbans.id, partId: kanbans.partId })
+        .from(kanbans)
+        .where(eq(kanbans.serialNumber, kb.serialNumber ?? ''))
+        .limit(1);
+
+      if (!kartu) {
+        return this.tolakScan(
+          input.deliveryId,
+          phase,
+          converted,
+          `Kartu kanban internal seri ${kb.serialNumber} tidak terdaftar. Laporkan ke leader.`,
+        );
+      }
+
+      if (kartu.partId !== match.partId) {
+        return this.tolakScan(
+          input.deliveryId,
+          phase,
+          converted,
+          `Kanban internal ini milik part lain, bukan ${match.partNumber}. Periksa boxnya.`,
+        );
+      }
+
+      /*
+       * Kartu kosong berarti isinya tidak pernah ditempel di lini FG. Boxnya
+       * mungkin benar, tetapi tidak ada satu pun unit yang bisa ditelusuri —
+       * dan itu baru ketahuan saat customer menanyakan asal-usul barang.
+       */
+      const [isi] = await this.db
+        .select({ n: count() })
+        .from(kanbanItems)
+        .where(eq(kanbanItems.kanbanId, kartu.id));
+      if (Number(isi?.n ?? 0) === 0) {
+        return this.tolakScan(
+          input.deliveryId,
+          phase,
+          converted,
+          `Kartu kanban seri ${kb.serialNumber} kosong — isinya belum pernah discan di lini finish good.`,
+        );
+      }
     }
 
     /*
@@ -428,6 +556,26 @@ export class LoadingService {
   }
 
   /** Membatalkan satu scan terakhir pada sebuah baris — salah scan itu biasa. */
+  /** Bentuk jawaban penolakan yang seragam untuk layar stasiun. */
+  private async tolakScan(
+    deliveryId: number,
+    phase: LoadingPhase,
+    converted: string,
+    message: string,
+  ): Promise<LoadingScanResult> {
+    return {
+      status: 'REJECTED',
+      phase,
+      message,
+      lineId: null,
+      partNumber: null,
+      convertedPartNumber: converted,
+      actualKanban: 0,
+      plannedKanban: 0,
+      totals: await this.totals(deliveryId),
+    };
+  }
+
   async undoScan(deliveryId: number, lineId: number, phase: LoadingPhase = 'LOADING') {
     const rows = await this.db
       .select()

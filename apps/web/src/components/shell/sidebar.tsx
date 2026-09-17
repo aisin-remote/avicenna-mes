@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, LogOut } from 'lucide-react';
-import { NAV_GROUPS, type NavGroup } from './nav-config';
+import { type NavGroup } from './nav-config';
+import type { PenggunaShell } from './pengguna';
 import type { SidebarMode } from '@/lib/preferences';
 import { iconFor } from '../ui/icon-map';
 import { springSnappy, durations, easeSoft } from '../motion/transitions';
@@ -19,13 +20,20 @@ import { cn } from '../ui/cn';
  * hilang-muncul.
  */
 export function Sidebar({
-  userName,
-  role,
+  pengguna,
+  groups,
   open = false,
   mode = 'penuh',
 }: {
-  userName: string;
-  role: string | null;
+  pengguna: PenggunaShell;
+  /**
+   * Menu yang boleh dilihat orang ini, sudah disusun per grup di server.
+   *
+   * Dioper sebagai prop, bukan dibaca dari daftar tetap: hak menu adalah data
+   * yang berubah tanpa deploy, dan daftar di kode akan selalu menampilkan
+   * segalanya kepada semua orang.
+   */
+  groups: NavGroup[];
   /** Hanya berlaku di bawah lg; di layar lebar sidebar selalu tampak. */
   open?: boolean;
   /** 'ikon' menyusutkan sidebar jadi deretan ikon saja. */
@@ -78,9 +86,15 @@ export function Sidebar({
       </div>
 
       <nav className={cn('scroll-slim flex-1 overflow-y-auto pb-4', ringkas ? 'px-3' : 'px-4')}>
-        {NAV_GROUPS.map((group) => (
-          <Group key={group.title} group={group} pathname={pathname} ringkas={ringkas} />
-        ))}
+        {groups.length === 0 ? (
+          <p className={cn('text-[13px] text-ink-muted', ringkas ? 'px-1 text-center' : 'px-3')}>
+            {ringkas ? '—' : 'Belum ada menu untuk role Anda. Hubungi administrator.'}
+          </p>
+        ) : (
+          groups.map((group) => (
+            <Group key={group.title} group={group} pathname={pathname} ringkas={ringkas} />
+          ))
+        )}
       </nav>
 
       <div className={cn('border-t border-line py-5', ringkas ? 'px-3' : 'px-6')}>
@@ -90,8 +104,8 @@ export function Sidebar({
               type="submit"
               whileTap={{ scale: 0.96 }}
               transition={{ duration: durations.fast, ease: easeSoft }}
-              title={`Keluar — ${userName}`}
-              aria-label={`Keluar — ${userName}`}
+              title={`Keluar — ${pengguna.nama} (${pengguna.npk})`}
+              aria-label={`Keluar — ${pengguna.nama}`}
               className="grid size-11 w-full place-items-center rounded-full text-ink-muted transition-colors hover:bg-surface hover:text-ink"
             >
               <LogOut className="size-[18px]" strokeWidth={1.8} aria-hidden />
@@ -99,9 +113,14 @@ export function Sidebar({
           </form>
         ) : (
           <>
-            <div className="text-[14px] font-bold leading-tight">{userName}</div>
-            <div className="mt-0.5 text-[13px] capitalize text-ink-muted">
-              {role ?? 'tanpa role'}
+            <div className="text-[14px] font-bold leading-tight">{pengguna.nama}</div>
+            {/* NPK ikut disebut: di lantai produksi orang dikenali dari NPK,
+                bukan dari namanya — nama yang mirip lebih sering daripada
+                yang dikira. */}
+            <div className="tabular mt-0.5 text-[12px] text-ink-muted">{pengguna.npk}</div>
+            <div className="mt-1 text-[13px] text-ink-muted">
+              {pengguna.role ?? 'tanpa role'}
+              {pengguna.pabrik ? ` · ${pengguna.pabrik}` : ''}
             </div>
             <form action="/api/logout" method="post" className="mt-3">
               <motion.button

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { processTypeSchema } from '../common';
 
 /**
  * Daftar entitas master beserta definisi kolomnya.
@@ -26,6 +25,8 @@ export const MASTER_ENTITIES = [
   'ng-masters',
   'bom',
   'part-processes',
+  'kanbans',
+  'program-numbers',
 ] as const;
 
 export type MasterEntity = (typeof MASTER_ENTITIES)[number];
@@ -38,7 +39,10 @@ export type MasterEntity = (typeof MASTER_ENTITIES)[number];
  * di kolom enum, lalu setiap penyimpanan gagal dengan pesan dari MySQL yang
  * tidak menyebut sebabnya.
  */
-export const PROCESS_TYPES = processTypeSchema.options;
+export { PROCESS_TYPES, PROCESS_GROUPS } from '../common';
+import { PROCESS_TYPES, PROCESS_GROUPS } from '../common';
+export const KANBAN_TYPES = ['REGULER', 'SPARE'] as const;
+export const KANBAN_OWNERS = ['INTERNAL', 'CUSTOMER'] as const;
 export const TOOLING_KINDS = ['MOLD', 'DIES', 'JIG'] as const;
 export const LOCATION_KINDS = [
   'WAREHOUSE',
@@ -122,6 +126,21 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
     fields: [
       { name: 'code', label: 'Kode', kind: 'text', required: true, max: 32, inList: true },
       { name: 'name', label: 'Nama', kind: 'text', required: true, max: 128, inList: true },
+      {
+        name: 'sapCode',
+        label: 'Kode SAP',
+        kind: 'text',
+        max: 4,
+        inList: true,
+        hint: 'Maksimal 3 karakter — kolom CHR_PLANT di database jembatan char(3).',
+      },
+      {
+        name: 'scanDirectKanbanSaatMuat',
+        label: 'Direct Kanban Tetap Scan',
+        kind: 'boolean',
+        defaultValue: false,
+        hint: 'Di pabrik ini, customer direct kanban tetap scan kanban customer saat muat.',
+      },
       activeField,
     ],
   },
@@ -263,6 +282,14 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       { name: 'name', label: 'Nama', kind: 'text', required: true, max: 128, inList: true },
       { name: 'dock', label: 'Dock', kind: 'text', max: 32, inList: true },
       {
+        name: 'directKanban',
+        label: 'Direct Kanban',
+        kind: 'boolean',
+        defaultValue: false,
+        inList: true,
+        hint: 'Memakai kanban miliknya sendiri. Di delivery tidak scan apa pun.',
+      },
+      {
         name: 'partNumberFormat',
         label: 'Format Part Number',
         kind: 'select',
@@ -384,11 +411,19 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       { name: 'code', label: 'Kode', kind: 'text', required: true, max: 32, inList: true },
       { name: 'name', label: 'Nama', kind: 'text', required: true, max: 128, inList: true },
       {
-        name: 'processType',
-        label: 'Proses',
+        /*
+         * GRUP proses, bukan jenis proses.
+         *
+         * "Crack" berlaku di lini Casting WIP maupun Casting FG. Saat kolomnya
+         * masih CHR_PROCESS_TYPE, jenis NG yang diisi CASTING_WIP hilang dari
+         * layar lini FG dan orang di situ tidak punya pilihan apa pun.
+         */
+        name: 'processGroup',
+        label: 'Grup Proses',
         kind: 'select',
-        options: PROCESS_TYPES,
+        options: PROCESS_GROUPS,
         inList: true,
+        hint: 'Kosongkan bila berlaku di semua proses — seperti tombol "DLL" di layar NG.',
       },
       { name: 'category', label: 'Kategori', kind: 'text', max: 64, inList: true },
       { name: 'sortOrder', label: 'Urutan', kind: 'number', min: 0, defaultValue: 0, numeric: true },
@@ -403,6 +438,115 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
    * deploy. Untuk mengisi banyak part sekaligus, layar matriks di
    * /master/part-processes jauh lebih cepat daripada formulir satu per satu.
    */
+  /**
+   * Kartu kanban fisik.
+   *
+   * Serinya unik PER PART, bukan per pabrik — seri yang sama bisa ada pada part
+   * berbeda. Karena itu di lini FG part code discan lebih dulu, baru kanbannya.
+   */
+  /**
+   * Program number — dua digit pertama pada barcode part.
+   *
+   * Barcode produksi tidak memuat nomor part sama sekali; dua digit inilah yang
+   * menerjemahkannya. Satu part boleh punya beberapa kode, satu per model.
+   */
+  'program-numbers': {
+    key: 'program-numbers',
+    label: 'Program Number',
+    singular: 'Program Number',
+    icon: 'Hash',
+    description: 'Dua digit pertama barcode part — penerjemah barcode ke part',
+    searchFields: ['code', 'product'],
+    defaultSort: 'code',
+    fields: [
+      plantRef,
+      {
+        name: 'code',
+        label: 'Kode',
+        kind: 'text',
+        required: true,
+        max: 4,
+        inList: true,
+        hint: 'Dua digit pertama pada barcode, mis. 01, 12, 17.',
+      },
+      { name: 'partId', label: 'Part', kind: 'reference', refEntity: 'parts', required: true, inList: true },
+      {
+        name: 'product',
+        label: 'Model',
+        kind: 'text',
+        max: 64,
+        inList: true,
+        hint: 'Mis. "OPN 889F". Inilah yang membedakan dua kode pada part yang sama.',
+      },
+      { name: 'customerId', label: 'Customer', kind: 'reference', refEntity: 'customers', inList: true },
+      { name: 'isAssy', label: 'Part Rakitan', kind: 'boolean', defaultValue: false },
+      activeField,
+    ],
+  },
+
+  kanbans: {
+    key: 'kanbans',
+    label: 'Kanban',
+    singular: 'Kartu Kanban',
+    icon: 'Tag',
+    description: 'Kartu kanban fisik — seri, part, dan isi per kemasan',
+    searchFields: ['serialNumber'],
+    defaultSort: 'partId',
+    fields: [
+      plantRef,
+      { name: 'partId', label: 'Part', kind: 'reference', refEntity: 'parts', required: true, inList: true },
+      {
+        name: 'serialNumber',
+        label: 'No. Seri',
+        kind: 'text',
+        required: true,
+        max: 64,
+        inList: true,
+        hint: 'Tercetak di kartu. Boleh sama dengan part lain, asal beda di part yang sama.',
+      },
+      { name: 'kanbanNo', label: 'No. Kanban SAP', kind: 'number', inList: true },
+      {
+        name: 'owner',
+        label: 'Pemilik Kartu',
+        kind: 'select',
+        options: KANBAN_OWNERS,
+        required: true,
+        defaultValue: 'INTERNAL',
+        inList: true,
+        hint: 'CUSTOMER untuk kartu milik customer yang direct kanban.',
+      },
+      {
+        name: 'kanbanType',
+        label: 'Jenis',
+        kind: 'select',
+        options: KANBAN_TYPES,
+        required: true,
+        defaultValue: 'REGULER',
+        inList: true,
+      },
+      {
+        name: 'qtyPerBox',
+        label: 'Qty per Kemasan',
+        kind: 'number',
+        required: true,
+        defaultValue: 1,
+        inList: true,
+      },
+      {
+        name: 'unitPerKanban',
+        label: 'Unit per Kanban',
+        kind: 'number',
+        required: true,
+        defaultValue: 1,
+        hint: 'Berapa unit ditempel ke satu kartu. Assembling tertentu menempelkan dua.',
+      },
+      { name: 'side', label: 'Side', kind: 'text', max: 8, hint: 'LH / RH untuk part berpasangan.' },
+      { name: 'boxType', label: 'Jenis Box', kind: 'text', max: 8 },
+      { name: 'customerId', label: 'Customer', kind: 'reference', refEntity: 'customers' },
+      activeField,
+    ],
+  },
+
   'part-processes': {
     key: 'part-processes',
     label: 'Rute Proses',

@@ -1,4 +1,10 @@
-import { MASTER_ENTITIES, ENTITY_DEFS } from '@avicenna/contracts';
+import {
+  MENU_ITEMS,
+  MENU_GROUPS,
+  MENU_GROUP_COLLAPSIBLE,
+  type MenuRow,
+  type MenuGroup,
+} from '@avicenna/contracts';
 
 export interface NavItem {
   href: string;
@@ -15,46 +21,44 @@ export interface NavGroup {
 }
 
 /**
- * Struktur menu.
+ * Menyusun menu menjadi grup untuk sidebar.
  *
- * Bagian Master Data diturunkan langsung dari registry entitas, sehingga
- * menambah entitas master otomatis memunculkan menunya — tidak ada daftar
- * kedua yang bisa ketinggalan.
+ * Isinya datang dari server — daftar menu yang BOLEH dilihat orang yang sedang
+ * masuk, bukan seluruh katalog. Menyaringnya di browser berarti nama setiap
+ * layar tetap terkirim ke semua orang, dan daftar itu sendiri sudah memberi
+ * tahu apa saja yang ada di sistem.
  *
- * Modul operasional dari sistem lama (production plan, kanban, pulling,
- * quality, opname, andon) belum dicantumkan karena halamannya belum
- * ada. Menu yang menjanjikan halaman kosong membuat operator berhenti
- * mempercayai navigasi.
+ * Grup yang menjadi kosong setelah disaring tidak ditampilkan: judul grup
+ * tanpa isi membuat orang mengira menunya gagal dimuat.
  */
-export const NAV_GROUPS: NavGroup[] = [
-  {
-    title: 'Produksi',
-    items: [
-      { href: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
-      { href: '/scan', label: 'Stasiun Scan', icon: 'ScanLine' },
-      { href: '/monitor', label: 'Monitor Line', icon: 'Activity' },
-    ],
-  },
-  {
-    title: 'Logistik',
-    items: [
-      { href: '/receiving', label: 'Penerimaan Barang', icon: 'Truck' },
-      { href: '/transfer', label: 'Transfer Antar Line', icon: 'MoveRight' },
-      { href: '/delivery', label: 'Pengiriman', icon: 'PackageCheck' },
-      { href: '/trace', label: 'Telusur Silsilah', icon: 'GitBranch' },
-    ],
-  },
-  {
-    title: 'Integrasi',
-    items: [{ href: '/sap', label: 'Integrasi SAP', icon: 'Share2' }],
-  },
-  {
-    title: 'Master Data',
-    collapsible: true,
-    items: MASTER_ENTITIES.map((key) => ({
-      href: `/master/${key}`,
-      label: ENTITY_DEFS[key].label,
-      icon: ENTITY_DEFS[key].icon,
-    })),
-  },
-];
+export function susunNav(menus: readonly MenuRow[]): NavGroup[] {
+  return MENU_GROUPS.map((title) => ({
+    title,
+    collapsible: MENU_GROUP_COLLAPSIBLE[title],
+    items: menus
+      .filter((m) => m.group === title)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((m) => ({ href: m.href, label: m.label, icon: m.icon })),
+  })).filter((g) => g.items.length > 0);
+}
+
+/**
+ * Seluruh katalog sebagai grup — cadangan saat daftar dari server tidak bisa
+ * diambil.
+ *
+ * Dipakai HANYA ketika API tidak menjawab. Menampilkan menu yang mungkin tidak
+ * berhak dibuka memang tidak ideal, tetapi halamannya sendiri tetap dijaga di
+ * server; sidebar kosong total akan terlihat seperti aplikasi yang rusak dan
+ * membuat orang tidak bisa berpindah ke mana pun, termasuk keluar.
+ */
+export const NAV_GROUPS: NavGroup[] = susunNav(
+  MENU_ITEMS.filter((m) => !m.adminOnly).map((m) => ({
+    key: m.key,
+    label: m.label,
+    href: m.href,
+    icon: m.icon,
+    group: m.group as MenuGroup,
+    sortOrder: m.sortOrder,
+    adminOnly: false,
+  })),
+);

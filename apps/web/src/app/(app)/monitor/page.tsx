@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { Activity, ArrowUpRight } from 'lucide-react';
 import { listLinesWithProduction, type LineProduksi } from '@/lib/queries';
+import { grupProses, PROCESS_GROUPS, PROCESS_GROUP_LABELS } from '@avicenna/domain';
+import { PROCESS_TYPES, PROCESS_LABELS } from '@avicenna/contracts';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
 import { IconBadge } from '@/components/ui/icon-badge';
@@ -10,24 +12,43 @@ import { cn } from '@/components/ui/cn';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * Urutan proses mengikuti aliran barang, bukan abjad.
+/*
+ * Urutan dan label diambil dari @avicenna/contracts, tidak disalin lagi.
  *
- * Casting mendahului machining, machining mendahului assembling. Mengurutkannya
- * menurut abjad menempatkan Assembling di depan Casting, dan orang lapangan
- * membaca layar ini sebagai urutan kerja — bukan sebagai daftar.
+ * Daftar salinan di sini pernah tertinggal saat jenis proses bertambah: nilai
+ * seperti CASTING_WIP tidak cocok dengan 'CASTING' yang tertulis, sehingga
+ * seluruh lini jatuh ke penampung "tidak dikenal" dan urutannya acak.
+ *
+ * PROCESS_TYPES sudah tersusun mengikuti aliran barang, bukan abjad — orang
+ * lapangan membaca layar ini sebagai urutan kerja.
  */
-const URUTAN_PROSES = ['CASTING', 'MACHINING', 'ASSEMBLING', 'INJECTION'] as const;
+const URUTAN_PROSES = PROCESS_TYPES;
+const NAMA_PROSES: Record<string, string> = PROCESS_LABELS;
 
-const NAMA_PROSES: Record<string, string> = {
-  CASTING: 'Casting',
-  MACHINING: 'Machining',
-  ASSEMBLING: 'Assembling',
-  INJECTION: 'Injection',
-};
+export default async function MonitorIndexPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ proses?: string }>;
+}) {
+  const sp = await searchParams;
+  /*
+   * Saringan grup proses.
+   *
+   * Leader dan JP dibawa ke sini dengan ?proses=casting tepat setelah login —
+   * mereka mengurus satu proses, dan menampilkan seluruh pabrik membuat lini
+   * yang jadi tanggung jawabnya tenggelam di antara yang bukan.
+   *
+   * Nilai yang tidak dikenal diabaikan, bukan menghasilkan halaman kosong:
+   * tautan lama atau salah ketik tidak seharusnya membuat layar terlihat rusak.
+   */
+  const saringan = PROCESS_GROUPS.find(
+    (g) => g.toLowerCase() === (sp.proses ?? '').trim().toLowerCase(),
+  );
 
-export default async function MonitorIndexPage() {
-  const semua = await listLinesWithProduction();
+  const semuaLine = await listLinesWithProduction();
+  const semua = saringan
+    ? semuaLine.filter((l) => grupProses(l.processType as never) === saringan)
+    : semuaLine;
 
   // Proses yang tidak punya line sama sekali tidak ditampilkan; proses di luar
   // daftar tetap muncul di belakang, supaya jenis baru tidak hilang diam-diam.
@@ -45,16 +66,43 @@ export default async function MonitorIndexPage() {
       <PageHeader
         crumbs={[{ label: 'Monitor Produksi' }]}
         title="Monitor Produksi"
-        description="Hasil hari produksi berjalan per proses — dihitung dari jam 07:00, bukan tengah malam"
+        description={
+          saringan
+            ? `Proses ${PROCESS_GROUP_LABELS[saringan]} — hari produksi berjalan, dihitung dari jam 07:00`
+            : 'Hasil hari produksi berjalan per proses — dihitung dari jam 07:00, bukan tengah malam'
+        }
       />
+
+      {/* Saringan selalu terlihat, termasuk saat sedang aktif — supaya orang
+          tahu ia sedang melihat sebagian, bukan seluruhnya. */}
+      <div className="mb-5 flex flex-wrap gap-1.5">
+        <Saring aktif={!saringan} href="/monitor" label="Semua proses" />
+        {PROCESS_GROUPS.filter((g) =>
+          semuaLine.some((l) => grupProses(l.processType as never) === g),
+        ).map((g) => (
+          <Saring
+            key={g}
+            aktif={saringan === g}
+            href={`/monitor?proses=${g.toLowerCase()}`}
+            label={PROCESS_GROUP_LABELS[g]}
+          />
+        ))}
+      </div>
 
       {semua.length === 0 ? (
         <Card className="px-6 py-14 text-center text-[14px] text-ink-muted">
+          {saringan
+            ? `Belum ada line ${PROCESS_GROUP_LABELS[saringan]} yang aktif.`
+            : null}
+          {saringan ? null : (
+            <>
           Belum ada line. Jalankan{' '}
           <code className="rounded-md bg-surface px-1.5 py-0.5 font-mono text-[13px]">
             pnpm db:seed
           </code>{' '}
           lebih dulu.
+            </>
+          )}
         </Card>
       ) : (
         <>
@@ -95,6 +143,22 @@ export default async function MonitorIndexPage() {
         </>
       )}
     </>
+  );
+}
+
+function Saring({ aktif, href, label }: { aktif: boolean; href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        'rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors',
+        aktif
+          ? 'border-ink bg-surface text-ink'
+          : 'border-line text-ink-muted hover:border-ink hover:text-ink',
+      )}
+    >
+      {label}
+    </Link>
   );
 }
 

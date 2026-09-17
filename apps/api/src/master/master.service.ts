@@ -8,6 +8,7 @@ import {
   type MasterEntity,
 } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
+import { validationError } from '../common/validation-error';
 
 /** Kode galat MySQL yang perlu diterjemahkan jadi pesan yang bisa dipahami pengguna. */
 const MYSQL = {
@@ -205,18 +206,6 @@ function shortLabelOf(row: Record<string, unknown>): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function validationError(error: any) {
-  return new BadRequestException({
-    statusCode: 400,
-    error: 'ValidationError',
-    message: 'Data yang dikirim tidak valid',
-    details: error.issues.map((i: { path: unknown[]; message: string }) => ({
-      field: i.path.join('.'),
-      message: i.message,
-    })),
-  });
-}
-
 /**
  * Menerjemahkan galat database menjadi pesan yang berarti bagi pengguna.
  *

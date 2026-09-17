@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Check, Loader2, AlertCircle } from 'lucide-react';
 import { simpanRuteAction } from '@/app/(app)/master/part-processes/actions';
+import { PROCESS_LABELS } from '@avicenna/contracts';
 import { cn } from '../ui/cn';
 
 export interface BarisMatriks {
@@ -15,18 +16,15 @@ export interface BarisMatriks {
   plantCode: string | null;
   /** processType -> urutan. Tidak ada kunci = tidak melewati proses itu. */
   rute: Record<string, number>;
+  /** Masalah pada rute ini, kosong bila wajar. */
+  masalah: string[];
 }
 
-const LABEL: Record<string, string> = {
-  MELTING: 'Melting',
-  CASTING: 'Casting',
-  MACHINING: 'Machining',
-  ASSEMBLING_UNIT: 'Assembling (Unit)',
-  INJECTION: 'Injection',
-  PAINTING: 'Painting',
-  ASSEMBLING_BODY: 'Assembling (Body)',
-  DELIVERY: 'Delivery',
-};
+/*
+ * Label diambil dari @avicenna/contracts, tidak disalin lagi di sini.
+ * Salinan daftar proses sudah dua kali menyimpang dari aslinya.
+ */
+const LABEL = PROCESS_LABELS as Record<string, string>;
 
 /**
  * Matriks part × proses — bentuk yang sama dengan tabel rute di lapangan.
@@ -47,10 +45,13 @@ const LABEL: Record<string, string> = {
  */
 export function MatriksRute({
   proses,
+  finishGood,
   baris,
   liniPerProses,
 }: {
   proses: string[];
+  /** Proses yang lininya menghasilkan finish good — ditandai di kepala kolom. */
+  finishGood: string[];
   baris: BarisMatriks[];
   liniPerProses: Record<string, string[]>;
 }) {
@@ -87,7 +88,13 @@ export function MatriksRute({
     setData((d) =>
       d.map((x) =>
         x.partId === b.partId
-          ? { ...x, rute: Object.fromEntries(sesudah.map((s, i) => [s, (i + 1) * 10])) }
+          ? {
+              ...x,
+              rute: Object.fromEntries(sesudah.map((s, i) => [s, (i + 1) * 10])),
+              // Server yang memutuskan wajar atau tidak; di layar dikosongkan
+              // dulu supaya peringatan lama tidak tertinggal saat menunggu.
+              masalah: [],
+            }
           : x,
       ),
     );
@@ -142,6 +149,13 @@ export function MatriksRute({
                   className="border-l border-line px-2 py-2 text-center align-bottom font-semibold whitespace-nowrap"
                 >
                   <span className="block">{LABEL[p] ?? p}</span>
+                  {/* Lini FG ditandai: di situlah kanban mulai ditempel, dan
+                      cara scan-nya berbeda dari lini WIP. */}
+                  {finishGood.includes(p) ? (
+                    <span className="mt-0.5 block text-[11px] font-semibold text-ok">
+                      finish good
+                    </span>
+                  ) : null}
                   <span className="mt-0.5 block text-[11px] font-normal text-ink-muted">
                     {liniPerProses[p]?.join(', ') ?? 'belum ada line'}
                   </span>
@@ -200,6 +214,8 @@ export function MatriksRute({
                       <span className="inline-flex items-center gap-1 text-ok">
                         <Check className="size-4" strokeWidth={2.5} aria-hidden /> tersimpan
                       </span>
+                    ) : b.masalah.length > 0 ? (
+                      <span className="text-ng">{b.masalah.join('; ')}</span>
                     ) : urut.length === 0 ? (
                       <span className="text-warn">belum ada rute</span>
                     ) : (

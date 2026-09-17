@@ -52,6 +52,14 @@ export const loadingScanSchema = z.object({
   customerPart: z.string().trim().min(1, 'Barcode kosong').max(64),
   /** Nomor part internal, bila barcode memuatnya. */
   internalPart: z.string().trim().max(64).optional(),
+  /**
+   * Barcode kanban INTERNAL, dikirim bersama kanban customer.
+   *
+   * Wajib pada pencocokan tiga arah, yaitu untuk customer biasa. Customer
+   * direct kanban tidak punya kanban internal untuk dicocokkan — yang menempel
+   * di lini FG memang kartu customer.
+   */
+  internalKanban: z.string().trim().max(255).optional(),
   serialNumber: z.string().trim().max(64).optional(),
   /**
    * Diisi device (mis. uuid lokal). Dipakai membentuk kunci idempoten supaya

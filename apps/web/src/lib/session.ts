@@ -8,6 +8,15 @@ export interface SessionUser {
   npk: string;
   name: string;
   role: string | null;
+  /**
+   * Jabatan, ikut di dalam token.
+   *
+   * Dipakai HANYA untuk memilih apa yang digambar — mis. mengarahkan yang bukan
+   * admin keluar dari /admin sebelum halamannya dirender. Bukan pembatasan:
+   * isinya dibaca tanpa verifikasi tanda tangan (lihat catatan di bawah), dan
+   * yang benar-benar menjaga adalah @AdminOnly di API.
+   */
+  roleKind: 'SCANNING' | 'VIEW' | 'ADMIN' | null;
   plantId: number | null;
 }
 
@@ -51,6 +60,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       npk: string;
       name: string;
       role: string | null;
+      roleKind: SessionUser['roleKind'];
       plantId: number | null;
       exp?: number;
     };
@@ -60,6 +70,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       npk: payload.npk,
       name: payload.name,
       role: payload.role,
+      roleKind: payload.roleKind ?? null,
       plantId: payload.plantId,
     };
   } catch {

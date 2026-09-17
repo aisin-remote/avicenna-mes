@@ -17,6 +17,8 @@ import {
   PackageCheck,
   Share2,
   Route,
+  Tag,
+  Hash,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -45,6 +47,8 @@ const ICONS: Record<string, LucideIcon> = {
   PackageCheck,
   Share2,
   Route,
+  Tag,
+  Hash,
 };
 
 /** Mengembalikan ikon Database sebagai cadangan agar UI tidak pernah kosong. */
