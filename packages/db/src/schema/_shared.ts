@@ -2,15 +2,22 @@ import { bigint, timestamp } from 'drizzle-orm/mysql-core';
 import { sql } from 'drizzle-orm';
 
 /** PK standar: BIGINT UNSIGNED AUTO_INCREMENT — sama dengan konvensi Laravel lama. */
-export const pk = () => bigint('ID', { mode: 'number', unsigned: true }).autoincrement().primaryKey();
+export const pk = () => bigint('INT_ID', { mode: 'number', unsigned: true }).autoincrement().primaryKey();
 
 /** FK standar ke pk() di atas. */
 export const fk = (name: string) => bigint(name, { mode: 'number', unsigned: true });
 
-/** created_at / updated_at, penamaan snake_case supaya query SQL manual tetap familiar. */
+/**
+ * created_at / updated_at.
+ *
+ * Prefiks DTM_ mengikuti konvensi database staging (CHR_/INT_/FLT_), tetapi
+ * dengan prefiks yang JUJUR soal tipe: staging menyimpan tanggal sebagai
+ * CHR_ char(8) + char(6) terpisah, sedangkan kolom ini timestamp sungguhan.
+ * Menamainya CHR_ akan menyesatkan tanpa menambah kejelasan apa pun.
+ */
 export const timestamps = {
-  createdAt: timestamp('CREATED_AT').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: timestamp('UPDATED_AT')
+  createdAt: timestamp('DTM_CREATED_AT').notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp('DTM_UPDATED_AT')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
 };
@@ -18,16 +25,50 @@ export const timestamps = {
 /**
  * Jenis proses produksi.
  *
- * INI generalisasi terpenting dari merge avicenna + bella:
- *   bella  -> model `Injection`      => INJECTION
- *   avicenna -> avi_trace_casting    => CASTING
- *               avi_trace_machining  => MACHINING
- *               avi_trace_assembling => ASSEMBLING
+ * Diambil dari rute nyata part di AIIA, bukan dikarang. Dua alur yang berbeda
+ * sepenuhnya berjalan di pabrik yang berbeda:
  *
- * Satu tabel proses, dibedakan kolom ini — bukan satu tabel per proses.
+ *   UNIT  MELTING -> CASTING -> MACHINING -> ASSEMBLING_UNIT -> DELIVERY
+ *   BODY  INJECTION -> PAINTING -> ASSEMBLING_BODY -> DELIVERY
+ *
+ * ── Kenapa ASSEMBLING dipecah dua ───────────────────────────────────────────
+ *
+ * Di tabel rute AIIA, "Assembling" muncul sebagai DUA kolom terpisah: satu
+ * setelah Machining di alur UNIT, satu setelah Painting di alur BODY. Keduanya
+ * proses yang berlainan, dikerjakan di lini yang berbeda. Menyatukannya menjadi
+ * satu nilai membuat hasil kedua pabrik tercampur di laporan, dan tidak ada cara
+ * memisahkannya kembali setelah datanya terlanjur masuk.
+ *
+ * ── Urutan di daftar ini TIDAK menentukan rute ──────────────────────────────
+ *
+ * Rute melekat pada PART, bukan pada jenis prosesnya — lihat TM_PROCESS_PARTS.
+ * Dua part di proyek yang sama pun bisa berbeda rute: pada proyek 660A, GARNISH
+ * melewati Injection lalu langsung Assembling, sedangkan HANDLE melewati
+ * Painting lebih dulu. Daftar ini hanya kosakata yang sah, bukan urutannya.
  */
-export const PROCESS_TYPES = ['CASTING', 'MACHINING', 'ASSEMBLING', 'INJECTION'] as const;
+export const PROCESS_TYPES = [
+  'MELTING',
+  'CASTING',
+  'MACHINING',
+  'ASSEMBLING_UNIT',
+  'INJECTION',
+  'PAINTING',
+  'ASSEMBLING_BODY',
+  'DELIVERY',
+] as const;
 export type ProcessType = (typeof PROCESS_TYPES)[number];
+
+/** Label untuk layar. Dipisah supaya penggantian nama tidak menyentuh data. */
+export const PROCESS_LABELS: Record<ProcessType, string> = {
+  MELTING: 'Melting',
+  CASTING: 'Casting',
+  MACHINING: 'Machining',
+  ASSEMBLING_UNIT: 'Assembling (Unit)',
+  INJECTION: 'Injection',
+  PAINTING: 'Painting',
+  ASSEMBLING_BODY: 'Assembling (Body)',
+  DELIVERY: 'Delivery',
+};
 
 /**
  * Jenis part menurut posisinya di rantai pasok.

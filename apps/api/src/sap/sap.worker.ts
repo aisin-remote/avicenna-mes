@@ -4,18 +4,39 @@ import { RedisService } from '../queue/redis.service';
 import { QueueService } from '../queue/queue.service';
 import { QUEUES, JOBS } from '../queue/queue.constants';
 import { SapOutboxService } from './sap-outbox.service';
-import { SapWriterService } from './sap-writer.service';
+import { StagingPushService } from '../staging/staging-push.service';
+import { StagingPullService } from '../staging/staging-pull.service';
 
-/** Sesering apa perpindahan barang dikumpulkan dan dikirim. */
-const POLA_CRON = '* * * * *';
+/** Sesering apa perpindahan barang dikumpulkan, didorong, dan dicek balasannya. */
+const POLA_TRANSAKSI = '* * * * *';
 
 /**
- * Menjalankan pengumpulan dan pengiriman dokumen SAP secara berkala.
+ * Master tidak berubah tiap menit.
  *
- * Dua langkah dipisah dengan sengaja. Pengumpulan hanya menyentuh MySQL dan
- * selalu bisa jalan; pengiriman bergantung pada MS SQL yang bisa saja mati.
- * Menyatukannya berarti gangguan jaringan ke MS SQL ikut menghentikan
- * pencatatan dokumen — dan tunggakannya jadi tidak terlihat di mana pun.
+ * Menariknya sesering transaksi hanya membebani SQL Server dan memperbesar
+ * jendela di mana seseorang sedang menyunting master lalu tulisannya tertimpa
+ * hasil tarik di tengah pekerjaan.
+ */
+const POLA_MASTER = '*/15 * * * *';
+
+/**
+ * Menjalankan percakapan dengan database jembatan secara berkala.
+ *
+ * Empat langkah, sengaja dipisah menjadi empat job:
+ *
+ *   kumpulkan  mutasi -> dokumen di outbox        (MySQL saja)
+ *   dorong     outbox -> staging                  (butuh MS SQL)
+ *   balasan    flag di staging -> tutup dokumen   (butuh MS SQL)
+ *   tarik      master di staging -> master kita   (butuh MS SQL)
+ *
+ * Yang pertama hanya menyentuh MySQL dan selalu bisa jalan; tiga sisanya
+ * bergantung pada MS SQL yang bisa saja mati. Menyatukannya berarti gangguan
+ * jaringan ke MS SQL ikut menghentikan pencatatan dokumen — dan tunggakannya
+ * jadi tidak terlihat di mana pun.
+ *
+ * Concurrency 1 menjaga urutannya: dorong tidak pernah berjalan mendahului
+ * kumpulkan pada putaran yang sama, dan baca balasan tidak pernah memeriksa
+ * dokumen yang baru separuh terdorong.
  */
 @Injectable()
 export class SapWorker implements OnModuleInit, OnModuleDestroy {
@@ -26,24 +47,32 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
     private readonly redis: RedisService,
     private readonly queue: QueueService,
     private readonly outbox: SapOutboxService,
-    private readonly writer: SapWriterService,
+    private readonly push: StagingPushService,
+    private readonly pull: StagingPullService,
   ) {}
 
   async onModuleInit(): Promise<void> {
     this.worker = new Worker(
       QUEUES.SYNC,
       async (job: Job) => {
-        if (job.name === JOBS.COLLECT_SAP_OUTBOX) {
-          const hasil = await this.outbox.collect();
-          // Dokumen yang tertahan dicoba lepas tiap putaran: begitu movement
-          // type-nya diisi, tunggakannya jalan sendiri tanpa perlu disentuh.
-          await this.outbox.releaseHeld();
-          return hasil;
+        switch (job.name) {
+          case JOBS.COLLECT_SAP_OUTBOX: {
+            const hasil = await this.outbox.collect();
+            // Dokumen yang tertahan dicoba lepas tiap putaran: begitu movement
+            // type-nya diisi, tunggakannya jalan sendiri tanpa perlu disentuh.
+            await this.outbox.releaseHeld();
+            return hasil;
+          }
+          case JOBS.FLUSH_SAP_OUTBOX:
+            return this.push.dorong();
+          case JOBS.ACK_SAP_STAGING:
+            return this.push.ambilBalasan();
+          case JOBS.PULL_SAP_MASTER:
+            // Sungguhan, bukan uji coba — saklarnya sendiri yang menjaga.
+            return this.pull.tarikSemua(false);
+          default:
+            return undefined;
         }
-        if (job.name === JOBS.FLUSH_SAP_OUTBOX) {
-          return this.writer.flush();
-        }
-        return undefined;
       },
       { connection: this.redis.client, concurrency: 1 },
     );
@@ -54,14 +83,29 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
 
     // upsertJobScheduler bersifat idempoten: restart tidak menghasilkan
     // jadwal kedua yang berjalan paralel.
-    for (const name of [JOBS.COLLECT_SAP_OUTBOX, JOBS.FLUSH_SAP_OUTBOX]) {
-      await this.queue.addRepeating(QUEUES.SYNC, name, {}, POLA_CRON);
+    for (const name of [
+      JOBS.COLLECT_SAP_OUTBOX,
+      JOBS.FLUSH_SAP_OUTBOX,
+      JOBS.ACK_SAP_STAGING,
+    ]) {
+      await this.queue.addRepeating(QUEUES.SYNC, name, {}, POLA_TRANSAKSI);
+    }
+    /*
+     * Tarik master hanya dijadwalkan bila memang aktif.
+     *
+     * Menjadwalkannya saat mati berarti job yang tidak mengerjakan apa pun
+     * berjalan 96 kali sehari, dan catatannya memenuhi log dengan keadaan yang
+     * tidak bisa diperbaiki siapa pun sampai konfigurasinya masuk. Menyalakan
+     * saklarnya perlu restart — sama seperti perubahan .env lainnya.
+     */
+    if (this.pull.aktif) {
+      await this.queue.addRepeating(QUEUES.SYNC, JOBS.PULL_SAP_MASTER, {}, POLA_MASTER);
     }
 
-    this.logger.log(
-      'pengumpul outbox SAP berjalan tiap menit' +
-        (this.writer.aktif ? '' : ' — pengiriman ke MS SQL belum dinyalakan'),
-    );
+    const bagian: string[] = ['pengumpul outbox SAP berjalan tiap menit'];
+    if (!this.push.aktif) bagian.push('dorong ke staging belum dinyalakan');
+    if (!this.pull.aktif) bagian.push('tarik master belum dinyalakan');
+    this.logger.log(bagian.join(' — '));
   }
 
   async onModuleDestroy(): Promise<void> {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { processTypeSchema } from '../common';
 
 /**
  * Daftar entitas master beserta definisi kolomnya.
@@ -24,11 +25,20 @@ export const MASTER_ENTITIES = [
   'locations',
   'ng-masters',
   'bom',
+  'part-processes',
 ] as const;
 
 export type MasterEntity = (typeof MASTER_ENTITIES)[number];
 
-export const PROCESS_TYPES = ['CASTING', 'MACHINING', 'ASSEMBLING', 'INJECTION'] as const;
+/*
+ * Diambil dari processTypeSchema, TIDAK ditulis ulang.
+ *
+ * Sebelumnya daftar ini salinan tersendiri, dan saat jenis proses bertambah
+ * salinan ini tertinggal: formulir master menawarkan nilai yang sudah tidak ada
+ * di kolom enum, lalu setiap penyimpanan gagal dengan pesan dari MySQL yang
+ * tidak menyebut sebabnya.
+ */
+export const PROCESS_TYPES = processTypeSchema.options;
 export const TOOLING_KINDS = ['MOLD', 'DIES', 'JIG'] as const;
 export const LOCATION_KINDS = [
   'WAREHOUSE',
@@ -382,6 +392,59 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       },
       { name: 'category', label: 'Kategori', kind: 'text', max: 64, inList: true },
       { name: 'sortOrder', label: 'Urutan', kind: 'number', min: 0, defaultValue: 0, numeric: true },
+      activeField,
+    ],
+  },
+
+  /**
+   * Rute proses per part — proses apa saja yang dilalui sebuah part, urut.
+   *
+   * Dikelola lewat master biasa supaya penambahan part baru tidak menuntut
+   * deploy. Untuk mengisi banyak part sekaligus, layar matriks di
+   * /master/part-processes jauh lebih cepat daripada formulir satu per satu.
+   */
+  'part-processes': {
+    key: 'part-processes',
+    label: 'Rute Proses',
+    singular: 'Langkah Rute',
+    icon: 'Route',
+    description: 'Proses yang dilalui tiap part, beserta urutannya',
+    searchFields: [],
+    defaultSort: 'partId',
+    fields: [
+      plantRef,
+      {
+        name: 'partId',
+        label: 'Part',
+        kind: 'reference',
+        refEntity: 'parts',
+        required: true,
+        inList: true,
+      },
+      {
+        name: 'processType',
+        label: 'Proses',
+        kind: 'select',
+        options: PROCESS_TYPES,
+        required: true,
+        inList: true,
+      },
+      {
+        name: 'seqNo',
+        label: 'Urutan',
+        kind: 'number',
+        required: true,
+        inList: true,
+        hint: 'Beri jarak (10, 20, 30) supaya langkah baru bisa disisipkan tanpa menomori ulang.',
+      },
+      {
+        name: 'lineId',
+        label: 'Line',
+        kind: 'reference',
+        refEntity: 'lines',
+        inList: true,
+        hint: 'Boleh kosong bila prosesnya dikerjakan beberapa line yang setara.',
+      },
       activeField,
     ],
   },

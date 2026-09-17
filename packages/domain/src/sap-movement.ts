@@ -101,3 +101,59 @@ export function siapDikirim(mutationTypes: string[]): { siap: boolean; belum: st
   });
   return { siap: belum.length === 0, belum };
 }
+
+/** Satu baris perpindahan, sebagaimana akan dikirim ke database jembatan. */
+export interface BarisPerpindahan {
+  mutationType: string;
+  /** Bertanda: + masuk, - keluar. */
+  qty: number;
+  slocFrom: string | null;
+  slocTo: string | null;
+  partNumber?: string | null;
+}
+
+/**
+ * Memeriksa apakah SLOC setiap baris sudah lengkap untuk jenis dokumennya.
+ *
+ * SAP tidak bisa memposting perpindahan tanpa storage location: movement 311
+ * butuh asal DAN tujuan, 101 butuh tujuan, 261 dan 601 butuh asal. Mendorong
+ * baris dengan kolom SLOC kosong berarti dokumennya ditolak di sisi sana —
+ * atau lebih buruk, diterima dan masuk ke lokasi bawaan yang keliru.
+ *
+ * Dokumen yang tidak lengkap DITAHAN, bukan dikirim dengan kolom kosong dan
+ * bukan pula dibuang. Sama seperti movement type yang belum diputuskan: begitu
+ * sebabnya diperbaiki, dokumennya jalan sendiri.
+ *
+ * Mengembalikan daftar masalah dalam bahasa yang terbaca di layar pemantauan;
+ * kosong berarti lengkap.
+ */
+export function slocKurang(
+  docType: SapDocType,
+  lines: readonly BarisPerpindahan[],
+): string[] {
+  const masalah: string[] = [];
+
+  for (const b of lines) {
+    const nama = b.partNumber ? `${b.mutationType} ${b.partNumber}` : b.mutationType;
+
+    /*
+     * Perpindahan antar SLOC adalah satu dokumen yang memuat kedua sisinya,
+     * jadi keduanya wajib ada — termasuk tujuan, yang datang dari baris masuk
+     * pasangannya dan karena itu paling mudah hilang tanpa disadari.
+     */
+    if (docType === 'TRANSFER') {
+      if (!b.slocFrom) masalah.push(`${nama}: SLOC asal kosong`);
+      if (!b.slocTo) masalah.push(`${nama}: SLOC tujuan kosong`);
+      continue;
+    }
+
+    // Selain transfer, arah ditentukan tanda qty-nya.
+    if (b.qty < 0) {
+      if (!b.slocFrom) masalah.push(`${nama}: SLOC asal kosong`);
+    } else if (!b.slocTo) {
+      masalah.push(`${nama}: SLOC tujuan kosong`);
+    }
+  }
+
+  return [...new Set(masalah)];
+}

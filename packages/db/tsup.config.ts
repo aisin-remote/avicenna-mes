@@ -1,7 +1,9 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig((options) => ({
-  entry: ['src/index.ts'],
+  // load-env berdiri sendiri supaya script CLI (mis. staging:introspect) bisa
+  // memuat .env dari root repo TANPA ikut menarik mysql2 dan seluruh skema.
+  entry: ['src/index.ts', 'src/load-env.ts'],
   format: ['cjs', 'esm'],
   dts: true,
   sourcemap: true,

@@ -5,22 +5,15 @@
     {
       "idx": 0,
       "version": "5",
-      "when": 1789138206258,
+      "when": 1789606424147,
       "tag": "0000_skema_awal",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "5",
-      "when": 1789139850698,
-      "tag": "0001_sap_outbox",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1789140263341,
-      "tag": "0002_outbox_per_doctype",
+      "when": 1789606985400,
+      "tag": "0001_slippery_weapon_omega",
       "breakpoints": true
     }
   ]

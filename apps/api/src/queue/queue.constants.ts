@@ -15,5 +15,9 @@ export const JOBS = {
   SYNC_J922: 'sync-j922',
   COLLECT_SAP_OUTBOX: 'collect-sap-outbox',
   FLUSH_SAP_OUTBOX: 'flush-sap-outbox',
+  /** Membaca flag balasan yang ditulis SAP di database jembatan. */
+  ACK_SAP_STAGING: 'ack-sap-staging',
+  /** Menarik master data dari database jembatan. */
+  PULL_SAP_MASTER: 'pull-sap-master',
   SEND_NOTIFICATION: 'send-notification',
 } as const;

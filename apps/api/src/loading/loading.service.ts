@@ -820,8 +820,8 @@ export class LoadingService {
         locationName: locations.name,
         locationCode: locations.code,
         stagingLocationId: deliveries.stagingLocationId,
-        stagingLocationName: sql<string | null>`staging.name`,
-        stagingLocationCode: sql<string | null>`staging.code`,
+        stagingLocationName: sql<string | null>`staging.CHR_NAME`,
+        stagingLocationCode: sql<string | null>`staging.CHR_CODE`,
         status: deliveries.status,
         truckStatus: deliveries.truckStatus,
         truckNumber: deliveries.truckNumber,
@@ -834,7 +834,7 @@ export class LoadingService {
       // Alias tersendiri: tabel lokasi dipakai dua kali dalam query yang sama.
       // Nama tabelnya ditulis langsung di sini — satu-satunya tempat begitu —
       // karena Drizzle belum bisa menjadikan tabel yang sama dua alias berbeda.
-      .leftJoin(sql`TM_LOCATION AS staging`, sql`staging.id = ${deliveries.stagingLocationId}`)
+      .leftJoin(sql`TM_LOCATION AS staging`, sql`staging.INT_ID = ${deliveries.stagingLocationId}`)
       .where(eq(deliveries.id, id))
       .limit(1);
 

@@ -7,6 +7,7 @@ import {
   timestamp,
   mysqlEnum,
   uniqueIndex,
+  foreignKey,
   index,
   json,
 } from 'drizzle-orm/mysql-core';
@@ -26,32 +27,32 @@ export const productionPlans = mysqlTable(
   'TT_PRODUCTION_PLAN',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    lineId: fk('LINE_ID')
+    lineId: fk('INT_LINE_ID')
       .notNull()
       .references(() => lines.id),
-    partId: fk('PART_ID')
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    customerId: fk('CUSTOMER_ID').references(() => customers.id),
-    planDate: date('PLAN_DATE', { mode: 'string' }).notNull(),
+    customerId: fk('INT_CUSTOMER_ID').references(() => customers.id),
+    planDate: date('DTM_PLAN_DATE', { mode: 'string' }).notNull(),
     /** Cycle / rit pengiriman ke berapa dalam satu hari. */
-    cycle: int('CYCLE').notNull().default(1),
-    seqNo: int('SEQ_NO').notNull().default(0),
-    orderQty: int('ORDER_QTY').notNull().default(0),
-    directPullingQty: int('DIRECT_PULLING_QTY').notNull().default(0),
-    stockChuteQty: int('STOCK_CHUTE_QTY').notNull().default(0),
-    dock: varchar('DOCK', { length: 32 }),
-    dnNumber: varchar('DN_NUMBER', { length: 64 }),
-    workingStart: time('WORKING_START'),
-    workingEnd: time('WORKING_END'),
-    deliveryTime: time('DELIVERY_TIME'),
-    actualStartAt: timestamp('ACTUAL_START_AT'),
-    actualEndAt: timestamp('ACTUAL_END_AT'),
-    planSource: mysqlEnum('PLAN_SOURCE', ['MANUAL', 'IMPORT', 'STATIC_SEQ', 'API']).notNull().default('MANUAL'),
-    status: mysqlEnum('STATUS', ['DRAFT', 'RELEASED', 'RUNNING', 'DONE', 'CANCELLED'])
+    cycle: int('INT_CYCLE').notNull().default(1),
+    seqNo: int('INT_SEQ_NO').notNull().default(0),
+    orderQty: int('INT_ORDER_QTY').notNull().default(0),
+    directPullingQty: int('INT_DIRECT_PULLING_QTY').notNull().default(0),
+    stockChuteQty: int('INT_STOCK_CHUTE_QTY').notNull().default(0),
+    dock: varchar('CHR_DOCK', { length: 32 }),
+    dnNumber: varchar('CHR_DN_NUMBER', { length: 64 }),
+    workingStart: time('DTM_WORKING_START'),
+    workingEnd: time('DTM_WORKING_END'),
+    deliveryTime: time('DTM_DELIVERY_TIME'),
+    actualStartAt: timestamp('DTM_ACTUAL_START_AT'),
+    actualEndAt: timestamp('DTM_ACTUAL_END_AT'),
+    planSource: mysqlEnum('CHR_PLAN_SOURCE', ['MANUAL', 'IMPORT', 'STATIC_SEQ', 'API']).notNull().default('MANUAL'),
+    status: mysqlEnum('CHR_STATUS', ['DRAFT', 'RELEASED', 'RUNNING', 'DONE', 'CANCELLED'])
       .notNull()
       .default('DRAFT'),
     ...timestamps,
@@ -88,31 +89,45 @@ export const scanEvents = mysqlTable(
   'TT_HISTORY_SCAN',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    kind: mysqlEnum('KIND', SCAN_KINDS).notNull(),
-    processType: mysqlEnum('PROCESS_TYPE', PROCESS_TYPES),
-    lineId: fk('LINE_ID').references(() => lines.id),
-    partId: fk('PART_ID').references(() => parts.id),
-    machineId: fk('MACHINE_ID').references(() => machines.id),
-    productionPlanId: fk('PRODUCTION_PLAN_ID').references(() => productionPlans.id),
+    kind: mysqlEnum('CHR_KIND', SCAN_KINDS).notNull(),
+    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES),
+    lineId: fk('INT_LINE_ID').references(() => lines.id),
+    partId: fk('INT_PART_ID').references(() => parts.id),
+    machineId: fk('INT_MACHINE_ID').references(() => machines.id),
+    productionPlanId: fk('INT_PRODUCTION_PLAN_ID'),
     /** Isi barcode mentah, disimpan apa adanya untuk audit & investigasi. */
-    rawCode: varchar('RAW_CODE', { length: 255 }).notNull(),
-    serialNumber: varchar('SERIAL_NUMBER', { length: 64 }),
-    qty: int('QTY').notNull().default(1),
-    userId: fk('USER_ID').references(() => users.id),
-    deviceId: fk('DEVICE_ID').references(() => devices.id),
-    scannedAt: timestamp('SCANNED_AT').notNull(),
+    rawCode: varchar('CHR_RAW_CODE', { length: 255 }).notNull(),
+    serialNumber: varchar('CHR_SERIAL_NUMBER', { length: 64 }),
+    qty: int('INT_QTY').notNull().default(1),
+    userId: fk('INT_USER_ID').references(() => users.id),
+    deviceId: fk('INT_DEVICE_ID').references(() => devices.id),
+    scannedAt: timestamp('DTM_SCANNED_AT').notNull(),
     /**
      * Kunci idempoten. Scanner di pabrik sering mengirim ulang saat jaringan
      * putus-nyambung; unique index di sini yang mencegah dobel, bukan logika app.
      */
-    dedupeKey: varchar('DEDUPE_KEY', { length: 128 }).notNull(),
-    meta: json('META'),
+    dedupeKey: varchar('CHR_DEDUPE_KEY', { length: 128 }).notNull(),
+    meta: json('CHR_META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [
+    /*
+     * Nama constraint ditulis eksplisit.
+     *
+     * Nama bawaan Drizzle merangkai tabel + kolom di kedua sisi, dan setelah
+     * kolom memakai prefiks INT_/CHR_ hasilnya melewati batas 64 karakter milik
+     * MySQL. Migrasi di database yang SUDAH ada tetap jalan — rename kolom tidak
+     * menyentuh nama constraint — sehingga kegagalannya hanya muncul saat
+     * membuat database dari nol: di CI, di laptop orang baru, dan di produksi.
+     */
+    foreignKey({
+      name: 'TT_HISTORY_SCAN_PROD_PLAN_FK',
+      columns: [t.productionPlanId],
+      foreignColumns: [productionPlans.id],
+    }),
     uniqueIndex('TT_HISTORY_SCAN_DEDUPE_UNIQUE').on(t.dedupeKey),
     index('TT_HISTORY_SCAN_TIME_IDX').on(t.scannedAt),
     index('TT_HISTORY_SCAN_LINE_KIND_TIME_IDX').on(t.lineId, t.kind, t.scannedAt),

@@ -24,12 +24,12 @@ export const lines = mysqlTable(
   'TM_LINE',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    code: varchar('CODE', { length: 32 }).notNull(),
-    name: varchar('NAME', { length: 128 }).notNull(),
-    processType: mysqlEnum('PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    code: varchar('CHR_CODE', { length: 32 }).notNull(),
+    name: varchar('CHR_NAME', { length: 128 }).notNull(),
+    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
     /*
      * SLOC asal dan tujuan line ini.
      *
@@ -48,10 +48,10 @@ export const lines = mysqlTable(
      * impor berputar. Keutuhannya dijaga di service — lokasi wajib milik pabrik
      * yang sama, dan itu memang pemeriksaan yang tidak bisa dilakukan FK.
      */
-    inputLocationId: fk('INPUT_LOCATION_ID'),
-    outputLocationId: fk('OUTPUT_LOCATION_ID'),
-    sortOrder: int('SORT_ORDER').notNull().default(0),
-    isActive: boolean('IS_ACTIVE').notNull().default(true),
+    inputLocationId: fk('INT_INPUT_LOCATION_ID'),
+    outputLocationId: fk('INT_OUTPUT_LOCATION_ID'),
+    sortOrder: int('INT_SORT_ORDER').notNull().default(0),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
@@ -64,10 +64,10 @@ export const customers = mysqlTable(
   'TM_CUST',
   {
     id: pk(),
-    code: varchar('CODE', { length: 32 }).notNull(),
-    name: varchar('NAME', { length: 128 }).notNull(),
+    code: varchar('CHR_CUST_NO', { length: 32 }).notNull(),
+    name: varchar('CHR_CUST_NAME', { length: 128 }).notNull(),
     /** Dock tujuan pengiriman (TMMIN dsb). */
-    dock: varchar('DOCK', { length: 32 }),
+    dock: varchar('CHR_DOCK', { length: 32 }),
     /**
      * Aturan penulisan nomor part pada barcode customer.
      *
@@ -76,7 +76,7 @@ export const customers = mysqlTable(
      * setelah data dipindah, dan aturan yang bergantung pada nomor baris
      * database akan diam-diam salah begitu urutannya berubah.
      */
-    partNumberFormat: mysqlEnum('PART_NUMBER_FORMAT', [
+    partNumberFormat: mysqlEnum('CHR_PART_NUMBER_FORMAT', [
       'TMMIN',
       'SUZUKI',
       'MMKI',
@@ -85,7 +85,7 @@ export const customers = mysqlTable(
     ])
       .notNull()
       .default('NONE'),
-    isActive: boolean('IS_ACTIVE').notNull().default(true),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [uniqueIndex('TM_CUST_CODE_UNIQUE').on(t.code)],
@@ -95,9 +95,9 @@ export const suppliers = mysqlTable(
   'TM_VENDOR',
   {
     id: pk(),
-    code: varchar('CODE', { length: 32 }).notNull(),
-    name: varchar('NAME', { length: 128 }).notNull(),
-    isActive: boolean('IS_ACTIVE').notNull().default(true),
+    code: varchar('CHR_SUPPLIER_ID', { length: 32 }).notNull(),
+    name: varchar('CHR_SUPPLIER_NAME', { length: 128 }).notNull(),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [uniqueIndex('TM_VENDOR_CODE_UNIQUE').on(t.code)],
@@ -111,31 +111,42 @@ export const parts = mysqlTable(
   'TM_PARTS',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    lineId: fk('LINE_ID').references(() => lines.id),
-    partNumber: varchar('PART_NUMBER', { length: 64 }).notNull(),
-    backNumber: varchar('BACK_NUMBER', { length: 64 }),
-    name: varchar('NAME', { length: 191 }).notNull(),
-    processType: mysqlEnum('PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    lineId: fk('INT_LINE_ID').references(() => lines.id),
+    partNumber: varchar('CHR_PART_NO', { length: 64 }).notNull(),
+    backNumber: varchar('CHR_BACK_NO', { length: 64 }),
+    /**
+     * Proyek/model tempat part ini dipakai — TCC, OPN, CSH, 4L45W, 660A.
+     *
+     * Kolom biasa, bukan tabel master: dipakai untuk mengelompokkan laporan dan
+     * layar monitor, dan tidak punya atribut lain yang perlu disimpan.
+     *
+     * Proyek TIDAK menentukan rute. Pada proyek 660A, GARNISH melewati Injection
+     * lalu langsung Assembling sedangkan HANDLE melewati Painting lebih dulu —
+     * jadi rute tetap melekat pada part, lihat TM_PROCESS_PARTS.
+     */
+    project: varchar('CHR_PROJECT', { length: 32 }),
+    name: varchar('CHR_PART_NAME', { length: 191 }).notNull(),
+    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
     /** Posisi part di rantai pasok — menentukan aturan apa yang berlaku baginya. */
-    partType: mysqlEnum('PART_TYPE', PART_TYPES).notNull().default('FINISHED_GOOD'),
+    partType: mysqlEnum('CHR_PART_TYPE', PART_TYPES).notNull().default('FINISHED_GOOD'),
     /** Dibeli atau diproduksi sendiri. */
-    sourceType: mysqlEnum('SOURCE_TYPE', SOURCE_TYPES).notNull().default('MANUFACTURED'),
+    sourceType: mysqlEnum('CHR_SOURCE_TYPE', SOURCE_TYPES).notNull().default('MANUFACTURED'),
     /**
      * Cara part ini ditelusuri. Lihat docs/traceability-model.md.
      * Raw material yang dilebur tidak mungkin berseri; part casting justru
      * sudah discan satu per satu.
      */
-    trackingMode: mysqlEnum('TRACKING_MODE', TRACKING_MODES).notNull().default('SERIAL'),
+    trackingMode: mysqlEnum('CHR_TRACKING_MODE', TRACKING_MODES).notNull().default('SERIAL'),
     /** Satuan. Raw material sering kilogram, bukan pcs. */
-    uom: varchar('UOM', { length: 16 }).notNull().default('pcs'),
+    uom: varchar('CHR_PART_UOM', { length: 16 }).notNull().default('pcs'),
     /** Jumlah pcs per kanban standar (bisa dioverride per customer di customer_parts). */
-    qtyPerKanban: int('QTY_PER_KANBAN'),
-    standardStock: int('STANDARD_STOCK').notNull().default(0),
-    photoPath: varchar('PHOTO_PATH', { length: 255 }),
-    isActive: boolean('IS_ACTIVE').notNull().default(true),
+    qtyPerKanban: int('INT_QTY_PER_BOX'),
+    standardStock: int('INT_STANDARD_STOCK').notNull().default(0),
+    photoPath: varchar('CHR_PHOTO_PATH', { length: 255 }),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
@@ -145,20 +156,91 @@ export const parts = mysqlTable(
   ],
 );
 
+/**
+ * RUTE PROSES PER PART — proses apa saja yang harus dilalui sebuah part, dan
+ * dalam urutan yang mana.
+ *
+ * ── Kenapa tabel, bukan aturan di kode ──────────────────────────────────────
+ *
+ * Sebelumnya urutan proses adalah satu rantai global di process-chain.ts, sama
+ * untuk semua part. Kenyataannya di AIIA tiap part punya rutenya sendiri:
+ *
+ *   TCC A   Melting -> Casting -> Machining -> Assembling -> Delivery
+ *   OPN A   Melting -> Casting -> Machining -> Delivery
+ *   CSH A   Melting -> Casting -> Delivery
+ *   HANDLE  Injection -> Painting -> Assembling -> Delivery
+ *   GARNISH Injection -> Assembling -> Delivery
+ *
+ * Satu rantai global tidak bisa menyatakan bahwa proses sebelum Delivery adalah
+ * Casting untuk CSH A, Machining untuk OPN A, dan Assembling untuk TCC A. Dan
+ * karena rutenya bertambah setiap kali ada part baru, ia harus jadi data yang
+ * bisa diubah lewat master — bukan kode yang menuntut deploy.
+ *
+ * ── Kenapa berkunci part, bukan proyek ──────────────────────────────────────
+ *
+ * Dua part dalam proyek yang sama bisa berbeda rute. Pada proyek 660A, GARNISH
+ * tidak melewati Painting sedangkan HANDLE melewatinya. Mengikat rute ke proyek
+ * akan membuat salah satunya selalu keliru.
+ */
+export const partProcesses = mysqlTable(
+  'TM_PROCESS_PARTS',
+  {
+    id: pk(),
+    plantId: fk('INT_PLANT_ID')
+      .notNull()
+      .references(() => plants.id),
+    partId: fk('INT_PART_ID')
+      .notNull()
+      .references(() => parts.id),
+    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    /**
+     * Urutan dalam rute part ini. Bukan urutan global.
+     *
+     * Dipakai menentukan proses sebelumnya saat memvalidasi scan: yang dicari
+     * adalah seqNo terbesar yang lebih kecil dari seqNo proses sekarang, DI
+     * DALAM rute part itu sendiri.
+     */
+    seqNo: int('INT_SEQ_NO').notNull(),
+    /**
+     * Lini yang mengerjakannya, bila sudah pasti satu.
+     *
+     * Boleh kosong: sebuah proses bisa dikerjakan beberapa lini yang setara, dan
+     * memaksa satu lini di sini akan menolak scan dari lini kembarannya.
+     */
+    lineId: fk('INT_LINE_ID').references(() => lines.id),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    // Satu part tidak melewati proses yang sama dua kali. Kalau suatu saat itu
+    // terjadi (mis. dua kali painting), yang berubah adalah kunci ini — dan
+    // perubahannya akan terlihat, bukan diam-diam menimpa baris lama.
+    uniqueIndex('TM_PROCESS_PARTS_PART_PROCESS_UNIQUE').on(t.partId, t.processType),
+    uniqueIndex('TM_PROCESS_PARTS_PART_SEQ_UNIQUE').on(t.partId, t.seqNo),
+    index('TM_PROCESS_PARTS_PLANT_PROCESS_IDX').on(t.plantId, t.processType),
+  ],
+);
+
+export const partProcessesRelations = relations(partProcesses, ({ one }) => ({
+  plant: one(plants, { fields: [partProcesses.plantId], references: [plants.id] }),
+  part: one(parts, { fields: [partProcesses.partId], references: [parts.id] }),
+  line: one(lines, { fields: [partProcesses.lineId], references: [lines.id] }),
+}));
+
 /** Pemetaan part internal -> penomoran milik customer. */
 export const customerParts = mysqlTable(
   'TM_SHIPPING_PARTS',
   {
     id: pk(),
-    partId: fk('PART_ID')
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id, { onDelete: 'cascade' }),
-    customerId: fk('CUSTOMER_ID')
+    customerId: fk('INT_CUSTOMER_ID')
       .notNull()
       .references(() => customers.id, { onDelete: 'cascade' }),
-    customerPartNumber: varchar('CUSTOMER_PART_NUMBER', { length: 64 }).notNull(),
-    customerBackNumber: varchar('CUSTOMER_BACK_NUMBER', { length: 64 }),
-    qtyPerKanban: int('QTY_PER_KANBAN'),
+    customerPartNumber: varchar('CHR_CUS_PART_NO', { length: 64 }).notNull(),
+    customerBackNumber: varchar('CHR_CUS_BACK_NO', { length: 64 }),
+    qtyPerKanban: int('INT_QTY_PER_BOX'),
     ...timestamps,
   },
   (t) => [
@@ -172,14 +254,14 @@ export const machines = mysqlTable(
   'TM_MACHINE',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    lineId: fk('LINE_ID').references(() => lines.id),
-    code: varchar('CODE', { length: 32 }).notNull(),
-    name: varchar('NAME', { length: 128 }).notNull(),
-    externalRef: varchar('EXTERNAL_REF', { length: 64 }),
-    isActive: boolean('IS_ACTIVE').notNull().default(true),
+    lineId: fk('INT_LINE_ID').references(() => lines.id),
+    code: varchar('CHR_CODE', { length: 32 }).notNull(),
+    name: varchar('CHR_NAME', { length: 128 }).notNull(),
+    externalRef: varchar('CHR_EXTERNAL_REF', { length: 64 }),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
@@ -193,14 +275,14 @@ export const toolings = mysqlTable(
   'TM_TOOLING',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    code: varchar('CODE', { length: 32 }).notNull(),
-    name: varchar('NAME', { length: 128 }).notNull(),
-    kind: mysqlEnum('KIND', ['MOLD', 'DIES', 'JIG']).notNull(),
-    cavity: int('CAVITY').notNull().default(1),
-    isActive: boolean('IS_ACTIVE').notNull().default(true),
+    code: varchar('CHR_CODE', { length: 32 }).notNull(),
+    name: varchar('CHR_NAME', { length: 128 }).notNull(),
+    kind: mysqlEnum('CHR_KIND', ['MOLD', 'DIES', 'JIG']).notNull(),
+    cavity: int('INT_CAVITY').notNull().default(1),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [uniqueIndex('TM_TOOLING_PLANT_CODE_UNIQUE').on(t.plantId, t.code)],
@@ -210,10 +292,10 @@ export const toolingParts = mysqlTable(
   'TM_TOOLING_PARTS',
   {
     id: pk(),
-    toolingId: fk('TOOLING_ID')
+    toolingId: fk('INT_TOOLING_ID')
       .notNull()
       .references(() => toolings.id, { onDelete: 'cascade' }),
-    partId: fk('PART_ID')
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id, { onDelete: 'cascade' }),
     ...timestamps,

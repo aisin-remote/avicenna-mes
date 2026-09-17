@@ -19,11 +19,11 @@ export const locations = mysqlTable(
   'TM_LOCATION',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    code: varchar('CODE', { length: 32 }).notNull(),
-    name: varchar('NAME', { length: 128 }).notNull(),
+    code: varchar('CHR_CODE', { length: 32 }).notNull(),
+    name: varchar('CHR_NAME', { length: 128 }).notNull(),
     /*
      * Jenis lokasi. Mengikuti SLOC pada rantai yang dipakai SAP:
      *   WAREHOUSE  gudang komponen & raw material  (WH00)
@@ -32,7 +32,7 @@ export const locations = mysqlTable(
      *   STAGING    sudah dipick, menunggu truk     (PP04)
      * CHUTE, NG, dan TRANSIT tidak punya padanan SLOC dan tidak dikirim ke SAP.
      */
-    kind: mysqlEnum('KIND', [
+    kind: mysqlEnum('CHR_KIND', [
       'WAREHOUSE',
       'WIP',
       'FINISH_GOOD',
@@ -70,14 +70,14 @@ export const mutations = mysqlTable(
   'TT_STOCK_MUTATION',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    partId: fk('PART_ID')
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    locationId: fk('LOCATION_ID').references(() => locations.id),
-    lineId: fk('LINE_ID').references(() => lines.id),
+    locationId: fk('INT_LOCATION_ID').references(() => locations.id),
+    lineId: fk('INT_LINE_ID').references(() => lines.id),
     /**
      * Lot yang bergerak. Kosong untuk part yang dilacak per butir atau hanya
      * per jumlah.
@@ -85,8 +85,8 @@ export const mutations = mysqlTable(
      * Tanpa kolom ini, sisa per lot tidak bisa dihitung — dan alokasi FIFO
      * saat backflush jadi mustahil dilakukan dengan benar.
      */
-    lotId: fk('LOT_ID'),
-    type: mysqlEnum('TYPE', MUTATION_TYPES).notNull(),
+    lotId: fk('INT_LOT_ID'),
+    type: mysqlEnum('CHR_TYPE', MUTATION_TYPES).notNull(),
     /**
      * Bertanda: + masuk, - keluar.
      *
@@ -95,15 +95,15 @@ export const mutations = mysqlTable(
      * selisih stok besar dalam hitungan bulan, dan penyebabnya tidak akan
      * ketahuan karena tiap barisnya sendiri terlihat wajar.
      */
-    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull(),
+    qty: decimal('FLT_QTY', { precision: 14, scale: 4 }).notNull(),
     /** Tabel + id asal (scan_events, quality_inspections, deliveries, ...). */
-    sourceTable: varchar('SOURCE_TABLE', { length: 64 }),
-    sourceId: fk('SOURCE_ID'),
-    npk: varchar('NPK', { length: 32 }),
-    userId: fk('USER_ID').references(() => users.id),
-    occurredAt: timestamp('OCCURRED_AT').notNull(),
-    note: varchar('NOTE', { length: 255 }),
-    meta: json('META'),
+    sourceTable: varchar('CHR_SOURCE_TABLE', { length: 64 }),
+    sourceId: fk('INT_SOURCE_ID'),
+    npk: varchar('CHR_NPK', { length: 32 }),
+    userId: fk('INT_USER_ID').references(() => users.id),
+    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
+    note: varchar('CHR_NOTE', { length: 255 }),
+    meta: json('CHR_META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [
@@ -122,17 +122,17 @@ export const stockBalances = mysqlTable(
   'TT_STOCK_BALANCE',
   {
     id: pk(),
-    partId: fk('PART_ID')
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    locationId: fk('LOCATION_ID').references(() => locations.id),
-    balanceDate: date('BALANCE_DATE', { mode: 'string' }).notNull(),
+    locationId: fk('INT_LOCATION_ID').references(() => locations.id),
+    balanceDate: date('DTM_BALANCE_DATE', { mode: 'string' }).notNull(),
     // Desimal mengikuti mutations — saldo tidak boleh kehilangan presisi yang
     // sudah dijaga di buku besarnya.
-    openingQty: decimal('OPENING_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
-    inQty: decimal('IN_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
-    outQty: decimal('OUT_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
-    closingQty: decimal('CLOSING_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
+    openingQty: decimal('FLT_OPENING_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
+    inQty: decimal('FLT_IN_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
+    outQty: decimal('FLT_OUT_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
+    closingQty: decimal('FLT_CLOSING_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
     ...timestamps,
   },
   (t) => [

@@ -9,6 +9,7 @@ import {
   lines,
   customers,
   parts,
+  partProcesses,
   customerParts,
   ngMasters,
   locations,
@@ -34,7 +35,7 @@ async function main() {
    * kode seperti data lain.
    *
    * Alasannya pahit: kode pabrik bisa diganti pengguna lewat layar master, dan
-   * seed yang mencari "AVICENNA" lalu tidak menemukannya akan dengan senang
+   * seed yang mencari "UNIT" lalu tidak menemukannya akan dengan senang
    * hati membuat pabrik KEMBAR — lengkap dengan line dan lokasi kembarnya.
    * Menjalankan seed pada database yang sudah dipakai seharusnya tidak pernah
    * menggandakan apa pun.
@@ -42,8 +43,8 @@ async function main() {
   let plantRows = await db.select().from(plants);
   if (plantRows.length === 0) {
     await db.insert(plants).values([
-      { code: 'AVICENNA', name: 'Plant Avicenna - Die Casting & Machining' },
-      { code: 'BELLA', name: 'Plant Bella - Injection' },
+      { code: 'UNIT', name: 'Plant Unit - Melting, Casting, Machining, Assembling' },
+      { code: 'BODY', name: 'Plant Body - Injection, Painting, Assembling' },
     ]);
     plantRows = await db.select().from(plants);
     console.log(`[seed]   + ${plantRows.length} baris ke plants`);
@@ -51,11 +52,11 @@ async function main() {
 
   // Dirujuk lewat urutan id, bukan kode — kodenya sudah boleh berubah.
   const sorted = [...plantRows].sort((a, b) => a.id - b.id);
-  const avicenna = sorted[0];
-  if (!avicenna) throw new Error('seed: tidak ada pabrik sama sekali');
+  const unit = sorted[0];
+  if (!unit) throw new Error('seed: tidak ada pabrik sama sekali');
   // Database satu pabrik tetap harus bisa di-seed; data pabrik kedua menumpang
   // ke pabrik yang sama.
-  const bella = sorted[1] ?? avicenna;
+  const body = sorted[1] ?? unit;
 
   // ── Roles ─────────────────────────────────────────────────────────────────
   await insertMissing('roles', roles, 'name', [
@@ -77,7 +78,7 @@ async function main() {
       email: 'admin@aiia.co.id',
       passwordHash: await bcrypt.hash('admin123', 10),
       roleId: adminRole.id,
-      plantId: avicenna.id,
+      plantId: unit.id,
     });
   }
 
@@ -126,11 +127,14 @@ async function main() {
     lines,
     ['plantId', 'code'],
     [
-      { ...lineDefaults(avicenna.id), code: 'DC-01', name: 'Die Casting 1', processType: 'CASTING' as const, sortOrder: 1 },
-      { ...lineDefaults(avicenna.id), code: 'MC-01', name: 'Machining 1', processType: 'MACHINING' as const, sortOrder: 2 },
-      { ...lineDefaults(avicenna.id), code: 'AS-01', name: 'Assembling 1', processType: 'ASSEMBLING' as const, sortOrder: 3 },
-      { ...lineDefaults(bella.id), code: 'INJ-01', name: 'Injection 1', processType: 'INJECTION' as const, sortOrder: 1 },
-      { ...lineDefaults(bella.id), code: 'INJ-02', name: 'Injection 2', processType: 'INJECTION' as const, sortOrder: 2 },
+      { ...lineDefaults(unit.id), code: 'DC-01', name: 'Die Casting 1', processType: 'CASTING' as const, sortOrder: 1 },
+      { ...lineDefaults(unit.id), code: 'MC-01', name: 'Machining 1', processType: 'MACHINING' as const, sortOrder: 2 },
+      { ...lineDefaults(unit.id), code: 'AS-01', name: 'Assembling 1', processType: 'ASSEMBLING_UNIT' as const, sortOrder: 3 },
+      { ...lineDefaults(unit.id), code: 'ML-01', name: 'Melting 1', processType: 'MELTING' as const, sortOrder: 0 },
+      { ...lineDefaults(body.id), code: 'INJ-01', name: 'Injection 1', processType: 'INJECTION' as const, sortOrder: 1 },
+      { ...lineDefaults(body.id), code: 'INJ-02', name: 'Injection 2', processType: 'INJECTION' as const, sortOrder: 2 },
+      { ...lineDefaults(body.id), code: 'PT-01', name: 'Painting 1', processType: 'PAINTING' as const, sortOrder: 3 },
+      { ...lineDefaults(body.id), code: 'AS-02', name: 'Assembling 2', processType: 'ASSEMBLING_BODY' as const, sortOrder: 4 },
     ],
   );
 
@@ -193,9 +197,10 @@ async function main() {
    */
   await insertMissing('parts', parts, ['plantId', 'partNumber'], [
     {
-      plantId: avicenna.id,
+      plantId: unit.id,
       lineId: dc01.id,
       partNumber: 'RM-D-001',
+      project: 'TCC',
       name: 'Aluminium Ingot D',
       processType: 'CASTING' as const,
       partType: 'RAW_MATERIAL' as const,
@@ -205,9 +210,10 @@ async function main() {
       standardStock: 1000,
     },
     {
-      plantId: avicenna.id,
+      plantId: unit.id,
       lineId: dc01.id,
       partNumber: 'WIP-A-001',
+      project: 'TCC',
       name: 'Housing Cast A',
       processType: 'CASTING' as const,
       partType: 'WIP' as const,
@@ -215,12 +221,13 @@ async function main() {
       standardStock: 200,
     },
     {
-      plantId: avicenna.id,
+      plantId: unit.id,
       lineId: as01.id,
       partNumber: 'CMP-B-001',
+      project: 'TCC',
       backNumber: 'BN-B',
       name: 'Bracket B',
-      processType: 'ASSEMBLING' as const,
+      processType: 'ASSEMBLING_UNIT' as const,
       partType: 'COMPONENT' as const,
       sourceType: 'PURCHASED' as const,
       trackingMode: 'LOT' as const,
@@ -228,9 +235,10 @@ async function main() {
       standardStock: 500,
     },
     {
-      plantId: avicenna.id,
+      plantId: unit.id,
       lineId: dc01.id,
       partNumber: 'AV-12345-001',
+      project: 'TCC',
       backNumber: 'BN-001',
       name: 'Housing Cover A',
       processType: 'CASTING' as const,
@@ -238,15 +246,57 @@ async function main() {
       standardStock: 200,
     },
     {
-      plantId: bella.id,
+      plantId: body.id,
       lineId: inj01.id,
       partNumber: 'BL-98765-002',
+      project: '660A',
       backNumber: 'BN-002',
       name: 'Clip Bracket B',
       processType: 'INJECTION' as const,
       qtyPerKanban: 50,
       standardStock: 500,
     },
+  ]);
+
+  /*
+   * ── Rute proses per part ──────────────────────────────────────────────────
+   *
+   * Mengikuti bentuk rute nyata di AIIA: tiap part punya urutannya sendiri, dan
+   * dua part bisa berbeda sekalipun satu proyek. Nomor urut dibuat berjarak 10
+   * supaya langkah baru bisa disisipkan tanpa menomori ulang seluruh rute.
+   *
+   * AV-12345-001 mengikuti pola TCC   : Melting -> Casting -> Machining -> Assembling -> Delivery
+   * WIP-A-001    berhenti sebagai WIP : Melting -> Casting
+   * BL-98765-002 mengikuti pola HANDLE: Injection -> Painting -> Assembling -> Delivery
+   *
+   * RM-D-001 dan CMP-B-001 tidak diberi rute: keduanya dibeli, bukan diproses
+   * di lini kita. Part tanpa rute tidak diperiksa urutannya — lihat catatan di
+   * scan.service.ts.
+   */
+  const partUntukRute = await db.select().from(parts);
+  const partId = (pn: string) =>
+    mustFind(partUntukRute, (p) => p.partNumber === pn, `part ${pn}`).id;
+
+  const langkah = (
+    plantId: number,
+    pn: string,
+    daftar: readonly (typeof partProcesses.$inferInsert)['processType'][],
+  ) =>
+    daftar.map((processType, i) => ({
+      plantId,
+      partId: partId(pn),
+      processType,
+      seqNo: (i + 1) * 10,
+    }));
+
+  await insertMissing('part processes', partProcesses, ['partId', 'processType'], [
+    ...langkah(unit.id, 'AV-12345-001', [
+      'MELTING', 'CASTING', 'MACHINING', 'ASSEMBLING_UNIT', 'DELIVERY',
+    ]),
+    ...langkah(unit.id, 'WIP-A-001', ['MELTING', 'CASTING']),
+    ...langkah(body.id, 'BL-98765-002', [
+      'INJECTION', 'PAINTING', 'ASSEMBLING_BODY', 'DELIVERY',
+    ]),
   ]);
 
   // ── BOM: WIP-A-001 dibuat dari RM-D-001 ───────────────────────────────────
@@ -263,7 +313,7 @@ async function main() {
     .limit(1);
   if (bomAda.length === 0) {
     await db.insert(bomLines).values({
-      plantId: avicenna.id,
+      plantId: unit.id,
       parentPartId: wipA.id,
       componentPartId: rmD.id,
       // 1,7 kg aluminium per housing, ditambah 2% susut pembakaran.
@@ -298,10 +348,10 @@ async function main() {
 
   // ── Master NG ─────────────────────────────────────────────────────────────
   await insertMissing('ng_masters', ngMasters, 'code', [
-    { plantId: avicenna.id, code: 'CRACK', name: 'Retak', processType: 'CASTING' as const, sortOrder: 1 },
-    { plantId: avicenna.id, code: 'POROUS', name: 'Keropos', processType: 'CASTING' as const, sortOrder: 2 },
-    { plantId: bella.id, code: 'SHORT', name: 'Short Shot', processType: 'INJECTION' as const, sortOrder: 1 },
-    { plantId: bella.id, code: 'FLASH', name: 'Flashing', processType: 'INJECTION' as const, sortOrder: 2 },
+    { plantId: unit.id, code: 'CRACK', name: 'Retak', processType: 'CASTING' as const, sortOrder: 1 },
+    { plantId: unit.id, code: 'POROUS', name: 'Keropos', processType: 'CASTING' as const, sortOrder: 2 },
+    { plantId: body.id, code: 'SHORT', name: 'Short Shot', processType: 'INJECTION' as const, sortOrder: 1 },
+    { plantId: body.id, code: 'FLASH', name: 'Flashing', processType: 'INJECTION' as const, sortOrder: 2 },
   ]);
 
   console.log('[seed] selesai. Login: NPK "ADMIN" / password "admin123"');

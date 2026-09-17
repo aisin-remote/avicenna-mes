@@ -18,15 +18,15 @@ export const ngMasters = mysqlTable(
   'TM_NG',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    code: varchar('CODE', { length: 32 }).notNull(),
-    name: varchar('NAME', { length: 128 }).notNull(),
-    processType: mysqlEnum('PROCESS_TYPE', PROCESS_TYPES),
-    category: varchar('CATEGORY', { length: 64 }),
-    sortOrder: int('SORT_ORDER').notNull().default(0),
-    isActive: mysqlEnum('IS_ACTIVE', ['0', '1']).notNull().default('1'),
+    code: varchar('CHR_CODE', { length: 32 }).notNull(),
+    name: varchar('CHR_NAME', { length: 128 }).notNull(),
+    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES),
+    category: varchar('CHR_CATEGORY', { length: 64 }),
+    sortOrder: int('INT_SORT_ORDER').notNull().default(0),
+    isActive: mysqlEnum('CHR_IS_ACTIVE', ['0', '1']).notNull().default('1'),
     ...timestamps,
   },
   (t) => [uniqueIndex('TM_NG_PLANT_CODE_UNIQUE').on(t.plantId, t.code)],
@@ -37,22 +37,22 @@ export const qualityInspections = mysqlTable(
   'TT_INSPECTION_H',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    partId: fk('PART_ID')
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    lineId: fk('LINE_ID').references(() => lines.id),
-    machineId: fk('MACHINE_ID').references(() => machines.id),
-    processType: mysqlEnum('PROCESS_TYPE', PROCESS_TYPES).notNull(),
-    inspectedAt: timestamp('INSPECTED_AT').notNull(),
-    shift: mysqlEnum('SHIFT', ['1', '2', '3']),
-    checkedQty: int('CHECKED_QTY').notNull().default(0),
-    okQty: int('OK_QTY').notNull().default(0),
-    ngQty: int('NG_QTY').notNull().default(0),
-    inspectorId: fk('INSPECTOR_ID').references(() => users.id),
-    note: varchar('NOTE', { length: 255 }),
+    lineId: fk('INT_LINE_ID').references(() => lines.id),
+    machineId: fk('INT_MACHINE_ID').references(() => machines.id),
+    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    inspectedAt: timestamp('DTM_INSPECTED_AT').notNull(),
+    shift: mysqlEnum('CHR_SHIFT', ['1', '2', '3']),
+    checkedQty: int('INT_CHECKED_QTY').notNull().default(0),
+    okQty: int('INT_OK_QTY').notNull().default(0),
+    ngQty: int('INT_NG_QTY').notNull().default(0),
+    inspectorId: fk('INT_INSPECTOR_ID').references(() => users.id),
+    note: varchar('CHR_NOTE', { length: 255 }),
     ...timestamps,
   },
   (t) => [
@@ -73,14 +73,14 @@ export const inspectionDetails = mysqlTable(
   'TT_INSPECTION_L',
   {
     id: pk(),
-    inspectionId: fk('INSPECTION_ID')
+    inspectionId: fk('INT_INSPECTION_ID')
       .notNull()
       .references(() => qualityInspections.id, { onDelete: 'cascade' }),
-    ngMasterId: fk('NG_MASTER_ID')
+    ngMasterId: fk('INT_NG_MASTER_ID')
       .notNull()
       .references(() => ngMasters.id),
-    qty: int('QTY').notNull().default(0),
-    meta: json('META'),
+    qty: int('INT_QTY').notNull().default(0),
+    meta: json('CHR_META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [index('TT_INSPECTION_L_INSPECTION_IDX').on(t.inspectionId)],

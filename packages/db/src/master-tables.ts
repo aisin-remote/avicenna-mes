@@ -10,6 +10,7 @@ import {
   locations,
   ngMasters,
   bomLines,
+  partProcesses,
 } from './schema/index';
 
 /**
@@ -30,6 +31,7 @@ export const MASTER_TABLES = {
   locations,
   'ng-masters': ngMasters,
   bom: bomLines,
+  'part-processes': partProcesses,
 } as const;
 
 export type MasterTable = (typeof MASTER_TABLES)[MasterEntity];

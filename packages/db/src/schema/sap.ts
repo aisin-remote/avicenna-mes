@@ -12,32 +12,50 @@ import { relations } from 'drizzle-orm';
 import { pk, fk, timestamps } from './_shared';
 import { plants } from './org';
 
-export const SAP_OUTBOX_STATUSES = ['PENDING', 'SENT', 'FAILED', 'HELD', 'SKIPPED'] as const;
+export const SAP_OUTBOX_STATUSES = [
+  'PENDING',
+  'SENT',
+  'CONFIRMED',
+  'REJECTED',
+  'FAILED',
+  'HELD',
+  'SKIPPED',
+] as const;
 
 /**
  * Antrean dokumen yang harus sampai ke SAP.
  *
- * Kita MENDORONG ke tabel di MS SQL, lalu SAP membacanya dari sana. Tulisan ke
- * MS SQL tidak bisa ikut dalam transaksi MySQL — dua database berbeda — dan
- * kalau MS SQL sedang mati, scan di lantai produksi tidak boleh ikut gagal.
- * Karena itu perpindahan barang dicatat dulu di sini, lalu dikirim terpisah.
+ * Kita MENDORONG ke database jembatan (staging) di MS SQL, lalu SAP menariknya
+ * dari sana. Tulisan ke MS SQL tidak bisa ikut dalam transaksi MySQL — dua
+ * database berbeda — dan kalau MS SQL sedang mati, scan di lantai produksi
+ * tidak boleh ikut gagal. Karena itu perpindahan barang dicatat dulu di sini,
+ * lalu didorong terpisah.
  *
  * Statusnya:
- *   PENDING  belum dikirim
- *   SENT     sudah masuk MS SQL
- *   FAILED   pengiriman gagal, akan dicoba lagi
- *   HELD     movement type-nya belum diputuskan tim SAP — sengaja ditahan
- *   SKIPPED  memang tidak perlu dikirim (mis. hasil stock opname)
+ *   PENDING    belum didorong ke staging
+ *   SENT       sudah masuk staging, MENUNGGU diproses SAP
+ *   CONFIRMED  SAP sudah memproses dan berhasil — flag di staging bernilai OK
+ *   REJECTED   SAP menolak — flag di staging bernilai gagal, perlu dilihat orang
+ *   FAILED     gagal teknis saat mendorong ke staging, akan dicoba lagi
+ *   HELD       movement type-nya belum diputuskan tim SAP — sengaja ditahan
+ *   SKIPPED    memang tidak perlu dikirim (mis. hasil stock opname)
  *
- * HELD dan SKIPPED sengaja dibedakan dari FAILED. Dokumen yang tertahan karena
- * menunggu keputusan bukan kegagalan teknis, dan mencampurnya membuat layar
- * pemantauan penuh "error" yang tidak ada yang bisa memperbaikinya.
+ * SENT sengaja BUKAN status akhir. Barisnya sampai di staging bukan berarti SAP
+ * sudah menerimanya; yang menentukan itu flag yang ditulis balik oleh SAP.
+ * Menganggap SENT sebagai selesai berarti dokumen yang ditolak SAP menghilang
+ * dari pandangan, dan selisihnya baru ketahuan saat tutup buku.
+ *
+ * HELD dan SKIPPED dibedakan dari FAILED. Dokumen yang tertahan karena menunggu
+ * keputusan bukan kegagalan teknis, dan mencampurnya membuat layar pemantauan
+ * penuh "error" yang tidak ada yang bisa memperbaikinya. REJECTED juga berdiri
+ * sendiri: itu penolakan dari SAP, bukan gangguan jaringan, dan mencobanya lagi
+ * tanpa memperbaiki datanya hanya akan ditolak lagi.
  */
 export const sapOutbox = mysqlTable(
   'TT_SAP_OUTBOX',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
 
@@ -51,12 +69,12 @@ export const sapOutbox = mysqlTable(
      * dokumen sebagai pembeda, keduanya tergabung menjadi satu baris dan salah
      * satu movement type-nya pasti hilang.
      */
-    sourceTable: varchar('SOURCE_TABLE', { length: 64 }).notNull(),
-    sourceId: fk('SOURCE_ID').notNull(),
+    sourceTable: varchar('CHR_SOURCE_TABLE', { length: 64 }).notNull(),
+    sourceId: fk('INT_SOURCE_ID').notNull(),
 
-    docType: varchar('DOC_TYPE', { length: 32 }).notNull(),
+    docType: varchar('CHR_DOC_TYPE', { length: 32 }).notNull(),
     /** Movement type SAP. Kosong berarti belum diputuskan — lihat status HELD. */
-    movementType: varchar('MOVEMENT_TYPE', { length: 8 }),
+    movementType: varchar('CHR_MOVEMENT_TYPE', { length: 8 }),
 
     /**
      * Kunci idempoten LINTAS SISTEM.
@@ -66,20 +84,30 @@ export const sapOutbox = mysqlTable(
      * sama diposting dua kali di SAP — dan koreksinya harus dilakukan manual
      * oleh orang finance.
      */
-    idempotencyKey: varchar('IDEMPOTENCY_KEY', { length: 128 }).notNull(),
+    idempotencyKey: varchar('CHR_IDEMPOTENCY_KEY', { length: 128 }).notNull(),
 
     /** Isi dokumen: kepala beserta barisnya, dalam bentuk yang dibaca SAP. */
-    payload: json('PAYLOAD').notNull(),
+    payload: json('CHR_PAYLOAD').notNull(),
 
-    status: mysqlEnum('STATUS', SAP_OUTBOX_STATUSES).notNull().default('PENDING'),
-    attempts: int('ATTEMPTS').notNull().default(0),
-    lastError: varchar('LAST_ERROR', { length: 1000 }),
+    status: mysqlEnum('CHR_STATUS', SAP_OUTBOX_STATUSES).notNull().default('PENDING'),
+    attempts: int('INT_ATTEMPTS').notNull().default(0),
+    lastError: varchar('CHR_LAST_ERROR', { length: 1000 }),
     /** Nomor dokumen material yang dikembalikan SAP, bila ada. */
-    sapDocNumber: varchar('SAP_DOC_NUMBER', { length: 32 }),
+    sapDocNumber: varchar('CHR_SAP_DOC_NUMBER', { length: 32 }),
 
     /** Kapan perpindahan barangnya terjadi — bukan kapan barisnya dibuat. */
-    occurredAt: timestamp('OCCURRED_AT').notNull(),
-    sentAt: timestamp('SENT_AT'),
+    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
+
+    /** Kapan barisnya mendarat di staging. Belum tentu sudah diproses SAP. */
+    sentAt: timestamp('DTM_SENT_AT'),
+
+    /**
+     * Kapan SAP menutup barisnya — diisi dari flag yang dibaca balik dari
+     * staging, bukan dari jam kita. Selisih SENT_AT ke CONFIRMED_AT adalah
+     * berapa lama dokumen menunggu di jembatan, dan itu satu-satunya cara
+     * melihat SAP mulai tertinggal sebelum tunggakannya menumpuk.
+     */
+    confirmedAt: timestamp('DTM_CONFIRMED_AT'),
     ...timestamps,
   },
   (t) => [

@@ -49,6 +49,30 @@ const envSchema = z.object({
   MSSQL_USER: z.string().optional(),
   MSSQL_PASSWORD: z.string().optional(),
 
+  /*
+   * Database jembatan (staging) ke SAP.
+   *
+   * Dua saklar, bukan satu. Arah dorong bisa dinyalakan lebih dulu tanpa ikut
+   * menyalakan tarik master — begitu tarik aktif, apa pun yang diketik orang di
+   * layar master akan tertimpa isi staging pada putaran berikutnya, dan itu
+   * keputusan tersendiri.
+   *
+   * Nilainya TIDAK diwajibkan di sini. Lingkungan dev tidak punya akses ke SQL
+   * Server pabrik, dan mewajibkannya berarti tidak ada yang bisa menjalankan
+   * API di laptopnya. Yang menolak jalan dengan pesan jelas adalah
+   * StagingDbService saat koneksinya benar-benar dibutuhkan.
+   */
+  STAGING_PUSH_ENABLED: envBoolean(false),
+  STAGING_PULL_ENABLED: envBoolean(false),
+  STAGING_HOST: z.string().optional(),
+  STAGING_PORT: z.coerce.number().optional(),
+  STAGING_INSTANCE: z.string().optional(),
+  STAGING_DATABASE: z.string().optional(),
+  STAGING_USER: z.string().optional(),
+  STAGING_PASSWORD: z.string().optional(),
+  STAGING_ENCRYPT: envBoolean(false),
+  STAGING_TRUST_CERT: envBoolean(true),
+
   WEB_ORIGIN: z.string().default('http://127.0.0.1:3000'),
 });
 

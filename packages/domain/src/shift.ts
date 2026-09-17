@@ -78,3 +78,28 @@ export function previousDateKey(date: string): string {
   d.setDate(d.getDate() - 1);
   return toLocalDateKey(d);
 }
+
+/**
+ * Rentang waktu satu HARI PRODUKSI — bukan satu hari kalender.
+ *
+ * Hari produksi mulai pukul `dayStartHour` dan berakhir 24 jam kemudian, jadi
+ * shift malam yang melewati tengah malam tetap dihitung ke hari yang sama.
+ *
+ * ── Kesalahan yang dicegah fungsi ini ───────────────────────────────────────
+ *
+ * Menggabungkan `productionDateKey()` dengan rentang 00:00–23:59 terlihat benar
+ * tetapi tidak konsisten: pada pukul 02:00, tanggal produksinya masih hari
+ * kemarin, sementara rentang 00:00–23:59 hari kemarin justru TIDAK memuat scan
+ * yang sedang terjadi. Akibatnya penghitung di layar operator shift malam
+ * berhenti bertambah, dan tidak ada yang tahu sebabnya.
+ */
+export function productionDayWindow(
+  at: Date,
+  dayStartHour = 7,
+): { start: Date; end: Date; key: string } {
+  const start = productionDate(at, dayStartHour);
+  start.setHours(dayStartHour, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end, key: productionDateKey(at, dayStartHour) };
+}

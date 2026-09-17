@@ -1,6 +1,16 @@
 import Link from 'next/link';
-import { Share2, PauseCircle, AlertTriangle, CheckCircle2, Clock, MinusCircle } from 'lucide-react';
-import { getSapSummary, listSapOutbox } from '@/lib/sap-api';
+import {
+  Share2,
+  PauseCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  MinusCircle,
+  Database,
+  XCircle,
+  Hourglass,
+} from 'lucide-react';
+import { getSapSummary, getStagingStatus, listSapOutbox } from '@/lib/sap-api';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
@@ -10,17 +20,27 @@ import { cn } from '@/components/ui/cn';
 
 export const dynamic = 'force-dynamic';
 
+/*
+ * Label ditulis dari sudut pandang orang yang melihat layar, bukan dari nama
+ * status di database. "Terkirim" dulu berarti selesai; sejak ada database
+ * jembatan, barisnya sampai di staging BUKAN berarti SAP sudah menerimanya —
+ * jadi namanya pun harus mengatakan itu.
+ */
 const STATUS_LABEL: Record<string, string> = {
-  PENDING: 'Menunggu kirim',
-  SENT: 'Terkirim',
-  FAILED: 'Gagal',
+  PENDING: 'Menunggu didorong',
+  SENT: 'Di staging, menunggu SAP',
+  CONFIRMED: 'Diterima SAP',
+  REJECTED: 'Ditolak SAP',
+  FAILED: 'Gagal didorong',
   HELD: 'Ditahan',
   SKIPPED: 'Tidak dikirim',
 };
 
 const STATUS_TONE: Record<string, string> = {
   PENDING: 'border-accent/40 bg-accent/10 text-accent',
-  SENT: 'border-ok/40 bg-ok/10 text-ok',
+  SENT: 'border-warn/40 bg-warn/10 text-warn',
+  CONFIRMED: 'border-ok/40 bg-ok/10 text-ok',
+  REJECTED: 'border-ng/40 bg-ng/10 text-ng',
   FAILED: 'border-ng/40 bg-ng/10 text-ng',
   HELD: 'border-warn/40 bg-warn/10 text-warn',
   SKIPPED: 'border-line text-ink-muted',
@@ -35,10 +55,12 @@ export default async function SapPage({
   const page = Math.max(1, Number(sp.page ?? 1) || 1);
   const status = sp.status ?? 'ALL';
 
-  const [ringkas, { data, meta }] = await Promise.all([
+  const [ringkas, jembatan, { data, meta }] = await Promise.all([
     getSapSummary(),
+    getStagingStatus(),
     listSapOutbox(page, 25, status),
   ]);
+  const cfg = jembatan.sambungan.config;
 
   const idGagal = data.filter((d) => d.status === 'FAILED').map((d) => d.id);
 
@@ -47,7 +69,7 @@ export default async function SapPage({
       <PageHeader
         crumbs={[{ label: 'Integrasi SAP' }]}
         title="Integrasi SAP"
-        description="Antrean perpindahan barang yang dikirim ke SAP lewat MS SQL"
+        description="Perpindahan barang didorong ke database jembatan, lalu ditarik SAP dari sana"
       />
 
       {/* Keadaan saklar pengiriman ditaruh paling atas: tanpa ini, antrean yang
@@ -56,19 +78,61 @@ export default async function SapPage({
         <p className="mb-5 flex items-start gap-2 rounded-card border border-warn/40 bg-warn/10 px-4 py-3 text-[14px] text-warn">
           <PauseCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
           <span>
-            Pengiriman ke MS SQL <strong>belum dinyalakan</strong> (<code>SAP_MSSQL_ENABLED</code>).
-            Dokumen tetap dikumpulkan dan menunggu — tidak ada yang hilang. Begitu bentuk tabel
-            tujuan dan movement type disepakati tim SAP, seluruh tunggakan terkirim apa adanya.
+            Pendorongan ke database jembatan <strong>belum dinyalakan</strong>{' '}
+            {!jembatan.sambungan.terkonfigurasi ? (
+              <>
+                — koneksinya belum diisi (
+                <code>{jembatan.sambungan.kurang.join(', ') || 'STAGING_*'}</code>).
+              </>
+            ) : (
+              <>
+                (<code>STAGING_PUSH_ENABLED</code>).
+              </>
+            )}{' '}
+            Dokumen tetap dikumpulkan dan menunggu — tidak ada yang hilang. Begitu saklarnya
+            dinyalakan, seluruh tunggakan terdorong apa adanya.
           </span>
         </p>
       ) : null}
 
+      {/* Keadaan jembatan ditaruh sebelum angka-angkanya: dokumen yang menumpuk
+          di PENDING hampir selalu berarti sesuatu di sini, bukan di antreannya. */}
       <Reveal>
-        <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <Kartu icon={Clock} label="Menunggu kirim" nilai={ringkas.pending} tone="accent" />
+        <div className="mb-5 rounded-card border border-line bg-card p-4">
+          <p className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink-muted">
+            <Database className="size-4 shrink-0 text-accent" strokeWidth={2} aria-hidden />
+            Database jembatan
+          </p>
+          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Baris label="Server">
+              {cfg.host
+                ? `${cfg.host}${cfg.instance ? '\\' + cfg.instance : cfg.port ? ':' + cfg.port : ''}`
+                : 'belum diisi'}
+            </Baris>
+            <Baris label="Database">{cfg.database ?? 'belum diisi'}</Baris>
+            <Baris label="Tabel transaksi">{jembatan.target}</Baris>
+            <Baris label="Arah aktif">
+              {[cfg.dorongAktif ? 'dorong' : null, cfg.tarikAktif ? 'tarik master' : null]
+                .filter(Boolean)
+                .join(' + ') || 'belum ada'}
+            </Baris>
+          </dl>
+          {jembatan.sambungan.galatTerakhir ? (
+            <p className="mt-3 border-t border-line pt-3 text-[13px] text-ng">
+              Galat terakhir: {jembatan.sambungan.galatTerakhir}
+            </p>
+          ) : null}
+        </div>
+      </Reveal>
+
+      <Reveal>
+        <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <Kartu icon={Clock} label="Menunggu didorong" nilai={ringkas.pending} tone="accent" />
+          <Kartu icon={Hourglass} label="Menunggu SAP" nilai={ringkas.sent} tone="warn" />
+          <Kartu icon={CheckCircle2} label="Diterima SAP" nilai={ringkas.confirmed} tone="ok" />
+          <Kartu icon={XCircle} label="Ditolak SAP" nilai={ringkas.rejected} tone="ng" />
           <Kartu icon={PauseCircle} label="Ditahan" nilai={ringkas.held} tone="warn" />
-          <Kartu icon={AlertTriangle} label="Gagal" nilai={ringkas.failed} tone="ng" />
-          <Kartu icon={CheckCircle2} label="Terkirim" nilai={ringkas.sent} tone="ok" />
+          <Kartu icon={AlertTriangle} label="Gagal didorong" nilai={ringkas.failed} tone="ng" />
           <Kartu icon={MinusCircle} label="Tidak dikirim" nilai={ringkas.skipped} tone="muted" />
         </div>
       </Reveal>
@@ -85,7 +149,7 @@ export default async function SapPage({
             subtitle={`${meta.total} dokumen`}
             actions={
               <div className="flex flex-wrap gap-1.5">
-                {['ALL', 'PENDING', 'HELD', 'FAILED', 'SENT', 'SKIPPED'].map((s) => (
+                {['ALL', 'PENDING', 'SENT', 'CONFIRMED', 'REJECTED', 'HELD', 'FAILED', 'SKIPPED'].map((s) => (
                   <Link
                     key={s}
                     href={s === 'ALL' ? '/sap' : `/sap?status=${s}`}
@@ -174,6 +238,15 @@ export default async function SapPage({
         </p>
       ) : null}
     </>
+  );
+}
+
+function Baris({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[12px] font-semibold tracking-wide text-ink-muted uppercase">{label}</dt>
+      <dd className="tabular mt-0.5 truncate text-[14px] font-semibold text-ink">{children}</dd>
+    </div>
   );
 }
 

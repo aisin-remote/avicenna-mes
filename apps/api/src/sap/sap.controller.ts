@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { SapOutboxService } from './sap-outbox.service';
-import { SapWriterService } from './sap-writer.service';
+import { StagingPushService } from '../staging/staging-push.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 
 const retrySchema = z.object({
@@ -13,13 +13,13 @@ type RetryInput = z.infer<typeof retrySchema>;
 export class SapController {
   constructor(
     private readonly outbox: SapOutboxService,
-    private readonly writer: SapWriterService,
+    private readonly push: StagingPushService,
   ) {}
 
   /** Ringkasan antrean, untuk kartu di layar pemantauan. */
   @Get('summary')
   async summary() {
-    return { ...(await this.outbox.summary()), pengirimanAktif: this.writer.aktif };
+    return { ...(await this.outbox.summary()), pengirimanAktif: this.push.aktif };
   }
 
   @Get('outbox')
@@ -46,5 +46,17 @@ export class SapController {
   @Post('retry')
   retry(@Body(new ZodValidationPipe(retrySchema)) body: RetryInput) {
     return this.outbox.retry(body.ids);
+  }
+
+  /**
+   * Mengembalikan dokumen yang DITOLAK SAP ke antrean.
+   *
+   * Dipisah dari retry() karena penyebabnya berbeda: retry untuk kegagalan
+   * teknis saat mendorong, ini untuk penolakan dari SAP. Mendorong ulang tanpa
+   * memperbaiki datanya hanya akan ditolak lagi, jadi tombolnya pun berbeda.
+   */
+  @Post('resend')
+  resend(@Body(new ZodValidationPipe(retrySchema)) body: RetryInput) {
+    return this.push.dorongUlang(body.ids);
   }
 }

@@ -31,23 +31,23 @@ export const deliveries = mysqlTable(
   'TT_DELIVERY',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    customerId: fk('CUSTOMER_ID')
+    customerId: fk('INT_CUSTOMER_ID')
       .notNull()
       .references(() => customers.id),
     /** Nomor surat jalan / DN. */
-    documentNumber: varchar('DOCUMENT_NUMBER', { length: 64 }).notNull(),
-    manifestNumber: varchar('MANIFEST_NUMBER', { length: 64 }),
+    documentNumber: varchar('CHR_DEL_NO', { length: 64 }).notNull(),
+    manifestNumber: varchar('CHR_DOK_NO', { length: 64 }),
     /** Nomor PDS dari customer — rujukan ke dokumen mereka. */
-    pdsNumber: varchar('PDS_NUMBER', { length: 64 }),
-    deliveryDate: date('DELIVERY_DATE', { mode: 'string' }).notNull(),
-    cycle: int('CYCLE').notNull().default(1),
-    dock: varchar('DOCK', { length: 32 }),
-    planTime: time('PLAN_TIME'),
-    departedAt: timestamp('DEPARTED_AT'),
-    arrivedAt: timestamp('ARRIVED_AT'),
+    pdsNumber: varchar('CHR_PDS_NO', { length: 64 }),
+    deliveryDate: date('DTM_DEL_DATE', { mode: 'string' }).notNull(),
+    cycle: int('INT_CYCLE').notNull().default(1),
+    dock: varchar('CHR_CUS_DEST', { length: 32 }),
+    planTime: time('DTM_PLAN_TIME'),
+    departedAt: timestamp('DTM_DEPARTED_AT'),
+    arrivedAt: timestamp('DTM_ARRIVED_AT'),
     /*
      * Tahapan dokumen, mengikuti rantai SLOC:
      *
@@ -60,7 +60,7 @@ export const deliveries = mysqlTable(
      * 'LOADED' dari versi sebelumnya dihapus: tidak pernah dipakai, dan
      * perannya kini diisi PICKED yang punya arti stok yang jelas.
      */
-    status: mysqlEnum('STATUS', [
+    status: mysqlEnum('CHR_STATUS', [
       'DRAFT',
       'PICKING',
       'PICKED',
@@ -78,7 +78,7 @@ export const deliveries = mysqlTable(
      * diadopsi, barang lebih dulu berpindah ke staging, dan dari sanalah ia
      * keluar. Lihat docs/sap-integration.md.
      */
-    locationId: fk('LOCATION_ID').references(() => locations.id),
+    locationId: fk('INT_LOCATION_ID').references(() => locations.id),
     /**
      * SLOC staging (PP04): tempat barang menunggu setelah dipick.
      *
@@ -87,16 +87,16 @@ export const deliveries = mysqlTable(
      * bukan pula barang yang sudah terkirim. Tanpa tempat ini, selisih di
      * antara keduanya tidak punya rumah.
      */
-    stagingLocationId: fk('STAGING_LOCATION_ID'),
-    truckNumber: varchar('TRUCK_NUMBER', { length: 32 }),
-    driverName: varchar('DRIVER_NAME', { length: 128 }),
+    stagingLocationId: fk('INT_STAGING_LOCATION_ID'),
+    truckNumber: varchar('CHR_TRUCK_NUMBER', { length: 32 }),
+    driverName: varchar('CHR_DRIVER_NAME', { length: 128 }),
     /** Status truk terpisah dari status dokumen — truk bisa datang sebelum muat. */
-    truckStatus: mysqlEnum('TRUCK_STATUS', ['PENDING', 'ARRIVED', 'LOADING', 'DEPARTED'])
+    truckStatus: mysqlEnum('CHR_TRUCK_STATUS', ['PENDING', 'ARRIVED', 'LOADING', 'DEPARTED'])
       .notNull()
       .default('PENDING'),
-    truckPickedAt: timestamp('TRUCK_PICKED_AT'),
-    truckPickedById: fk('TRUCK_PICKED_BY_ID').references(() => users.id),
-    createdById: fk('CREATED_BY_ID').references(() => users.id),
+    truckPickedAt: timestamp('DTM_TRUCK_PICKED_AT'),
+    truckPickedById: fk('INT_TRUCK_PICKED_BY_ID').references(() => users.id),
+    createdById: fk('INT_CREATED_BY_ID').references(() => users.id),
     ...timestamps,
   },
   (t) => [
@@ -121,24 +121,24 @@ export const deliveryLines = mysqlTable(
   'TT_DELIVERY_ITEM',
   {
     id: pk(),
-    deliveryId: fk('DELIVERY_ID')
+    deliveryId: fk('INT_DELIVERY_ID')
       .notNull()
       .references(() => deliveries.id, { onDelete: 'cascade' }),
-    partId: fk('PART_ID')
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Penomoran customer untuk part ini, dipakai mencocokkan barcode saat muat. */
-    customerPartId: fk('CUSTOMER_PART_ID'),
+    customerPartId: fk('INT_CUSTOMER_PART_ID'),
     /** Rencana: berapa kanban yang harus dimuat. */
-    plannedKanban: int('PLANNED_KANBAN').notNull().default(0),
-    plannedQty: int('PLANNED_QTY').notNull().default(0),
-    qtyPerKanban: int('QTY_PER_KANBAN').notNull().default(0),
+    plannedKanban: int('INT_PLANNED_KANBAN').notNull().default(0),
+    plannedQty: int('INT_TOTAL_QTY').notNull().default(0),
+    qtyPerKanban: int('INT_QTY_PER_BOX').notNull().default(0),
     /** Pulling: berapa kanban yang diambil dari PP02 ke PP04. */
-    pickedKanban: int('PICKED_KANBAN').notNull().default(0),
-    pickedQty: int('PICKED_QTY').notNull().default(0),
+    pickedKanban: int('INT_PICKED_KANBAN').notNull().default(0),
+    pickedQty: int('INT_SCAN_QTY').notNull().default(0),
     /** Aktual: berapa kanban yang benar-benar naik truk. */
-    actualKanban: int('ACTUAL_KANBAN').notNull().default(0),
-    actualQty: int('ACTUAL_QTY').notNull().default(0),
+    actualKanban: int('INT_ACTUAL_KANBAN').notNull().default(0),
+    actualQty: int('INT_ACTUAL_DEL').notNull().default(0),
     ...timestamps,
   },
   (t) => [

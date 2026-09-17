@@ -36,6 +36,27 @@ export function getPool(): mysql.Pool {
     connectionLimit: Number(process.env.DB_POOL_SIZE ?? 10),
     waitForConnections: true,
     enableKeepAlive: true,
+    /*
+     * ── KONVENSI ZONA WAKTU — BACA SEBELUM MENULIS SQL MENTAH ──────────────
+     *
+     * 'Z' berarti setiap Date yang ditulis dari Node disimpan sebagai UTC, dan
+     * dibaca balik sebagai UTC pula. Bolak-baliknya UTUH: tulis 14:30 WIB,
+     * baca 14:30 WIB.
+     *
+     * TETAPI kolom yang diisi MySQL sendiri — CURRENT_TIMESTAMP, NOW() —
+     * memakai waktu LOKAL sesi. Akibatnya dalam SATU baris yang sama,
+     * DTM_CREATED_AT dan DTM_SCANNED_AT berselisih 7 jam meski menandai momen
+     * yang sama.
+     *
+     * Yang harus diingat saat menulis SQL mentah:
+     *
+     *   BOLEH   membandingkan kolom yang ditulis Node dengan parameter Date
+     *           (drivernya yang mengonversi)
+     *   BOLEH   membandingkan kolom isian MySQL dengan NOW()/CURDATE()
+     *   JANGAN  mencampur keduanya — mis. DATE(DTM_SCANNED_AT) = CURDATE().
+     *           Perbandingan seperti itu meleset 7 jam dan menghilangkan
+     *           seluruh shift malam tanpa error apa pun.
+     */
     timezone: 'Z',
     // Angka besar (BIGINT) dikembalikan sebagai string kalau melebihi Number.
     // supportBigNumbers menjaga id tidak terpotong diam-diam.

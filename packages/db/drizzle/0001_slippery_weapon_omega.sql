@@ -1,0 +1,1 @@
+ALTER TABLE `TM_PLANT` ADD `CHR_SAP_CODE` varchar(4);

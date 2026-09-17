@@ -190,10 +190,10 @@ export class TransferService {
     // Nama tabel ditulis langsung karena subquery berkorelasi belum bisa
     // dibentuk lewat pembangun query Drizzle. Ikut berubah bila tabelnya
     // diganti nama — tidak ada yang mengingatkan, jadi dicatat di sini.
-    const fromLine = sql<string>`(SELECT l.NAME FROM TM_LINE l WHERE l.ID = ${transfers.fromLineId})`;
-    const toLine = sql<string>`(SELECT l.NAME FROM TM_LINE l WHERE l.ID = ${transfers.toLineId})`;
-    const fromLoc = sql<string>`(SELECT lo.NAME FROM TM_LOCATION lo WHERE lo.ID = ${transfers.fromLocationId})`;
-    const toLoc = sql<string>`(SELECT lo.NAME FROM TM_LOCATION lo WHERE lo.ID = ${transfers.toLocationId})`;
+    const fromLine = sql<string>`(SELECT l.CHR_NAME FROM TM_LINE l WHERE l.INT_ID = ${transfers.fromLineId})`;
+    const toLine = sql<string>`(SELECT l.CHR_NAME FROM TM_LINE l WHERE l.INT_ID = ${transfers.toLineId})`;
+    const fromLoc = sql<string>`(SELECT lo.CHR_NAME FROM TM_LOCATION lo WHERE lo.INT_ID = ${transfers.fromLocationId})`;
+    const toLoc = sql<string>`(SELECT lo.CHR_NAME FROM TM_LOCATION lo WHERE lo.INT_ID = ${transfers.toLocationId})`;
 
     const [rows, totalRows] = await Promise.all([
       this.db
@@ -204,8 +204,8 @@ export class TransferService {
           toName: sql<string>`COALESCE(${toLine}, ${toLoc})`,
           movedAt: transfers.movedAt,
           status: transfers.status,
-          lineCount: sql<number>`(SELECT COUNT(*) FROM TT_GOODS_MOVEMENT_L tl WHERE tl.TRANSFER_ID = ${transfers.id})`,
-          totalQty: sql<string>`(SELECT COALESCE(SUM(tl.QTY), 0) FROM TT_GOODS_MOVEMENT_L tl WHERE tl.TRANSFER_ID = ${transfers.id})`,
+          lineCount: sql<number>`(SELECT COUNT(*) FROM TT_GOODS_MOVEMENT_L tl WHERE tl.INT_TRANSFER_ID = ${transfers.id})`,
+          totalQty: sql<string>`(SELECT COALESCE(SUM(tl.FLT_TOTAL_QTY), 0) FROM TT_GOODS_MOVEMENT_L tl WHERE tl.INT_TRANSFER_ID = ${transfers.id})`,
         })
         .from(transfers)
         .orderBy(desc(transfers.movedAt))

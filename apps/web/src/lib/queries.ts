@@ -1,6 +1,7 @@
 import 'server-only';
-import { getDb, eq, and, like, or, sql, desc, count } from '@avicenna/db';
+import { getDb, eq, and, gte, lt, like, or, sql, desc, count } from '@avicenna/db';
 import { parts, lines, plants, customers, scanEvents } from '@avicenna/db';
+import { productionDayWindow } from '@avicenna/domain';
 
 /**
  * Query baca untuk Server Component.
@@ -69,6 +70,24 @@ export async function listParts({ page, perPage, search, plantId }: PartListPara
 export async function getDashboardSummary() {
   const db = getDb();
 
+  /*
+   * Jendela hari produksi, bukan `DATE(scannedAt) = CURDATE()`.
+   *
+   * Dua hal yang salah pada cara lama, dan keduanya menghilangkan shift malam:
+   *
+   *   1. CURDATE() adalah tanggal LOKAL milik MySQL, sedangkan DTM_SCANNED_AT
+   *      ditulis dari Node dalam UTC (lihat catatan zona waktu di
+   *      packages/db/src/client.ts). Scan pukul 02:00 tersimpan sebagai pukul
+   *      19:00 hari sebelumnya, sehingga tidak pernah terhitung.
+   *   2. Hari produksi mulai pukul 07:00, bukan tengah malam — jadi sekalipun
+   *      zona waktunya benar, potongan tengah malam tetap membelah hasil satu
+   *      shift ke dua tanggal.
+   *
+   * Batasnya dikirim sebagai parameter Date supaya driver yang mengurus
+   * konversinya, bukan dirangkai sebagai teks tanggal.
+   */
+  const hariProduksi = productionDayWindow(new Date());
+
   const [plantCount, lineCount, partCount, customerCount, todayScans] = await Promise.all([
     db.select({ value: count() }).from(plants),
     db.select({ value: count() }).from(lines),
@@ -77,7 +96,12 @@ export async function getDashboardSummary() {
     db
       .select({ value: count() })
       .from(scanEvents)
-      .where(sql`DATE(${scanEvents.scannedAt}) = CURDATE()`),
+      .where(
+        and(
+          gte(scanEvents.scannedAt, hariProduksi.start),
+          lt(scanEvents.scannedAt, hariProduksi.end),
+        ),
+      ),
   ]);
 
   return {
@@ -103,6 +127,79 @@ export async function listLines() {
     .leftJoin(plants, eq(lines.plantId, plants.id))
     .where(eq(lines.isActive, true))
     .orderBy(plants.code, lines.sortOrder);
+}
+
+export interface LineProduksi {
+  id: number;
+  code: string;
+  name: string;
+  processType: string;
+  plantCode: string | null;
+  /** Jumlah scan produksi diterima pada HARI PRODUKSI berjalan. */
+  scanHariIni: number;
+  /** Jumlah unit — qty dijumlahkan, bukan sekadar banyaknya scan. */
+  qtyHariIni: number;
+  scanTerakhir: Date | null;
+}
+
+/**
+ * Line beserta hasil produksinya pada hari produksi berjalan.
+ *
+ * ── Kenapa satu query, bukan satu per line ──────────────────────────────────
+ *
+ * Layar monitor menampilkan seluruh line sekaligus. Menghitung per line berarti
+ * satu query per kartu, dan jumlahnya bertambah setiap kali pabrik menambah
+ * line — persoalan N+1 yang baru terasa setelah line ke sepuluh.
+ *
+ * ── Kenapa jendelanya bukan hari kalender ───────────────────────────────────
+ *
+ * Shift malam melewati tengah malam. Memakai 00:00-23:59 membuat hasil shift
+ * malam terbelah ke dua tanggal, dan angka di layar tidak akan pernah cocok
+ * dengan hitungan manual orang lapangan.
+ */
+export async function listLinesWithProduction(): Promise<LineProduksi[]> {
+  const db = getDb();
+  const { start, end } = productionDayWindow(new Date());
+
+  const rows = await db
+    .select({
+      id: lines.id,
+      code: lines.code,
+      name: lines.name,
+      processType: lines.processType,
+      plantCode: plants.code,
+      scanHariIni: sql<number>`COUNT(${scanEvents.id})`,
+      qtyHariIni: sql<number>`COALESCE(SUM(${scanEvents.qty}), 0)`,
+      scanTerakhir: sql<Date | null>`MAX(${scanEvents.scannedAt})`,
+    })
+    .from(lines)
+    .leftJoin(plants, eq(lines.plantId, plants.id))
+    /*
+     * Penyaring waktu ikut di dalam ON, bukan di WHERE.
+     *
+     * Di WHERE, line yang belum ada scan-nya hari ini akan hilang dari hasil —
+     * padahal justru line yang belum berproduksi yang perlu terlihat di layar
+     * monitor.
+     */
+    .leftJoin(
+      scanEvents,
+      and(
+        eq(scanEvents.lineId, lines.id),
+        eq(scanEvents.kind, 'PRODUCTION'),
+        gte(scanEvents.scannedAt, start),
+        lt(scanEvents.scannedAt, end),
+      ),
+    )
+    .where(eq(lines.isActive, true))
+    .groupBy(lines.id, lines.code, lines.name, lines.processType, plants.code)
+    .orderBy(plants.code, lines.sortOrder);
+
+  return rows.map((r) => ({
+    ...r,
+    scanHariIni: Number(r.scanHariIni),
+    qtyHariIni: Number(r.qtyHariIni),
+    scanTerakhir: r.scanTerakhir ? new Date(r.scanTerakhir) : null,
+  }));
 }
 
 export async function recentScans(limit = 20) {

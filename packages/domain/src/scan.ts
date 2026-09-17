@@ -32,46 +32,15 @@ function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex').slice(0, 64);
 }
 
-export interface ParsedBarcode {
-  raw: string;
-  partNumber?: string;
-  backNumber?: string;
-  serialNumber?: string;
-  qty?: number;
-}
-
-/**
- * Pembacaan barcode.
+/*
+ * Pembacaan barcode ada di barcode.ts, bukan di sini.
  *
- * PENTING — ini masih placeholder. Format asli di lapangan ada di
- * TraceScanController (avicenna) dan PisController (bella), dan setiap
- * customer bisa berbeda. Ganti isi fungsi ini setelah format sebenarnya
- * didokumentasikan; strukturnya sengaja dibuat murni supaya tiap format
- * baru bisa langsung ditulis test-nya.
- *
- * Format sementara yang dikenali: `PARTNUMBER|BACKNUMBER|SERIAL|QTY`
+ * Formatnya berbeda-beda per customer dan per proses, sehingga satu fungsi
+ * dengan rentetan `if` tidak lagi memadai — di sana tiap format berdiri sebagai
+ * aturan tersendiri yang bisa ditest sendiri, dan hasil bacanya menyertakan
+ * nama aturan yang dipakai.
  */
-export function parseBarcode(raw: string): ParsedBarcode {
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) throw new Error('Barcode kosong');
-
-  const parts = trimmed.split('|');
-  if (parts.length === 1) {
-    // Barcode polos: anggap seluruh isinya nomor seri.
-    return { raw: trimmed, serialNumber: trimmed };
-  }
-
-  const [partNumber, backNumber, serialNumber, qtyRaw] = parts;
-  const qty = qtyRaw ? Number.parseInt(qtyRaw, 10) : undefined;
-
-  return {
-    raw: trimmed,
-    partNumber: partNumber?.trim() || undefined,
-    backNumber: backNumber?.trim() || undefined,
-    serialNumber: serialNumber?.trim() || undefined,
-    qty: qty !== undefined && Number.isFinite(qty) && qty > 0 ? qty : undefined,
-  };
-}
+export { bacaBarcode, type ParsedBarcode } from './barcode';
 
 /** Melengkapi field opsional ScanInput dengan nilai default sebelum disimpan. */
 export function normalizeScan(input: ScanInput, now: Date = new Date()) {

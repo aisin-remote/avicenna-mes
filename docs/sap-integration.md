@@ -17,10 +17,19 @@ baris master yang diketik manual hari ini adalah data yang harus dicocokkan
 ulang saat sync menyala — jadi kolom penghubung ke nomor SAP perlu disiapkan
 sejak awal, bukan ditambahkan belakangan.
 
-### 2. Kita MENDORONG, SAP mengonsumsi
+### 2. Ada database jembatan di antara keduanya
 
-Arahnya bukan SAP menarik dari MySQL kita, melainkan kita menulis ke tabel di
-**MS SQL Server**, lalu SAP membacanya dari sana.
+Avicenna tidak pernah bicara langsung dengan SAP. Di antara keduanya ada satu
+database MS SQL — **staging** — dan lalu lintasnya dua arah:
+
+```
+Avicenna  ──dorong transaksi──▶  STAGING  ──ditarik──▶  SAP
+Avicenna  ◀──tarik master─────   STAGING  ◀──didorong──  SAP
+```
+
+Kita punya akses penuh baca-tulis ke staging. SAP menulis balik **flag
+berhasil/gagal** di baris yang sama, dan flag itulah yang menutup dokumen di
+`TT_SAP_OUTBOX`.
 
 Konsekuensi yang menentukan rancangan:
 
@@ -31,9 +40,15 @@ Konsekuensi yang menentukan rancangan:
 - Perlu **kunci idempoten lintas sistem**. Pengiriman ulang saat jaringan
   tersendat harus bisa dikenali di sisi MS SQL, bukan menghasilkan dokumen
   dobel.
-- Perlu **status posting** per dokumen: belum dikirim, terkirim, ditolak SAP,
-  beserta pesan penolakannya. Tanpa itu, dokumen yang ditolak SAP akan hilang
-  diam-diam dan selisih stoknya baru ketahuan saat stock opname.
+- Perlu **status posting** per dokumen, dan `SENT` **bukan status akhir**.
+  Barisnya sampai di staging tidak berarti SAP sudah menerimanya. Menganggap
+  keduanya sama berarti dokumen yang ditolak SAP menghilang dari pandangan, dan
+  selisihnya baru ketahuan saat tutup buku.
+- Perlu **dua saklar terpisah**. `STAGING_PUSH_ENABLED` dan
+  `STAGING_PULL_ENABLED` berdiri sendiri, karena begitu tarik master aktif, apa
+  pun yang diketik orang di layar master Avicenna akan tertimpa isi staging pada
+  putaran berikutnya — itu keputusan tersendiri, bukan efek samping dari
+  menyambungkan koneksi.
 
 ### 3. Model SLOC diadopsi seluruhnya
 
@@ -192,37 +207,124 @@ Mengambil terlalu cepat berarti mengirim konfirmasi produksi tanpa baris
 pemakaian komponennya — barang jadi bertambah di SAP, materialnya tidak pernah
 berkurang.
 
-### Lima status, tiga di antaranya bukan kegagalan
+### Tujuh status, dan SENT bukan garis akhir
 
 | Status | Arti |
 |--------|------|
-| PENDING | menunggu dikirim |
-| SENT | sudah masuk MS SQL |
-| FAILED | pengiriman gagal, akan dicoba lagi |
+| PENDING | belum didorong ke staging |
+| SENT | sudah di staging, **menunggu** diproses SAP |
+| CONFIRMED | SAP memproses dan berhasil — flag di staging bernilai OK |
+| REJECTED | SAP menolak — flag bernilai gagal, perlu dilihat orang |
+| FAILED | gagal teknis saat mendorong, akan dicoba lagi |
 | HELD | movement type-nya belum diputuskan — sengaja ditahan |
 | SKIPPED | memang tidak perlu dikirim |
 
-HELD dan SKIPPED sengaja dibedakan dari FAILED. Dokumen yang tertahan karena
+`SENT` sengaja bukan status akhir. Yang menentukan dokumen selesai adalah flag
+yang ditulis balik oleh SAP, bukan keberhasilan kita menulis barisnya.
+
+`REJECTED` berdiri sendiri, terpisah dari `FAILED`: itu penolakan dari SAP,
+bukan gangguan jaringan, dan mendorongnya ulang tanpa memperbaiki datanya hanya
+akan ditolak lagi. Tombolnya pun berbeda — `/sap/retry` untuk kegagalan teknis,
+`/sap/resend` untuk penolakan yang datanya sudah diperbaiki.
+
+HELD dan SKIPPED juga dibedakan dari FAILED. Dokumen yang tertahan karena
 menunggu keputusan bukan kegagalan teknis, dan mencampurnya membuat layar
 pemantauan penuh "error" yang tidak ada yang bisa memperbaikinya.
 
 Begitu movement type diisi, dokumen HELD dilepas sendiri pada putaran
 berikutnya — tidak perlu disentuh satu per satu.
 
+### Kunci idempoten diturunkan per BARIS
+
+Outbox memberi satu kunci per dokumen (`TT_DELIVERY:1:DELIVERY`), sedangkan
+staging menyimpan satu baris per perpindahan. Kunci baris dibentuk dengan
+menambahkan id mutasinya di belakang, sehingga tetap sama setiap kali dokumen
+yang sama didorong ulang.
+
+Akibatnya pendorongan bisa diulang tanpa bahaya, termasuk ketika percobaan
+sebelumnya berhasil separuh: baris yang sudah ada dilewati, yang belum ada
+masuk. Tanpa kunci per baris, satu gangguan jaringan di tengah dokumen berarti
+pilihannya hanya dua — menggandakan seluruh barisnya, atau membiarkan dokumen
+itu tidak pernah lengkap.
+
+### Preflight sebelum baris pertama ditulis
+
+Struktur staging diperiksa terhadap `INFORMATION_SCHEMA` sebelum pendorongan
+dimulai. Salah satu huruf pada nama kolom akan menggagalkan setiap dokumen satu
+per satu, menghabiskan jatah percobaan, lalu menumpuk sebagai ratusan baris
+FAILED — dan orang akan mengira datanya yang bermasalah, bukan konfigurasinya.
+
+Preflight juga memeriksa apakah kolom kunci idempoten punya **unique index** di
+sisi staging. Kalau tidak ada, pendorongan tetap jalan tetapi catatannya muncul
+di `/staging/status`: tanpa indeks itu, satu pengiriman ulang akan menggandakan
+dokumen di SAP, dan koreksinya harus dikerjakan manual oleh orang finance.
+
 ### TRANSFER_IN tidak dikirim
 
 Perpindahan antar SLOC adalah SATU dokumen SAP yang memuat sisi keluar dan
 sisi masuk sekaligus. Mengirim keduanya berarti stok berpindah dua kali.
 
-### Koneksi SAP terpisah dari MSSQL_*
+### Koneksi staging terpisah dari MSSQL_*
 
 `MSSQL_*` yang sudah ada menunjuk J922 dengan user `guest_ro`: baca-saja, untuk
-MENARIK data mesin. Tujuan SAP adalah sebaliknya — database lain, user yang
-boleh MENULIS. Memakai satu set kredensial untuk dua arah berarti memberi hak
-tulis pada koneksi yang seharusnya hanya membaca, dan itu hak yang tidak akan
-pernah dicabut lagi setelah terlanjur diberikan.
+MENARIK data mesin. Staging adalah sebaliknya — database lain, user yang boleh
+MENULIS. Memakai satu set kredensial untuk dua arah berarti memberi hak tulis
+pada koneksi yang seharusnya hanya membaca, dan itu hak yang tidak akan pernah
+dicabut lagi setelah terlanjur diberikan.
 
-`SAP_MSSQL_*` karena itu berdiri sendiri. Lihat `.env.example`.
+`STAGING_*` karena itu berdiri sendiri. Lihat `.env.example`.
+
+Koneksinya **lazy**: kolam dibangun saat pertama kali dibutuhkan, bukan saat
+API start. API tidak boleh gagal start hanya karena SQL Server pabrik sedang
+mati — dan di sistem lama, satu SQL Server yang tidak merespons membuat seluruh
+request web ikut menggantung.
+
+Karena alasan yang sama, `GET /staging/status` **melaporkan** keadaan terakhir
+tanpa menyentuh jaringan. `?uji=true` yang benar-benar menyambung. Layar yang
+gunanya memberitahu ada yang mati tidak boleh ikut mati.
+
+## Mengisi nama tabel staging
+
+Strukturnya sudah ada di sisi tim SAP, tetapi belum tertulis di repo ini. Nama
+tabel dan kolom di `apps/api/src/staging/staging-tables.ts` **masih dugaan**.
+
+Untuk mengisinya tanpa menunggu dokumen:
+
+```bash
+pnpm staging:introspect              # seluruh tabel di database staging
+pnpm staging:introspect NAMA_TABEL   # kolom dan indeksnya
+```
+
+Perintah itu hanya membaca. Salin nama yang benar ke `staging-tables.ts`, atau
+timpa lewat variabel `STAGING_COL_*` di `.env` supaya perbedaan penamaan antar
+lingkungan tidak memaksa deploy ulang. Lalu periksa kecocokannya lewat
+`GET /staging/status?uji=true`.
+
+Nilai flag (`STAGING_FLAG_NEW` / `_OK` / `_ERROR`) harus **persis sama** dengan
+yang dipakai program di sisi SAP. Kalau beda, dokumen yang sebenarnya sudah
+diproses akan terlihat menggantung selamanya di layar pemantauan, dan tidak akan
+ada yang menyadarinya.
+
+## Tarik master belum bisa jalan
+
+Kerangkanya sudah ada di `staging-pull.service.ts`, tetapi daftar
+`SUMBER_MASTER` sengaja **kosong**. Menebak nama kolom master berarti diam-diam
+menimpa data master yang benar dengan null.
+
+Yang sudah dipastikan di kerangkanya:
+
+- Tidak ada penghapusan. Baris yang hilang dari staging dibiarkan apa adanya —
+  master yang dipakai transaksi lama tidak boleh lenyap hanya karena satu
+  putaran tarik kebetulan mengembalikan hasil kosong, dan hasil kosong adalah
+  bentuk paling umum dari query yang salah filter.
+- Kolom yang tidak dipetakan tidak disentuh. Menyamakan "tidak dipetakan"
+  dengan "kosongkan" berarti satu pemetaan yang belum lengkap menghapus data
+  yang benar.
+- `POST /staging/pull` bawaannya **uji coba** — melaporkan berapa baris yang
+  akan berubah tanpa menulis apa pun. Menulis sungguhan harus diminta dengan
+  `?uji=false`.
+- BOM belum didukung: kuncinya majemuk (parent, child, tanggal berlaku) dan
+  salah menimpanya mengubah hasil backflush ke belakang.
 
 ## Catatan dari pengerjaan
 
@@ -241,14 +343,197 @@ belum dipastikan, sebagian scan produksi tidak akan pernah sampai ke SAP.
   Salah movement type berarti salah akun GL: barangnya pindah dengan benar di
   gudang, tetapi jurnalnya masuk ke tempat yang keliru, dan itu baru ketahuan
   saat tutup buku.
-- **Bentuk tabel tujuan di MS SQL.** Dugaan: satu tabel kepala + satu tabel
-  baris mengikuti penamaan mereka (mis. TT_MES_MOVEMENT_H / _L). Sisi MS SQL
-  perlu memberi unique index pada IDEMPOTENCY_KEY — itulah yang menahan dokumen
-  dobel saat jaringan tersendat, bukan logika di sisi kita.
+- **Nama tabel dan kolom di staging.** Strukturnya sudah ada di sisi tim SAP;
+  yang tertulis di `staging-tables.ts` masih dugaan. Jalankan
+  `pnpm staging:introspect` untuk membacanya langsung dari sumbernya. Sisi
+  staging juga perlu **unique index pada kolom kunci idempoten** — itulah yang
+  menahan dokumen dobel saat jaringan tersendat, bukan logika di sisi kita.
+- **Pemetaan kolom master** untuk `SUMBER_MASTER`, supaya arah tarik bisa
+  dinyalakan.
+- **Apakah `QTY` di staging tanpa tanda.** Sekarang kita mengirim nilai mutlak,
+  dengan arah dibawa oleh movement type — itu kebiasaan SAP MM, tetapi perlu
+  dipastikan cocok dengan program di sisi sana.
 - **Apakah satu dokumen per scan produksi terlalu banyak.** Sekarang tiap scan
   menghasilkan satu dokumen SAP. Kalau volumenya memberatkan, pengelompokan per
   shift atau per jam bisa ditambahkan di pengumpul tanpa mengubah yang lain.
-- Apakah nomor dokumen material hasil posting SAP dikembalikan ke sini. Kalau
-  ya, perlu kolom penampungnya dan jalur baliknya.
 - Bagaimana kode SLOC di sini dipetakan ke plant + storage location SAP untuk
   dua pabrik yang berbeda.
+
+---
+
+## Struktur staging yang sebenarnya
+
+Dibaca dari `aisinbisa_sap_stagging` pada 16 September 2026 lewat
+`pnpm staging:introspect` — **32 tabel, 591 kolom**. Bagian di atas yang menyebut
+"satu tabel movement generik" adalah dugaan awal dan sudah tidak berlaku.
+
+### Tidak ada satu tabel tujuan
+
+Staging memakai nama tabel yang SAMA dengan kita, jadi dorongan dilakukan per
+jenis dokumen ke pasangan kepala + barisnya sendiri:
+
+| Jenis dokumen | Tabel di staging | Status |
+|---|---|---|
+| Perpindahan SLOC | `TT_GOODS_MOVEMENT_H` / `_L` | **sudah dipetakan** |
+| Penerimaan | `TT_PURCHASE_RECEIPT_H` / `_L` | belum |
+| Pengiriman | `TT_DELIVERY` / `TT_DELIVERY_ITEM` | belum |
+| Produksi | `TT_PRODUCTION_RESULT` | belum |
+| Saldo per SLOC | `TT_PARTS_SLOC` | belum diputuskan |
+
+Dokumen yang jenisnya belum dipetakan **DITAHAN**, bukan didorong ke tabel
+perpindahan yang kebetulan ada. Penerimaan barang yang mendarat di
+`TT_GOODS_MOVEMENT` akan diposting SAP sebagai perpindahan antar SLOC, dan
+koreksinya manual oleh orang finance.
+
+### Tidak ada kolom kunci idempoten
+
+Kuncinya nomor dokumen: `INT_NUMBER` pada kepala, `INT_NUMBER` + `INT_NUMBER_ITEM`
+pada baris. Id baris outbox dipakai apa adanya sebagai `INT_NUMBER` — nilainya
+tidak pernah berubah, jadi dorongan ulang mengenai baris yang sama alih-alih
+menggandakannya. Setiap INSERT dijaga `WHERE NOT EXISTS`.
+
+Sisi staging masih perlu memberi **unique index pada (`INT_NUMBER`,
+`INT_NUMBER_ITEM`)**. Preflight memeriksanya dan mencatat bila belum ada.
+
+### Semuanya char(n) fixed-width
+
+Nilai yang dibaca dari staging WAJIB di-trim — `CHR_PART_NO char(18)`
+mengembalikan `"AV-12345-001      "`, dan membandingkannya dengan nomor part kita
+tanpa trim akan selalu gagal, diam-diam. Helper `bersih()` di `staging-tables.ts`
+dipakai untuk itu.
+
+Tanggal disimpan sebagai `char(8)` YYYYMMDD dan jam sebagai `char(6)` HHMMSS di
+kolom **terpisah**. Satu `DTM_OCCURRED_AT` kita mengisi dua kolom di sana.
+
+### Prefiks tipe di staging tidak bisa dipercaya
+
+`TT_PURCHASE_RECEIPT_L` punya `INT_RECQTY` bertipe **float** DAN `CHR_RECQTY`
+bertipe **int** sekaligus; `CHR_RECEIPT_BOX` juga float, `CHR_MAN_MIN_PCS` varchar,
+dan `FLT_QTY_BEFORE` memperkenalkan prefiks ketiga. Jangan pernah menyimpulkan
+tipe dari prefiksnya — baca `INFORMATION_SCHEMA`.
+
+Satu akibat yang perlu diingat: `INT_TOTAL_QTY` bertipe `int`, sedangkan
+`FLT_QTY` kita `decimal`. Pemakaian material berkoma (kilogram) **dibulatkan**
+saat didorong. Pembulatannya dilakukan di kode kita supaya terlihat, bukan
+dibiarkan terjadi diam-diam di sisi SQL Server.
+
+## Penamaan kolom Avicenna
+
+Seluruh kolom kita mengikuti konvensi staging: **prefiks tipe + nama kolom
+kapital**. 436 kolom di-rename pada 16 September 2026.
+
+| Prefiks | Untuk |
+|---|---|
+| `CHR_` | varchar, char, text, enum, json |
+| `INT_` | int, bigint, smallint, foreign key, primary key |
+| `FLT_` | decimal, float, double |
+| `DTM_` | timestamp, datetime, date, time |
+| `FLG_` | boolean |
+
+`DTM_` dan `FLG_` adalah tambahan kita: staging tidak punya tipe tanggal maupun
+boolean sungguhan (keduanya `char`), jadi tidak ada prefiks yang bisa ditiru.
+Prefiks di sini **mengikuti tipe yang sebenarnya** — berbeda dari staging, yang
+prefiksnya sering salah.
+
+Badan namanya mengikuti staging bila kolomnya benar-benar berisi hal yang sama:
+
+| Avicenna | Staging |
+|---|---|
+| `TM_PARTS.CHR_PART_NO` | `CHR_PART_NO` |
+| `TM_PARTS.CHR_PART_NAME` | `CHR_PART_NAME` |
+| `TM_PARTS.CHR_PART_UOM` | `CHR_PART_UOM` |
+| `TM_CUST.CHR_CUST_NO` | `CHR_CUST_NO` |
+| `TM_VENDOR.CHR_SUPPLIER_ID` | `CHR_SUPPLIER_ID` |
+| `TT_DELIVERY.CHR_DEL_NO` | `CHR_DEL_NO` |
+| `TT_DELIVERY_ITEM.INT_ACTUAL_DEL` | `INT_ACTUAL_DEL` |
+| `TT_LOT.CHR_BATCH_NO` | `CHR_BATCH_NO` |
+
+Yang **tidak** disamakan adalah foreign key dan surrogate id. Staging tidak
+punya id sama sekali — ia menyimpan kunci alami (`CHR_PART_NO char(18)`) di
+tempat kita menyimpan `INT_PART_ID`. Menamainya `CHR_PART_NO` akan berbohong
+soal isinya.
+
+## Perintah
+
+```bash
+pnpm staging:introspect              # daftar tabel di staging
+pnpm staging:introspect NAMA_TABEL   # kolom + indeksnya
+pnpm staging:compare                 # peta field: kolom staging ← kolom kita
+pnpm staging:compare --live          # + dibandingkan dengan staging sungguhan
+```
+
+`staging:compare --live` melaporkan kolom yang kita konfigurasikan tetapi tidak
+ada, dan kolom `NOT NULL` di staging yang belum kita isi — dua hal yang masing-
+masing akan menggagalkan setiap INSERT.
+
+## Tarik master dari staging
+
+Empat entitas dipetakan, dijalankan **berurutan** karena customer dan part harus
+ada sebelum pemetaan nomor part customer bisa dicocokkan:
+
+| Entitas | Sumber di staging | Kunci |
+|---|---|---|
+| CUSTOMER | `TM_CUST` | `CHR_CUST_NO` |
+| VENDOR | `TM_VENDOR` | `CHR_SUPPLIER_ID` |
+| PART | `TM_PROCESS_PARTS` ⨝ `TM_PARTS` | `CHR_PLANT` + `CHR_PART_NO` |
+| CUSTOMER_PART | `TM_SHIPPING_PARTS` | `CHR_PART_NO` + `CHR_CUS_NO` |
+
+```bash
+# uji coba — tidak menulis apa pun, hanya melaporkan yang AKAN berubah
+curl -X POST "$API/staging/pull"
+# menulis sungguhan
+curl -X POST "$API/staging/pull?uji=false"
+```
+
+### Kenapa PART digerakkan TM_PROCESS_PARTS, bukan TM_PARTS
+
+`TM_PARTS` di staging **tidak punya kolom pabrik sama sekali**, sedangkan
+`TM_PARTS` kita berkunci (pabrik, nomor part). Yang tahu sebuah part dibuat di
+pabrik mana adalah `TM_PROCESS_PARTS` — jadi tabel itulah penggeraknya, dengan
+`TM_PARTS` di-join untuk nama, satuan, dan back number.
+
+Bila satu part dikerjakan di dua pabrik, ia memang menghasilkan dua baris di
+sisi kita. Itu benar, bukan duplikat. Mengambil pabrik dengan `MIN()` akan
+diam-diam menempatkan part di pabrik yang keliru, dan akibatnya baru terlihat
+sebagai part yang muncul di layar scan lini yang salah.
+
+### Empat kolom yang staging tidak sediakan
+
+`PROCESS_TYPE`, `PART_TYPE`, `SOURCE_TYPE`, dan `TRACKING_MODE` tidak punya
+padanan di staging, dan `CHR_PROCESS_TYPE` di sisi kita `NOT NULL` tanpa bawaan.
+Nilai bawaan diisi dari `SUMBER_MASTER[].bawaan` dan **hanya dipakai saat part
+baru dibuat** — part yang sudah ada tidak pernah ditimpa, sehingga koreksi manual
+tidak hilang pada putaran berikutnya.
+
+`TRACKING_MODE` khususnya perlu diperiksa orang: raw material yang dilebur
+mustahil berseri, dan bawaan `SERIAL` akan salah untuknya.
+
+### Baris yang dihapus di SAP dinonaktifkan, tidak dibuang
+
+Flag `CHR_DEL_FLAG` / `CHR_FLAG_DELETE` yang tidak kosong berarti baris itu
+dihapus di SAP. Di sisi kita `FLG_IS_ACTIVE` dimatikan, bukan barisnya dihapus —
+transaksi lama masih menunjuk master ini, dan menghapusnya membuat riwayat
+kehilangan nama part dan customer-nya.
+
+## BOM tidak bisa ditarik
+
+Dicari di seluruh 32 tabel staging: **tidak ada satu pun yang memuat struktur
+induk-komponen.** `TM_PROCESS_PARTS` yang paling dekat, tetapi isinya routing
+proses — work center, cycle time, lot size — bukan daftar material.
+
+Selama itu belum disediakan, `TM_BOM` tetap dikelola di Avicenna. Backflush
+bergantung sepenuhnya padanya: tanpa BOM, scan produksi menambah barang jadi
+tetapi tidak pernah mengurangi komponennya.
+
+## Keadaan staging saat ini
+
+Diperiksa 16 September 2026: **32 tabel, 591 kolom, 0 baris.** Strukturnya
+lengkap, tetapi SAP belum mengisi apa pun — baik master maupun transaksi.
+
+Dua akibat langsungnya:
+
+1. Tarik master belum menarik apa pun. Kuerinya sudah diverifikasi jalan
+   terhadap server sungguhan; yang belum ada datanya.
+2. **Nilai flag masih tebakan.** Rencananya dibaca dari baris yang sudah pernah
+   diproses SAP, tetapi tidak ada satu pun baris untuk dibaca. `N`/`S`/`E` di
+   `STAGING_FLAG_*` harus dikonfirmasi tim SAP sebelum pendorongan dinyalakan.

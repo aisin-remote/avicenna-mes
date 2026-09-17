@@ -1,12 +1,16 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { eq, and, desc, gte, lte, count, type Database } from '@avicenna/db';
-import { scanEvents, lines, parts, machines, mutations, plants } from '@avicenna/db';
+import { eq, and, desc, gte, lt, count, type Database } from '@avicenna/db';
+import { scanEvents, lines, parts, machines, mutations, plants, partProcesses } from '@avicenna/db';
 import {
   normalizeScan,
-  parseBarcode,
+  bacaBarcode,
+  BarcodeTidakDikenali,
+  punyaIdentitasPart,
   signedQty,
   productionDateKey,
-  requiredPreviousProcess,
+  productionDayWindow,
+  prosesSebelumnya,
+  prosesAdaDiRute,
   programCodeOf,
   REJECT_MESSAGES,
   type ScanRejectReason,
@@ -113,54 +117,142 @@ export class ScanService {
     principal?: Principal,
   ): Promise<{ duplicated: boolean; partId?: number; productionDate: string; qty: number }> {
     const normalized = normalizeScan(input);
-    const parsed = parseBarcode(normalized.rawCode);
 
     const line = normalized.lineCode ? await this.findLine(normalized.lineCode) : undefined;
     if (normalized.lineCode && !line) {
-      throw new BadRequestException(`Line ${normalized.lineCode} tidak ditemukan`);
+      throw new ScanRejected('LINE_NOT_FOUND', REJECT_MESSAGES.LINE_NOT_FOUND);
+    }
+
+    /*
+     * Barcode dibaca DENGAN konteksnya.
+     *
+     * Formatnya berbeda per proses dan per customer, jadi aturan mana yang
+     * dipakai bergantung pada line tempat scan terjadi. Membacanya tanpa
+     * konteks berarti aturan yang paling longgar selalu menang.
+     */
+    const konteksBarcode = {
+      processType: normalized.processType ?? line?.processType ?? null,
+    };
+    let parsed;
+    try {
+      parsed = bacaBarcode(normalized.rawCode, konteksBarcode);
+    } catch (err) {
+      if (err instanceof BarcodeTidakDikenali) {
+        throw new ScanRejected('BARCODE_UNREADABLE', REJECT_MESSAGES.BARCODE_UNREADABLE);
+      }
+      throw err;
     }
 
     const part = await this.resolvePart(parsed.partNumber, parsed.backNumber, line?.plantId);
+
+    /*
+     * Produksi WAJIB mengenali part-nya.
+     *
+     * Tanpa part, mutasi stok tidak bisa ditulis — dan sebelumnya baris itu
+     * hanya dilewati diam-diam: scan tercatat, penghitung naik, operator
+     * melihat "berhasil", tetapi stoknya tidak pernah bergerak. Selisihnya baru
+     * ketahuan saat stock opname, berbulan-bulan kemudian, tanpa jejak sebabnya.
+     *
+     * Jenis scan lain tidak diwajibkan: inspeksi dan stock opname memang
+     * bekerja per nomor seri dan tidak selalu menyebut part.
+     */
+    if (normalized.kind === 'PRODUCTION' && !part) {
+      const sebab = punyaIdentitasPart(parsed)
+        ? `part "${parsed.partNumber ?? parsed.backNumber}" tidak ada di master`
+        : `barcode terbaca aturan ${parsed.aturan} yang tidak memuat nomor part`;
+      this.logger.warn(`scan produksi ditolak — ${sebab}: ${normalized.rawCode}`);
+      throw new ScanRejected(
+        'PART_NOT_RECOGNIZED',
+        `${REJECT_MESSAGES.PART_NOT_RECOGNIZED} (${sebab})`,
+      );
+    }
     const machine = normalized.machineCode
       ? await this.findMachine(normalized.machineCode)
       : undefined;
 
     const plantId = line?.plantId ?? part?.plantId ?? (principal?.plantId ?? undefined);
     if (!plantId) {
-      throw new BadRequestException(
-        'Pabrik tidak bisa ditentukan dari scan ini (line, part, maupun token tidak menyebutkannya)',
+      // ScanRejected, bukan BadRequestException: yang terakhir ditangkap
+      // station() dan dipetakan ke LINE_NOT_FOUND, sehingga operator dibacakan
+      // "Line tidak dikenal" padahal line-nya baik-baik saja.
+      throw new ScanRejected(
+        'PLANT_UNKNOWN',
+        `${REJECT_MESSAGES.PLANT_UNKNOWN} (line, part, maupun token tidak menyebutkannya)`,
       );
     }
 
     const prodDate = productionDateKey(normalized.scannedAt);
-    const processType = normalized.processType ?? part?.processType ?? line?.processType ?? null;
+    /*
+     * Proses ditentukan LINI tempat scan terjadi, bukan atribut part.
+     *
+     * TM_PARTS.CHR_PROCESS_TYPE adalah peninggalan dari masa satu part = satu
+     * proses. Sejak rute menjadi data (TM_PROCESS_PARTS), sebuah part melewati
+     * banyak proses, dan yang menentukan proses mana adalah lini fisiknya.
+     *
+     * Urutan lama mendahulukan part, sehingga scan di lini Melting dianggap
+     * scan Casting — dan operator di lini pertama ditolak dengan alasan "belum
+     * ada scan Melting", persis proses yang sedang ia kerjakan. Part hanya
+     * dipakai bila scan memang datang tanpa lini (mis. dari alat genggam).
+     */
+    const processType = normalized.processType ?? line?.processType ?? part?.processType ?? null;
 
     /*
-     * Pemeriksaan rantai proses.
+     * Pemeriksaan rute — memakai RUTE PART, bukan rantai global.
      *
-     * Diambil dari perilaku avicenna: getAjaxmachining() menolak barcode yang
-     * belum pernah discan di casting. Aturannya sekarang ada di
-     * @avicenna/domain dan bisa ditest tanpa database.
+     * Rute tiap part berbeda. TCC A melewati Melting, Casting, Machining,
+     * Assembling, lalu Delivery; CSH A hanya Melting, Casting, Delivery. Aturan
+     * global tidak bisa menyatakan bahwa proses sebelum Delivery adalah
+     * Assembling untuk yang satu dan Casting untuk yang lain.
      */
-    if (processType) {
-      const previous = requiredPreviousProcess(processType);
-      if (previous) {
-        const seenBefore = await this.db
-          .select({ id: scanEvents.id })
-          .from(scanEvents)
-          .where(
-            and(
-              eq(scanEvents.rawCode, normalized.rawCode),
-              eq(scanEvents.processType, previous),
-            ),
-          )
-          .limit(1);
+    if (processType && part) {
+      const rute = await this.db
+        .select({ processType: partProcesses.processType, seqNo: partProcesses.seqNo })
+        .from(partProcesses)
+        .where(and(eq(partProcesses.partId, part.id), eq(partProcesses.isActive, true)));
 
-        if (seenBefore.length === 0) {
+      if (rute.length === 0) {
+        /*
+         * Part tanpa rute TIDAK ditolak.
+         *
+         * Tabel rute masih terisi bertahap; menolak semua part yang belum
+         * punya rute berarti menghentikan produksi pada hari pemasangan.
+         * Scan-nya tetap lengkap dan mutasinya tetap benar — yang dilewati
+         * hanya pemeriksaan urutan. Dicatat sebagai peringatan supaya
+         * kekosongannya terlihat, bukan diam.
+         */
+        this.logger.warn(
+          `part ${part.partNumber} belum punya rute di TM_PROCESS_PARTS — urutan proses tidak diperiksa`,
+        );
+      } else {
+        // Part yang dibawa ke lini yang bukan rutenya adalah kekeliruan nyata:
+        // tanpa ini, part CSH yang discan di lini machining akan menambah stok
+        // barang jadi yang tidak pernah dibuat.
+        if (!prosesAdaDiRute(rute, processType)) {
           throw new ScanRejected(
-            'MISSING_PREVIOUS_PROCESS',
-            `${REJECT_MESSAGES.MISSING_PREVIOUS_PROCESS} (belum ada scan ${previous})`,
+            'PROCESS_NOT_IN_ROUTE',
+            `${REJECT_MESSAGES.PROCESS_NOT_IN_ROUTE} (${part.partNumber} tidak melewati ${processType})`,
           );
+        }
+
+        const sebelumnya = prosesSebelumnya(rute, processType);
+        if (sebelumnya) {
+          const pernah = await this.db
+            .select({ id: scanEvents.id })
+            .from(scanEvents)
+            .where(
+              and(
+                eq(scanEvents.rawCode, normalized.rawCode),
+                eq(scanEvents.processType, sebelumnya),
+              ),
+            )
+            .limit(1);
+
+          if (pernah.length === 0) {
+            throw new ScanRejected(
+              'MISSING_PREVIOUS_PROCESS',
+              `${REJECT_MESSAGES.MISSING_PREVIOUS_PROCESS} (belum ada scan ${sebelumnya})`,
+            );
+          }
         }
       }
     }
@@ -182,7 +274,9 @@ export class ScanService {
         deviceId: principal?.kind === 'device' ? principal.sub : null,
         scannedAt: normalized.scannedAt,
         dedupeKey: normalized.dedupeKey,
-        meta: normalized.meta ?? null,
+        // Aturan baca ikut dicatat: saat sebuah barcode terbaca keliru,
+        // pertanyaan pertama selalu "dibaca pakai aturan mana".
+        meta: { ...(normalized.meta ?? {}), aturanBarcode: parsed.aturan },
       });
       // mysql2 mengembalikan insertId pada elemen pertama hasil insert.
       insertedId = Number((inserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
@@ -194,7 +288,8 @@ export class ScanService {
     }
 
     // Scan produksi menambah stok; jenis scan lain belum menulis mutasi
-    // sampai aturannya dikonfirmasi tim produksi.
+    // sampai aturannya dikonfirmasi tim produksi. `part` di sini sudah pasti
+    // ada — scan produksi tanpa part ditolak jauh di atas.
     if (normalized.kind === 'PRODUCTION' && part) {
       await this.db.insert(mutations).values({
         plantId,
@@ -271,7 +366,22 @@ export class ScanService {
     return rows[0];
   }
 
-  /** Mencari part lewat part number, lalu jatuh ke back number. */
+  /**
+   * Mencari part: lewat nomor part, atau lewat back number bila nomor part
+   * memang tidak ada di barcode.
+   *
+   * ── Kenapa tidak jatuh ke back number saat nomor part TIDAK ketemu ────────
+   *
+   * Barcode yang menyebut nomor part sudah menyatakan part mana yang dimaksud.
+   * Bila nomor itu tidak ada di pabrik ini, jawabannya "tidak dikenali" — bukan
+   * izin menebak dari field lain.
+   *
+   * Jatuh ke back number pada keadaan itu pernah membuat barcode
+   * BL-98765-002|BN-001|... teridentifikasi sebagai AV-12345-001, part yang
+   * sama sekali berbeda yang kebetulan ber-back number BN-001. Produksi
+   * dikreditkan ke part keliru, stoknya bertambah di tempat yang salah, dan
+   * tidak ada satu pun pesan yang muncul.
+   */
   private async resolvePart(partNumber?: string, backNumber?: string, plantId?: number) {
     if (partNumber) {
       const byPartNumber = await this.db
@@ -283,7 +393,8 @@ export class ScanService {
             : eq(parts.partNumber, partNumber),
         )
         .limit(1);
-      if (byPartNumber[0]) return byPartNumber[0];
+      // Nomor part disebut tetapi tidak ada: berhenti di sini.
+      return byPartNumber[0];
     }
 
     if (backNumber) {
@@ -446,9 +557,16 @@ export class ScanService {
     const line = await this.findLine(lineCode);
     if (!line) return 0;
 
-    const today = productionDateKey(new Date());
-    const start = new Date(`${today}T00:00:00`);
-    const end = new Date(`${today}T23:59:59.999`);
+    /*
+     * Jendela HARI PRODUKSI, bukan hari kalender.
+     *
+     * Sebelumnya tanggalnya diambil shift-aware tetapi rentangnya 00:00-23:59,
+     * dua hal yang tidak konsisten: pada pukul 02:00 tanggal produksinya masih
+     * hari kemarin, sedangkan rentang 00:00-23:59 hari kemarin tidak memuat
+     * scan yang sedang terjadi. Penghitung di layar operator shift malam
+     * berhenti bertambah, dan tidak ada yang tahu sebabnya.
+     */
+    const { start, end } = productionDayWindow(new Date());
 
     const rows = await this.db
       .select({ value: count() })
@@ -457,7 +575,9 @@ export class ScanService {
         and(
           eq(scanEvents.lineId, line.id),
           gte(scanEvents.scannedAt, start),
-          lte(scanEvents.scannedAt, end),
+          // `lt`, bukan `lte`: jendelanya [mulai, mulai+24jam) — batas atasnya
+          // adalah awal hari produksi berikutnya, jadi tidak boleh ikut.
+          lt(scanEvents.scannedAt, end),
         ),
       );
     return rows[0]?.value ?? 0;

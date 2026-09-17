@@ -496,8 +496,8 @@ export class ReceivingService {
           // Nama tabel ditulis langsung karena subquery berkorelasi belum bisa
           // dibentuk lewat pembangun query Drizzle. Ikut berubah bila tabelnya
           // diganti nama — tidak ada yang mengingatkan, jadi dicatat di sini.
-          lineCount: sql<number>`(SELECT COUNT(*) FROM TT_PURCHASE_RECEIPT_L rl WHERE rl.RECEIPT_ID = ${receipts.id})`,
-          totalQty: sql<string>`(SELECT COALESCE(SUM(rl.QTY), 0) FROM TT_PURCHASE_RECEIPT_L rl WHERE rl.RECEIPT_ID = ${receipts.id})`,
+          lineCount: sql<number>`(SELECT COUNT(*) FROM TT_PURCHASE_RECEIPT_L rl WHERE rl.INT_RECEIPT_ID = ${receipts.id})`,
+          totalQty: sql<string>`(SELECT COALESCE(SUM(rl.FLT_RECQTY), 0) FROM TT_PURCHASE_RECEIPT_L rl WHERE rl.INT_RECEIPT_ID = ${receipts.id})`,
         })
         .from(receipts)
         .leftJoin(suppliers, eq(receipts.supplierId, suppliers.id))

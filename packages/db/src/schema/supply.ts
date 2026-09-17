@@ -7,6 +7,7 @@ import {
   timestamp,
   mysqlEnum,
   uniqueIndex,
+  foreignKey,
   index,
   json,
 } from 'drizzle-orm/mysql-core';
@@ -34,30 +35,30 @@ export const bomLines = mysqlTable(
   'TM_BOM',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
     /** Part yang dibuat. */
-    parentPartId: fk('PARENT_PART_ID')
+    parentPartId: fk('INT_PARENT_PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Part yang dibutuhkan. */
-    componentPartId: fk('COMPONENT_PART_ID')
+    componentPartId: fk('INT_COMPONENT_PART_ID')
       .notNull()
       .references(() => parts.id),
     /**
      * Jumlah komponen per satu induk. Desimal karena raw material dipakai
      * dalam kilogram, bukan pcs.
      */
-    qtyPer: decimal('QTY_PER', { precision: 12, scale: 4 }).notNull(),
-    uom: varchar('UOM', { length: 16 }).notNull().default('pcs'),
+    qtyPer: decimal('FLT_QTY_PER', { precision: 12, scale: 4 }).notNull(),
+    uom: varchar('CHR_UOM', { length: 16 }).notNull().default('pcs'),
     /** Persentase susut yang wajar, dipakai saat menghitung kebutuhan material. */
-    scrapPct: decimal('SCRAP_PCT', { precision: 5, scale: 2 }).notNull().default('0'),
-    sequence: int('SEQUENCE').notNull().default(0),
-    effectiveFrom: date('EFFECTIVE_FROM', { mode: 'string' }).notNull(),
+    scrapPct: decimal('FLT_SCRAP_PCT', { precision: 5, scale: 2 }).notNull().default('0'),
+    sequence: int('INT_SEQUENCE').notNull().default(0),
+    effectiveFrom: date('DTM_EFFECTIVE_FROM', { mode: 'string' }).notNull(),
     /** NULL berarti masih berlaku. */
-    effectiveTo: date('EFFECTIVE_TO', { mode: 'string' }),
-    note: varchar('NOTE', { length: 255 }),
+    effectiveTo: date('DTM_EFFECTIVE_TO', { mode: 'string' }),
+    note: varchar('CHR_NOTE', { length: 255 }),
     ...timestamps,
   },
   (t) => [
@@ -79,19 +80,19 @@ export const lots = mysqlTable(
   'TT_LOT',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    partId: fk('PART_ID')
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Nomor lot internal. */
-    lotNumber: varchar('LOT_NUMBER', { length: 64 }).notNull(),
+    lotNumber: varchar('CHR_BATCH_NO', { length: 64 }).notNull(),
     /** Nomor lot dari supplier, apa adanya. */
-    supplierLotNumber: varchar('SUPPLIER_LOT_NUMBER', { length: 64 }),
-    supplierId: fk('SUPPLIER_ID').references(() => suppliers.id),
-    receivedAt: timestamp('RECEIVED_AT'),
-    expiresAt: date('EXPIRES_AT', { mode: 'string' }),
+    supplierLotNumber: varchar('CHR_SUPPLIER_LOT_NUMBER', { length: 64 }),
+    supplierId: fk('INT_SUPPLIER_ID').references(() => suppliers.id),
+    receivedAt: timestamp('DTM_RECEIVED_AT'),
+    expiresAt: date('DTM_EXPIRES_AT', { mode: 'string' }),
     /**
      * Jumlah yang tertulis saat barang datang. CATATAN SAJA, BUKAN SALDO.
      *
@@ -99,8 +100,8 @@ export const lots = mysqlTable(
      * lot ini. Menjumlahkan kolom ini dengan mutasi akan menghitung barang
      * yang sama dua kali.
      */
-    initialQty: decimal('INITIAL_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
-    status: mysqlEnum('STATUS', ['OPEN', 'CONSUMED', 'BLOCKED', 'RETURNED'])
+    initialQty: decimal('FLT_INITIAL_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
+    status: mysqlEnum('CHR_STATUS', ['OPEN', 'CONSUMED', 'BLOCKED', 'RETURNED'])
       .notNull()
       .default('OPEN'),
     ...timestamps,
@@ -119,20 +120,20 @@ export const receipts = mysqlTable(
   'TT_PURCHASE_RECEIPT_H',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    supplierId: fk('SUPPLIER_ID')
+    supplierId: fk('INT_SUPPLIER_ID')
       .notNull()
       .references(() => suppliers.id),
-    documentNumber: varchar('DOCUMENT_NUMBER', { length: 64 }).notNull(),
+    documentNumber: varchar('CHR_PDS_NO', { length: 64 }).notNull(),
     /** Nomor surat jalan supplier. */
-    supplierDocNumber: varchar('SUPPLIER_DOC_NUMBER', { length: 64 }),
-    receivedAt: timestamp('RECEIVED_AT').notNull(),
-    locationId: fk('LOCATION_ID').references(() => locations.id),
-    status: mysqlEnum('STATUS', ['DRAFT', 'RECEIVED', 'CANCELLED']).notNull().default('DRAFT'),
-    receivedById: fk('RECEIVED_BY_ID').references(() => users.id),
-    note: varchar('NOTE', { length: 255 }),
+    supplierDocNumber: varchar('CHR_SUPPLIER_DOC_NUMBER', { length: 64 }),
+    receivedAt: timestamp('DTM_RECEIVED_AT').notNull(),
+    locationId: fk('INT_LOCATION_ID').references(() => locations.id),
+    status: mysqlEnum('CHR_STATUS', ['DRAFT', 'RECEIVED', 'CANCELLED']).notNull().default('DRAFT'),
+    receivedById: fk('INT_RECEIVED_BY_ID').references(() => users.id),
+    note: varchar('CHR_NOTE', { length: 255 }),
     ...timestamps,
   },
   (t) => [
@@ -145,19 +146,35 @@ export const receiptLines = mysqlTable(
   'TT_PURCHASE_RECEIPT_L',
   {
     id: pk(),
-    receiptId: fk('RECEIPT_ID')
-      .notNull()
-      .references(() => receipts.id, { onDelete: 'cascade' }),
-    partId: fk('PART_ID')
+    receiptId: fk('INT_RECEIPT_ID')
+      .notNull(),
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Lot yang terbentuk dari baris ini. Kosong untuk part berseri. */
-    lotId: fk('LOT_ID').references(() => lots.id),
-    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull(),
-    uom: varchar('UOM', { length: 16 }).notNull().default('pcs'),
+    lotId: fk('INT_LOT_ID').references(() => lots.id),
+    qty: decimal('FLT_RECQTY', { precision: 14, scale: 4 }).notNull(),
+    uom: varchar('CHR_UOM', { length: 16 }).notNull().default('pcs'),
     ...timestamps,
   },
-  (t) => [index('TT_PURCHASE_RECEIPT_L_RECEIPT_IDX').on(t.receiptId), index('TT_PURCHASE_RECEIPT_L_PART_IDX').on(t.partId)],
+  (t) => [
+    /*
+     * Nama constraint ditulis eksplisit.
+     *
+     * Nama bawaan Drizzle merangkai tabel + kolom di kedua sisi, dan setelah
+     * kolom memakai prefiks INT_/CHR_ hasilnya melewati batas 64 karakter milik
+     * MySQL. Migrasi di database yang SUDAH ada tetap jalan — rename kolom tidak
+     * menyentuh nama constraint — sehingga kegagalannya hanya muncul saat
+     * membuat database dari nol: di CI, di laptop orang baru, dan di produksi.
+     */
+    foreignKey({
+      name: 'TT_PURCHASE_RECEIPT_L_RECEIPT_FK',
+      columns: [t.receiptId],
+      foreignColumns: [receipts.id],
+    }),
+    index('TT_PURCHASE_RECEIPT_L_RECEIPT_IDX').on(t.receiptId),
+    index('TT_PURCHASE_RECEIPT_L_PART_IDX').on(t.partId),
+  ],
 );
 
 /**
@@ -178,24 +195,24 @@ export const consumptions = mysqlTable(
   'TT_CONSUMPTION',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    lineId: fk('LINE_ID').references(() => lines.id),
+    lineId: fk('INT_LINE_ID').references(() => lines.id),
     /** Part yang sedang diproduksi. */
-    producedPartId: fk('PRODUCED_PART_ID')
+    producedPartId: fk('INT_PRODUCED_PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Material yang terpakai. */
-    componentPartId: fk('COMPONENT_PART_ID')
+    componentPartId: fk('INT_COMPONENT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    lotId: fk('LOT_ID').references(() => lots.id),
-    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull(),
-    uom: varchar('UOM', { length: 16 }).notNull().default('pcs'),
-    source: mysqlEnum('SOURCE', ['BACKFLUSH', 'MANUAL', 'ADJUSTMENT']).notNull(),
-    occurredAt: timestamp('OCCURRED_AT').notNull(),
-    userId: fk('USER_ID').references(() => users.id),
+    lotId: fk('INT_LOT_ID').references(() => lots.id),
+    qty: decimal('FLT_QTY', { precision: 14, scale: 4 }).notNull(),
+    uom: varchar('CHR_UOM', { length: 16 }).notNull().default('pcs'),
+    source: mysqlEnum('CHR_SOURCE', ['BACKFLUSH', 'MANUAL', 'ADJUSTMENT']).notNull(),
+    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
+    userId: fk('INT_USER_ID').references(() => users.id),
     ...timestamps,
   },
   (t) => [
@@ -224,22 +241,22 @@ export const genealogy = mysqlTable(
   'TT_GENEALOGY',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
     /** Nomor seri unit yang dibuat. */
-    parentSerial: varchar('PARENT_SERIAL', { length: 64 }).notNull(),
-    parentPartId: fk('PARENT_PART_ID')
+    parentSerial: varchar('CHR_PARENT_SERIAL', { length: 64 }).notNull(),
+    parentPartId: fk('INT_PARENT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    componentPartId: fk('COMPONENT_PART_ID')
+    componentPartId: fk('INT_COMPONENT_PART_ID')
       .notNull()
       .references(() => parts.id),
     /** Diisi untuk komponen berseri. */
-    componentSerial: varchar('COMPONENT_SERIAL', { length: 64 }),
+    componentSerial: varchar('CHR_COMPONENT_SERIAL', { length: 64 }),
     /** Diisi untuk komponen ber-lot. */
-    componentLotId: fk('COMPONENT_LOT_ID').references(() => lots.id),
-    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull().default('1'),
+    componentLotId: fk('INT_COMPONENT_LOT_ID').references(() => lots.id),
+    qty: decimal('FLT_QTY', { precision: 14, scale: 4 }).notNull().default('1'),
     /**
      * Seberapa kuat buktinya.
      *   SCANNED  operator benar-benar men-scan komponennya — bukti kuat.
@@ -247,8 +264,8 @@ export const genealogy = mysqlTable(
      *            cukup untuk kebanyakan kasus, tapi TIDAK cukup saat customer
      *            menuntut bukti. Bedanya harus terlihat, bukan disamarkan.
      */
-    evidence: mysqlEnum('EVIDENCE', ['SCANNED', 'INFERRED']).notNull().default('INFERRED'),
-    occurredAt: timestamp('OCCURRED_AT').notNull(),
+    evidence: mysqlEnum('CHR_EVIDENCE', ['SCANNED', 'INFERRED']).notNull().default('INFERRED'),
+    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
     /**
      * Ditandai saat komponen ini diganti lewat perbaikan.
      *
@@ -257,9 +274,9 @@ export const genealogy = mysqlTable(
      * justru itu yang sering dicari ketika masalah muncul belakangan.
      * Tautan yang masih berlaku adalah yang superseded_at-nya kosong.
      */
-    supersededAt: timestamp('SUPERSEDED_AT'),
-    supersededByRepairId: fk('SUPERSEDED_BY_REPAIR_ID'),
-    meta: json('META'),
+    supersededAt: timestamp('DTM_SUPERSEDED_AT'),
+    supersededByRepairId: fk('INT_SUPERSEDED_BY_REPAIR_ID'),
+    meta: json('CHR_META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [
@@ -277,18 +294,18 @@ export const transfers = mysqlTable(
   'TT_GOODS_MOVEMENT_H',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    documentNumber: varchar('DOCUMENT_NUMBER', { length: 64 }).notNull(),
-    fromLocationId: fk('FROM_LOCATION_ID').references(() => locations.id),
-    toLocationId: fk('TO_LOCATION_ID').references(() => locations.id),
-    fromLineId: fk('FROM_LINE_ID').references(() => lines.id),
-    toLineId: fk('TO_LINE_ID').references(() => lines.id),
-    movedAt: timestamp('MOVED_AT').notNull(),
-    status: mysqlEnum('STATUS', ['DRAFT', 'MOVED', 'CANCELLED']).notNull().default('DRAFT'),
-    userId: fk('USER_ID').references(() => users.id),
-    note: varchar('NOTE', { length: 255 }),
+    documentNumber: varchar('CHR_NUMBER', { length: 64 }).notNull(),
+    fromLocationId: fk('INT_FROM_LOCATION_ID').references(() => locations.id),
+    toLocationId: fk('INT_TO_LOCATION_ID').references(() => locations.id),
+    fromLineId: fk('INT_FROM_LINE_ID').references(() => lines.id),
+    toLineId: fk('INT_TO_LINE_ID').references(() => lines.id),
+    movedAt: timestamp('DTM_MOVED_AT').notNull(),
+    status: mysqlEnum('CHR_STATUS', ['DRAFT', 'MOVED', 'CANCELLED']).notNull().default('DRAFT'),
+    userId: fk('INT_USER_ID').references(() => users.id),
+    note: varchar('CHR_NOTE', { length: 255 }),
     ...timestamps,
   },
   (t) => [
@@ -301,18 +318,34 @@ export const transferLines = mysqlTable(
   'TT_GOODS_MOVEMENT_L',
   {
     id: pk(),
-    transferId: fk('TRANSFER_ID')
-      .notNull()
-      .references(() => transfers.id, { onDelete: 'cascade' }),
-    partId: fk('PART_ID')
+    transferId: fk('INT_TRANSFER_ID')
+      .notNull(),
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    lotId: fk('LOT_ID').references(() => lots.id),
-    serialNumber: varchar('SERIAL_NUMBER', { length: 64 }),
-    qty: decimal('QTY', { precision: 14, scale: 4 }).notNull(),
+    lotId: fk('INT_LOT_ID').references(() => lots.id),
+    serialNumber: varchar('CHR_SERIAL_NUMBER', { length: 64 }),
+    qty: decimal('FLT_TOTAL_QTY', { precision: 14, scale: 4 }).notNull(),
     ...timestamps,
   },
-  (t) => [index('TT_GOODS_MOVEMENT_L_TRANSFER_IDX').on(t.transferId), index('TT_GOODS_MOVEMENT_L_PART_IDX').on(t.partId)],
+  (t) => [
+    /*
+     * Nama constraint ditulis eksplisit.
+     *
+     * Nama bawaan Drizzle merangkai tabel + kolom di kedua sisi, dan setelah
+     * kolom memakai prefiks INT_/CHR_ hasilnya melewati batas 64 karakter milik
+     * MySQL. Migrasi di database yang SUDAH ada tetap jalan — rename kolom tidak
+     * menyentuh nama constraint — sehingga kegagalannya hanya muncul saat
+     * membuat database dari nol: di CI, di laptop orang baru, dan di produksi.
+     */
+    foreignKey({
+      name: 'TT_GOODS_MOVEMENT_L_TRANSFER_FK',
+      columns: [t.transferId],
+      foreignColumns: [transfers.id],
+    }),
+    index('TT_GOODS_MOVEMENT_L_TRANSFER_IDX').on(t.transferId),
+    index('TT_GOODS_MOVEMENT_L_PART_IDX').on(t.partId),
+  ],
 );
 
 // ─── Relasi ─────────────────────────────────────────────────────────────────

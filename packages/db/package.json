@@ -9,6 +9,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./load-env": {
+      "types": "./dist/load-env.d.ts",
+      "import": "./dist/load-env.mjs",
+      "require": "./dist/load-env.js"
     }
   },
   "scripts": {

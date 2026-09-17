@@ -1,6 +1,20 @@
 import { z } from 'zod';
 
-export const processTypeSchema = z.enum(['CASTING', 'MACHINING', 'ASSEMBLING', 'INJECTION']);
+/*
+ * Kosakata jenis proses. Harus sama persis dengan PROCESS_TYPES di
+ * packages/db/src/schema/_shared.ts — keduanya menulis ke kolom enum yang sama,
+ * dan nilai yang tidak dikenal MySQL ditolak saat insert, bukan saat validasi.
+ */
+export const processTypeSchema = z.enum([
+  'MELTING',
+  'CASTING',
+  'MACHINING',
+  'ASSEMBLING_UNIT',
+  'INJECTION',
+  'PAINTING',
+  'ASSEMBLING_BODY',
+  'DELIVERY',
+]);
 export type ProcessType = z.infer<typeof processTypeSchema>;
 
 export const idSchema = z.coerce.number().int().positive();

@@ -31,19 +31,19 @@ export const kanbans = mysqlTable(
   'TM_KANBAN',
   {
     id: pk(),
-    plantId: fk('PLANT_ID')
+    plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    partId: fk('PART_ID')
+    partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    customerId: fk('CUSTOMER_ID').references(() => customers.id),
+    customerId: fk('INT_CUSTOMER_ID').references(() => customers.id),
     /** Nomor seri tercetak di kartu — unik per pabrik, dipakai saat scan. */
-    serialNumber: varchar('SERIAL_NUMBER', { length: 64 }).notNull(),
-    qty: int('QTY').notNull(),
-    status: mysqlEnum('STATUS', KANBAN_STATUSES).notNull().default('CREATED'),
-    producedAt: timestamp('PRODUCED_AT'),
-    deliveredAt: timestamp('DELIVERED_AT'),
+    serialNumber: varchar('CHR_SERIAL_NUMBER', { length: 64 }).notNull(),
+    qty: int('INT_QTY').notNull(),
+    status: mysqlEnum('CHR_STATUS', KANBAN_STATUSES).notNull().default('CREATED'),
+    producedAt: timestamp('DTM_PRODUCED_AT'),
+    deliveredAt: timestamp('DTM_DELIVERED_AT'),
     ...timestamps,
   },
   (t) => [
@@ -82,19 +82,19 @@ export const kanbanEvents = mysqlTable(
   'TT_KANBAN_EVENT',
   {
     id: pk(),
-    kanbanId: fk('KANBAN_ID')
+    kanbanId: fk('INT_KANBAN_ID')
       .notNull()
       .references(() => kanbans.id, { onDelete: 'cascade' }),
-    type: mysqlEnum('TYPE', KANBAN_EVENT_TYPES).notNull(),
-    lineId: fk('LINE_ID').references(() => lines.id),
+    type: mysqlEnum('CHR_TYPE', KANBAN_EVENT_TYPES).notNull(),
+    lineId: fk('INT_LINE_ID').references(() => lines.id),
     /** Kanban pasangan, dipakai saat type = PAIRED (body <-> part). */
-    pairedKanbanId: fk('PAIRED_KANBAN_ID'),
-    qty: int('QTY'),
-    userId: fk('USER_ID').references(() => users.id),
-    deviceId: fk('DEVICE_ID').references(() => devices.id),
-    occurredAt: timestamp('OCCURRED_AT').notNull(),
+    pairedKanbanId: fk('INT_PAIRED_KANBAN_ID'),
+    qty: int('INT_QTY'),
+    userId: fk('INT_USER_ID').references(() => users.id),
+    deviceId: fk('INT_DEVICE_ID').references(() => devices.id),
+    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
     /** Payload tambahan spesifik per tipe event. Jangan taruh data yang perlu di-query di sini. */
-    meta: json('META'),
+    meta: json('CHR_META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [

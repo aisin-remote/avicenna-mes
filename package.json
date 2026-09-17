@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "description": "Avicenna MES - unified manufacturing execution system (rebuild of avicenna + bella)",
   "packageManager": "pnpm@9.15.9",
-  "engines": { "node": ">=20.9.0" },
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
@@ -18,7 +20,9 @@
     "db:studio": "pnpm --filter @avicenna/db db:studio",
     "db:seed": "pnpm --filter @avicenna/db db:seed",
     "infra:up": "docker compose up -d",
-    "infra:down": "docker compose down"
+    "infra:down": "docker compose down",
+    "staging:introspect": "pnpm --filter @avicenna/api staging:introspect",
+    "staging:compare": "pnpm --filter @avicenna/api staging:compare"
   },
   "devDependencies": {
     "turbo": "2.10.12",

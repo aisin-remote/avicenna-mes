@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildDedupeKey, parseBarcode, normalizeScan } from './scan';
+import { buildDedupeKey, normalizeScan } from './scan';
 
 describe('buildDedupeKey', () => {
   it('menghasilkan kunci sama untuk clientRef sama — kiriman ulang tertangkap', () => {
@@ -44,31 +44,6 @@ describe('buildDedupeKey', () => {
     expect(buildDedupeKey({ kind: 'PRODUCTION', rawCode: 'ABC', lineCode: 'DC-01', scannedAt: at })).not.toBe(
       buildDedupeKey({ kind: 'PRODUCTION', rawCode: 'ABC', lineCode: 'MC-01', scannedAt: at }),
     );
-  });
-});
-
-describe('parseBarcode', () => {
-  it('membaca format berpemisah pipa', () => {
-    expect(parseBarcode('AV-12345-001|BN-001|SN00042|20')).toEqual({
-      raw: 'AV-12345-001|BN-001|SN00042|20',
-      partNumber: 'AV-12345-001',
-      backNumber: 'BN-001',
-      serialNumber: 'SN00042',
-      qty: 20,
-    });
-  });
-
-  it('memperlakukan barcode polos sebagai nomor seri', () => {
-    expect(parseBarcode('SN00042')).toEqual({ raw: 'SN00042', serialNumber: 'SN00042' });
-  });
-
-  it('mengabaikan qty yang tidak valid alih-alih menyimpan NaN', () => {
-    expect(parseBarcode('P1|B1|S1|abc').qty).toBeUndefined();
-    expect(parseBarcode('P1|B1|S1|0').qty).toBeUndefined();
-  });
-
-  it('menolak barcode kosong', () => {
-    expect(() => parseBarcode('   ')).toThrow(/kosong/);
   });
 });
 
