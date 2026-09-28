@@ -2,8 +2,8 @@
 
 import { useActionState, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Pencil, KeyRound, AlertCircle, Check, X, ShieldAlert } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Plus, Pencil, KeyRound, Check, X, ShieldAlert } from 'lucide-react';
 import type { UserRow, RoleRow } from '@avicenna/contracts';
 import {
   simpanPenggunaAction,
@@ -11,8 +11,9 @@ import {
   aktifkanPenggunaAction,
   type AksiState,
 } from '@/app/(app)/admin/actions';
-import { durations, easeSoft, springSoft } from '../motion/transitions';
+import { springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+import { useToast } from '../ui/toast';
 
 interface PilihanPabrik {
   id: number;
@@ -46,16 +47,19 @@ export function UserTable({
 }) {
   const [form, setForm] = useState<{ mode: 'buat' | 'sunting'; row?: UserRow } | null>(null);
   const [sandiUntuk, setSandiUntuk] = useState<UserRow | null>(null);
-  const [galat, setGalat] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   function ubahAktif(row: UserRow, aktif: boolean) {
-    setGalat(null);
     startTransition(async () => {
       const hasil = await aktifkanPenggunaAction(row.id, aktif);
-      if (hasil.error) setGalat(hasil.error);
-      else router.refresh();
+      if (hasil.error) {
+        toast.galat(hasil.error, 'Status tidak berubah');
+        return;
+      }
+      toast.ok(`${row.name} ${aktif ? 'diaktifkan' : 'dinonaktifkan'}.`);
+      router.refresh();
     });
   }
 
@@ -74,20 +78,6 @@ export function UserTable({
         </button>
       </div>
 
-      <AnimatePresence>
-        {galat ? (
-          <motion.p
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: durations.base, ease: easeSoft }}
-            className="mb-4 flex items-start gap-2 rounded-card border border-ng/40 bg-ng/10 px-4 py-3 text-[14px] text-ng"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
-            <span>{galat}</span>
-          </motion.p>
-        ) : null}
-      </AnimatePresence>
 
       <div className="overflow-x-auto rounded-card border border-line bg-card">
         <table className="w-full min-w-[720px] text-[14px]">
@@ -314,13 +304,18 @@ function FormPengguna({
 }) {
   const [state, action, pending] = useActionState(simpanPenggunaAction, AWAL);
   const router = useRouter();
+  const toast = useToast();
 
   useEffect(() => {
     if (state.ok) {
+      toast.ok(mode === 'buat' ? 'Pengguna dibuat.' : 'Pengguna tersimpan.');
       router.refresh();
       onClose();
     }
-  }, [state.ok, router, onClose]);
+    // Galat per kolom tetap di bawah kolomnya; hanya galat umum yang jadi toast.
+    if (state.error && !state.fieldErrors) toast.galat(state.error, 'Tidak tersimpan');
+    // Bergantung pada objek state: Simpan kedua dengan galat sama harus tetap memberi tahu.
+  }, [state, router, onClose, toast, mode]);
 
   const e = state.fieldErrors ?? {};
 
@@ -420,12 +415,6 @@ function FormPengguna({
           Aktif
         </label>
 
-        {state.error ? (
-          <p className="flex items-start gap-2 rounded-xl border border-ng/40 bg-ng/10 px-3 py-2.5 text-[13px] text-ng">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
-            <span>{state.error}</span>
-          </p>
-        ) : null}
 
         <div className="flex justify-end gap-2 pt-1">
           <button
@@ -450,10 +439,15 @@ function FormPengguna({
 
 function FormSandi({ user, onClose }: { user: UserRow; onClose: () => void }) {
   const [state, action, pending] = useActionState(gantiSandiAction, AWAL);
+  const toast = useToast();
 
   useEffect(() => {
-    if (state.ok) onClose();
-  }, [state.ok, onClose]);
+    if (state.ok) {
+      toast.ok(`Kata sandi ${user.name} diganti.`);
+      onClose();
+    }
+    if (state.error && !state.fieldErrors) toast.galat(state.error, 'Sandi tidak diganti');
+  }, [state, onClose, toast, user.name]);
 
   return (
     <Panel
@@ -484,11 +478,6 @@ function FormSandi({ user, onClose }: { user: UserRow; onClose: () => void }) {
           />
         </Baris>
 
-        {state.error ? (
-          <p className="rounded-xl border border-ng/40 bg-ng/10 px-3 py-2.5 text-[13px] text-ng">
-            {state.error}
-          </p>
-        ) : null}
 
         <div className="flex justify-end gap-2 pt-1">
           <button

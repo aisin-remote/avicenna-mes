@@ -1,4 +1,4 @@
-import { MASTER_ENTITIES, ENTITY_DEFS } from './master/registry';
+import { MASTER_ENTITIES, ENTITY_DEFS, type MasterEntity } from './master/registry';
 
 /**
  * ─── KATALOG MENU ───────────────────────────────────────────────────────────
@@ -70,8 +70,9 @@ const MENU_TETAP: MenuDef[] = [
 
   { key: 'receiving', label: 'Penerimaan Barang', href: '/receiving', icon: 'Truck', group: 'Logistik', sortOrder: 10 },
   { key: 'transfer', label: 'Transfer Antar Line', href: '/transfer', icon: 'MoveRight', group: 'Logistik', sortOrder: 20 },
-  { key: 'delivery', label: 'Pengiriman', href: '/delivery', icon: 'PackageCheck', group: 'Logistik', sortOrder: 30 },
-  { key: 'trace', label: 'Telusur Silsilah', href: '/trace', icon: 'GitBranch', group: 'Logistik', sortOrder: 40 },
+  { key: 'stock', label: 'Monitoring Stok', href: '/stock', icon: 'Boxes', group: 'Logistik', sortOrder: 30 },
+  { key: 'delivery', label: 'Pengiriman', href: '/delivery', icon: 'PackageCheck', group: 'Logistik', sortOrder: 40 },
+  { key: 'trace', label: 'Telusur Silsilah', href: '/trace', icon: 'GitBranch', group: 'Logistik', sortOrder: 50 },
 
   { key: 'sap', label: 'Integrasi SAP', href: '/sap', icon: 'Share2', group: 'Integrasi', sortOrder: 10 },
 
@@ -86,6 +87,30 @@ const MENU_TETAP: MenuDef[] = [
  * diberikan ke role. Daftar kedua yang ditulis tangan akan ketinggalan, dan
  * entitas baru menjadi halaman yang tidak pernah terlihat siapa pun.
  */
+/*
+ * ── Penimpa per entitas ─────────────────────────────────────────────────────
+ *
+ * Rute proses adalah DUA master dengan dua pengurus berbeda:
+ *
+ *   master.part-processes    Rute Proses per Part   Master Data  -> matriks
+ *                            (leader produksi: part ini lewat proses apa)
+ *   master.route-processes   Rute Proses            Integrasi    -> CRUD per proses
+ *                            (PPIC/IT: SLOC masuk/keluar/transfer, bendera SAP)
+ *
+ * Kunci `master.part-processes` SENGAJA tetap menunjuk matriks. Kunci itulah
+ * yang tersimpan di TM_ROLE_MENU sejak awal, dan saat itu artinya "matriks".
+ * Mengalihkannya berarti setiap leader yang dulu diberi hak matriks tiba-tiba
+ * melihat layar lain dan kehilangan matriksnya — tanpa satu pun perubahan di
+ * layar hak akses.
+ */
+const MENU_MASTER_TIMPA: Partial<Record<MasterEntity, Partial<MenuDef>>> = {
+  // Matriks per part — kunci lama dipertahankan supaya hak yang sudah
+  // diberikan ke leader tetap membuka layar yang sama.
+  'part-processes': { label: 'Rute Proses per Part', href: '/master/part-processes/matriks' },
+  // Pengaturan per proses — urusan PPIC/IT, jadi di menu Integrasi.
+  'route-processes': { label: 'Rute Proses', group: 'Integrasi', sortOrder: 20 },
+};
+
 const MENU_MASTER: MenuDef[] = MASTER_ENTITIES.map((key, i) => ({
   key: `master.${key}`,
   label: ENTITY_DEFS[key].label,
@@ -93,19 +118,14 @@ const MENU_MASTER: MenuDef[] = MASTER_ENTITIES.map((key, i) => ({
   icon: ENTITY_DEFS[key].icon,
   group: 'Master Data' as const,
   sortOrder: (i + 1) * 10,
+  ...MENU_MASTER_TIMPA[key],
 }));
 
-/** Layar matriks rute — halaman tersendiri, bukan CRUD entitas biasa. */
-const MENU_KHUSUS: MenuDef[] = [
-  {
-    key: 'master.part-processes-matrix',
-    label: 'Matriks Rute Part',
-    href: '/master/part-processes',
-    icon: 'Route',
-    group: 'Master Data',
-    sortOrder: 5,
-  },
-];
+/*
+ * Tidak ada menu tambahan. Kedua master rute lahir dari MASTER_ENTITIES lewat
+ * penimpa di atas — tes menu.test.ts menjaga alamatnya tidak pernah kembar.
+ */
+const MENU_KHUSUS: MenuDef[] = [];
 
 export const MENU_ITEMS: readonly MenuDef[] = [
   ...MENU_TETAP,

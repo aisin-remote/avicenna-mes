@@ -7,11 +7,20 @@ import {
   Param,
   Query,
   Body,
+  Res,
   BadRequestException,
   ParseIntPipe,
 } from '@nestjs/common';
-import { isMasterEntity, ENTITY_DEFS, type MasterEntity } from '@avicenna/contracts';
+import type { Response } from 'express';
+import {
+  isMasterEntity,
+  ENTITY_DEFS,
+  kolomImpor,
+  MAKS_UKURAN_IMPOR,
+  type MasterEntity,
+} from '@avicenna/contracts';
 import { MasterService } from './master.service';
+import { MasterImportService } from './import.service';
 
 /**
  * Satu controller untuk seluruh entitas master.
@@ -22,12 +31,71 @@ import { MasterService } from './master.service';
  */
 @Controller('master')
 export class MasterController {
-  constructor(private readonly master: MasterService) {}
+  constructor(
+    private readonly master: MasterService,
+    private readonly impor: MasterImportService,
+  ) {}
 
   /** Definisi seluruh entitas — dipakai UI membangun tabel dan formulir. */
   @Get('meta')
   meta() {
     return ENTITY_DEFS;
+  }
+
+  /* ── Unggah Excel ───────────────────────────────────────────────────────
+   *
+   * Ditaruh SEBELUM ':entity/:id'. Nest mencocokkan rute berurutan; di bawah
+   * baris itu, "template" akan dianggap sebagai id dan ditolak sebagai bukan
+   * angka — galat yang menyesatkan karena tidak menyebut soal urutan rute.
+   */
+
+  /** Berkas .xlsx kosong berisi judul kolom dan dropdown yang benar. */
+  @Get(':entity/template')
+  async template(@Param('entity') entity: string, @Res() res: Response) {
+    const e = this.assertEntity(entity);
+    const buf = await this.impor.template(e);
+    const nama = `template-${e}.xlsx`;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${nama}"`);
+    res.send(buf);
+  }
+
+  /** Kolom template — dipakai layar untuk menjelaskan formatnya sebelum unduh. */
+  @Get(':entity/import-columns')
+  importColumns(@Param('entity') entity: string) {
+    return kolomImpor(this.assertEntity(entity));
+  }
+
+  /**
+   * Mengunggah berkas Excel.
+   *
+   * Berkas dikirim sebagai base64 di dalam JSON, bukan multipart. Alasannya
+   * praktis: seluruh jalur tulis di aplikasi ini lewat Server Action Next,
+   * yang sudah memegang berkasnya sebagai Buffer — meneruskannya sebagai JSON
+   * menghindari satu pustaka multipart di API yang hanya dipakai satu endpoint.
+   * Batas ukurannya kecil (5 MB), jadi biaya base64 tidak jadi soal.
+   */
+  @Post(':entity/import')
+  async import(
+    @Param('entity') entity: string,
+    @Body() body: { fileBase64?: string; ujiSaja?: boolean },
+  ) {
+    const e = this.assertEntity(entity);
+    const b64 = body?.fileBase64;
+    if (!b64) throw new BadRequestException('Berkas tidak ada dalam permintaan.');
+
+    const buf = Buffer.from(b64, 'base64');
+    if (buf.length === 0) throw new BadRequestException('Berkas kosong.');
+    if (buf.length > MAKS_UKURAN_IMPOR) {
+      throw new BadRequestException(
+        `Berkas ${(buf.length / 1024 / 1024).toFixed(1)} MB melebihi batas ` +
+          `${MAKS_UKURAN_IMPOR / 1024 / 1024} MB.`,
+      );
+    }
+    return this.impor.impor(e, buf, body?.ujiSaja !== false);
   }
 
   @Get(':entity/options')

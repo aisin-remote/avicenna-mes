@@ -27,6 +27,8 @@ export interface RefOption {
   label: string;
   /** Label ringkas (kode saja), dipakai di sel tabel. */
   short: string;
+  /** Pabrik pemilik, bila entitasnya per pabrik — formulir menyaring pilihan dengannya. */
+  plantId?: number | null;
 }
 
 export function listMaster(

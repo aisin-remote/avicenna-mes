@@ -133,6 +133,26 @@ export const scanEvents = mysqlTable(
     index('TT_HISTORY_SCAN_LINE_KIND_TIME_IDX').on(t.lineId, t.kind, t.scannedAt),
     index('TT_HISTORY_SCAN_PART_TIME_IDX').on(t.partId, t.scannedAt),
     index('TT_HISTORY_SCAN_SERIAL_IDX').on(t.serialNumber),
+    /*
+     * Barcode + proses.
+     *
+     * DUA pemeriksaan terpanas di seluruh sistem menyaring dengan kolom ini,
+     * dan keduanya berjalan pada SETIAP scan produksi:
+     *
+     *   1. "barcode ini sudah pernah discan di proses ini?"  (station)
+     *   2. "proses sebelumnya di rute part ini sudah discan?" (ingestOne)
+     *
+     * Tanpa index, keduanya memindai seluruh tabel. Di meja pengembang dengan
+     * 48 baris itu tidak terasa sama sekali; di lantai produksi tabel ini
+     * bertambah belasan juta baris per tahun, dan dua pemindaian penuh per scan
+     * membuat layar operator menggantung makin lama setiap minggunya — tanpa
+     * satu pun galat yang menunjukkan sebabnya.
+     *
+     * Urutan kolomnya: CHR_RAW_CODE lebih dulu karena itu yang paling memilah,
+     * lalu CHR_PROCESS_TYPE. DTM_SCANNED_AT ikut supaya pencarian scan produksi
+     * TERAKHIR pada sebuah barang (pencatatan NG) tidak perlu mengurutkan lagi.
+     */
+    index('TT_HISTORY_SCAN_RAW_PROCESS_IDX').on(t.rawCode, t.processType, t.scannedAt),
   ],
 );
 

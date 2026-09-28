@@ -1,7 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { eq, and, sql, desc, count, inArray, type Database } from '@avicenna/db';
-import { sapOutbox, mutations, parts, locations, plants, lots } from '@avicenna/db';
-import { sapMovementFor, siapDikirim, slocKurang } from '@avicenna/domain';
+import {
+  sapOutbox,
+  mutations,
+  parts,
+  locations,
+  plants,
+  lots,
+  scanEvents,
+  lines,
+  users,
+} from '@avicenna/db';
+import { sapMovementFor, siapDikirim, slocKurang, bolehKirimDokumenRute } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 
 /** Jeda sebelum sebuah dokumen dianggap lengkap. Lihat catatan di collect(). */
@@ -43,20 +53,37 @@ export class SapOutboxService {
   constructor(@InjectDb() private readonly db: Database) {}
 
   async collect(): Promise<{ dikumpulkan: number; ditahan: number; dilewati: number }> {
-    /*
-     * Hanya dokumen yang sudah "mengendap" yang diambil.
-     *
-     * Backflush berjalan di antrean, beberapa detik SETELAH scan produksinya
-     * tercatat. Mengambil dokumen terlalu cepat berarti mengirim konfirmasi
-     * produksi tanpa baris pemakaian komponennya — barang jadi bertambah di
-     * SAP, materialnya tidak pernah berkurang.
-     */
+    // Jeda memberi waktu transaksi scan selesai. Dokumen produksi juga
+    // menunggu penanda backflushCompleted sebelum dibuat di bawah.
     const kandidat = await this.db.execute(sql`
       SELECT m.CHR_SOURCE_TABLE AS sourceTable,
              m.INT_SOURCE_ID  AS sourceId
       FROM ${mutations} m
+      LEFT JOIN ${scanEvents} s
+        ON m.CHR_SOURCE_TABLE = 'TT_HISTORY_SCAN' AND s.INT_ID = m.INT_SOURCE_ID
       WHERE m.CHR_SOURCE_TABLE IS NOT NULL
         AND m.INT_SOURCE_ID IS NOT NULL
+        AND (
+          m.CHR_SOURCE_TABLE <> 'TT_HISTORY_SCAN'
+          OR m.CHR_TYPE NOT IN ('PRODUCTION_IN', 'CONSUMPTION_OUT')
+          OR JSON_UNQUOTE(JSON_EXTRACT(s.CHR_META, '$.backflushCompleted')) = 'true'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM ${sapOutbox} o
+          WHERE o.CHR_SOURCE_TABLE = m.CHR_SOURCE_TABLE
+            AND o.INT_SOURCE_ID = m.INT_SOURCE_ID
+            AND o.CHR_DOC_TYPE = CASE m.CHR_TYPE
+              WHEN 'PRODUCTION_IN' THEN 'PRODUCTION'
+              WHEN 'CONSUMPTION_OUT' THEN 'PRODUCTION'
+              WHEN 'TRANSFER_OUT' THEN 'TRANSFER'
+              WHEN 'TRANSFER_IN' THEN 'TRANSFER'
+              WHEN 'RECEIVING_IN' THEN 'GOODS_RECEIPT'
+              WHEN 'DELIVERY_OUT' THEN 'DELIVERY'
+              WHEN 'NG_OUT' THEN 'SCRAP'
+              WHEN 'ADJUSTMENT' THEN 'ADJUSTMENT'
+              WHEN 'STOCK_TAKE' THEN 'ADJUSTMENT'
+            END
+        )
       GROUP BY m.CHR_SOURCE_TABLE, m.INT_SOURCE_ID
       HAVING MAX(m.DTM_CREATED_AT) < (NOW() - INTERVAL ${sql.raw(String(SETTLE_SECONDS))} SECOND)
       ORDER BY MIN(m.DTM_OCCURRED_AT)
@@ -122,6 +149,34 @@ export class SapOutboxService {
 
     if (baris.length === 0) return hasil;
 
+    const [scan] =
+      sourceTable === 'TT_HISTORY_SCAN'
+        ? await this.db
+            .select({
+              meta: scanEvents.meta,
+              lineCode: lines.code,
+              backNumber: parts.backNumber,
+              partName: parts.name,
+              serialNumber: scanEvents.serialNumber,
+              npk: users.npk,
+            })
+            .from(scanEvents)
+            .leftJoin(lines, eq(scanEvents.lineId, lines.id))
+            .leftJoin(parts, eq(scanEvents.partId, parts.id))
+            .leftJoin(users, eq(scanEvents.userId, users.id))
+            .where(eq(scanEvents.id, sourceId))
+            .limit(1)
+        : [];
+    const metaScan = scan?.meta as {
+      backflushCompleted?: boolean;
+      sapRoute?: {
+        productionEnabled?: boolean;
+        transferEnabled?: boolean;
+        transferMovementType?: string | null;
+      };
+    } | null;
+    const kebijakan = metaScan?.sapRoute;
+
     // Kelompokkan per jenis dokumen SAP.
     const kelompok = new Map<string, typeof baris>();
     const takDikenal: string[] = [];
@@ -143,6 +198,7 @@ export class SapOutboxService {
     }
 
     for (const [docType, anggota] of kelompok) {
+      const izin = bolehKirimDokumenRute(sourceTable, docType, kebijakan);
       const dikirim = anggota.filter((b) => sapMovementFor(b.mutationType)?.kirim);
       const jenis = anggota.map((b) => b.mutationType);
 
@@ -156,6 +212,28 @@ export class SapOutboxService {
         occurredAt: anggota[0]!.occurredAt,
       };
 
+      if (!izin) {
+        const baru = await this.simpan({
+          ...dasar,
+          movementType: null,
+          status: 'SKIPPED',
+          lastError: 'push staging SAP dimatikan untuk langkah rute ini',
+          payload: { docType, lines: [] },
+        });
+        if (baru) hasil.skipped++;
+        continue;
+      }
+
+      // Job backflush bisa tertunda lebih dari jeda kolektor. Produksi baru
+      // boleh masuk outbox setelah konsumsi komponennya selesai atau BOM
+      // dipastikan kosong. Transfer SLOC tetap boleh berjalan terpisah.
+      if (
+        docType === 'PRODUCTION' &&
+        sourceTable === 'TT_HISTORY_SCAN' &&
+        metaScan?.backflushCompleted !== true
+      )
+        continue;
+
       if (dikirim.length === 0) {
         const baru = await this.simpan({
           ...dasar,
@@ -168,8 +246,20 @@ export class SapOutboxService {
         continue;
       }
 
-      const { siap, belum } = siapDikirim(jenis);
-      const movementType = sapMovementFor(dikirim[0]!.mutationType)?.movementType ?? null;
+      const movementType =
+        docType === 'TRANSFER' && sourceTable === 'TT_HISTORY_SCAN'
+          ? (kebijakan?.transferMovementType ?? null)
+          : (sapMovementFor(dikirim[0]!.mutationType)?.movementType ?? null);
+      const pemeriksaan = siapDikirim(jenis);
+      const siap =
+        docType === 'TRANSFER' && sourceTable === 'TT_HISTORY_SCAN'
+          ? Boolean(movementType)
+          : pemeriksaan.siap;
+      const belum = siap
+        ? []
+        : docType === 'TRANSFER' && sourceTable === 'TT_HISTORY_SCAN'
+          ? ['TRANSFER (atur di rute)']
+          : pemeriksaan.belum;
 
       /*
        * SLOC tujuan diambil dari baris pasangannya yang TIDAK ikut dikirim.
@@ -193,7 +283,10 @@ export class SapOutboxService {
         return {
           mutationId: b.mutationId,
           mutationType: b.mutationType,
-          movementType: sapMovementFor(b.mutationType)?.movementType ?? null,
+          movementType:
+            docType === 'TRANSFER' && sourceTable === 'TT_HISTORY_SCAN'
+              ? movementType
+              : (sapMovementFor(b.mutationType)?.movementType ?? null),
           partNumber: b.partNumber,
           uom: b.uom ?? null,
 
@@ -231,18 +324,46 @@ export class SapOutboxService {
        * lolos dengan SLOC kosong akan ditolak di sisi sana — atau lebih buruk,
        * diterima lalu masuk ke lokasi bawaan yang keliru.
        */
-      const kurangSloc = slocKurang(docType as never, barisKirim.map((b) => ({
-        mutationType: b.mutationType,
-        qty: Number(b.qty),
-        slocFrom: b.slocFrom,
-        slocTo: b.slocTo,
-        partNumber: b.partNumber,
-      })));
+      const kurangSloc = slocKurang(
+        docType as never,
+        barisKirim.map((b) => ({
+          mutationType: b.mutationType,
+          qty: Number(b.qty),
+          slocFrom: b.slocFrom,
+          slocTo: b.slocTo,
+          partNumber: b.partNumber,
+        })),
+      );
 
-      const lengkap = siap && kurangSloc.length === 0;
+      const kurangKonteks =
+        docType === 'PRODUCTION' && sourceTable === 'TT_HISTORY_SCAN' && !scan?.lineCode;
+      let menungguProduksi: string | null = null;
+      if (docType === 'TRANSFER' && sourceTable === 'TT_HISTORY_SCAN') {
+        if (!kebijakan?.productionEnabled) {
+          menungguProduksi = 'push hasil produksi tidak aktif untuk rute ini';
+        } else {
+          const [produksi] = await this.db
+            .select({ status: sapOutbox.status })
+            .from(sapOutbox)
+            .where(
+              and(
+                eq(sapOutbox.sourceTable, sourceTable),
+                eq(sapOutbox.sourceId, sourceId),
+                eq(sapOutbox.docType, 'PRODUCTION'),
+              ),
+            )
+            .limit(1);
+          if (produksi?.status !== 'CONFIRMED') {
+            menungguProduksi = 'menunggu hasil produksi dikonfirmasi SAP';
+          }
+        }
+      }
+      const lengkap = siap && kurangSloc.length === 0 && !kurangKonteks && !menungguProduksi;
       const alasanTahan = [
         siap ? null : `movement type belum diputuskan untuk: ${belum.join(', ')}`,
         kurangSloc.length > 0 ? kurangSloc.join('; ') : null,
+        kurangKonteks ? 'work center dari line scan kosong' : null,
+        menungguProduksi,
       ]
         .filter(Boolean)
         .join(' | ');
@@ -262,6 +383,11 @@ export class SapOutboxService {
           sourceTable,
           sourceId,
           occurredAt: dasar.occurredAt,
+          lineCode: scan?.lineCode ?? null,
+          backNumber: scan?.backNumber ?? null,
+          partName: scan?.partName ?? null,
+          serialNumber: scan?.serialNumber ?? null,
+          npk: scan?.npk ?? null,
           lines: barisKirim,
         },
       });
@@ -309,13 +435,11 @@ export class SapOutboxService {
 
   /** Melepas dokumen yang tertahan, setelah movement type-nya diputuskan. */
   async releaseHeld(): Promise<{ dilepas: number }> {
-    const tertahan = await this.db
-      .select()
-      .from(sapOutbox)
-      .where(eq(sapOutbox.status, 'HELD'));
+    const tertahan = await this.db.select().from(sapOutbox).where(eq(sapOutbox.status, 'HELD'));
 
     let dilepas = 0;
     for (const row of tertahan) {
+      if (row.lastError?.startsWith('pendorong untuk ')) continue;
       const payload = row.payload as {
         lines?: Array<{
           mutationType: string;
@@ -326,10 +450,27 @@ export class SapOutboxService {
         }>;
       };
       const lines = payload.lines ?? [];
+      if (row.docType === 'TRANSFER' && row.sourceTable === 'TT_HISTORY_SCAN' && !row.movementType)
+        continue;
+      if (row.docType === 'TRANSFER' && row.sourceTable === 'TT_HISTORY_SCAN') {
+        const [produksi] = await this.db
+          .select({ status: sapOutbox.status })
+          .from(sapOutbox)
+          .where(
+            and(
+              eq(sapOutbox.sourceTable, row.sourceTable),
+              eq(sapOutbox.sourceId, row.sourceId),
+              eq(sapOutbox.docType, 'PRODUCTION'),
+            ),
+          )
+          .limit(1);
+        if (produksi?.status !== 'CONFIRMED') continue;
+      }
+      if (row.docType === 'PRODUCTION' && !('lineCode' in payload && payload.lineCode)) continue;
       const jenis = lines.map((l) => l.mutationType);
 
       const { siap } = siapDikirim(jenis);
-      if (!siap) continue;
+      if (!siap && !(row.docType === 'TRANSFER' && row.movementType)) continue;
 
       /*
        * Dokumen bisa tertahan karena DUA sebab: movement type belum diputuskan,
@@ -349,7 +490,10 @@ export class SapOutboxService {
       );
       if (kurang.length > 0) continue;
 
-      const movementType = sapMovementFor(jenis[0] ?? '')?.movementType ?? null;
+      const movementType =
+        row.docType === 'TRANSFER'
+          ? (row.movementType ?? sapMovementFor('TRANSFER_OUT')?.movementType ?? null)
+          : (sapMovementFor(jenis[0] ?? '')?.movementType ?? null);
       await this.db
         .update(sapOutbox)
         .set({ status: 'PENDING', movementType, lastError: null })

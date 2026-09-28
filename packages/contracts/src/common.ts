@@ -113,3 +113,43 @@ export type ProcessGroup = (typeof PROCESS_GROUPS)[number];
 
 export const ROLE_KINDS = ['SCANNING', 'VIEW', 'ADMIN'] as const;
 export type RoleKind = (typeof ROLE_KINDS)[number];
+
+/**
+ * ─── Cara scan di sebuah proses ─────────────────────────────────────────────
+ *
+ *   PER_PIECE   tiap barang punya barcode seri sendiri (UNIT: 15 digit).
+ *               Satu scan = satu barang. Lini FG menempelkan barang ke kanban.
+ *
+ *   PER_KANBAN  barang tidak berseri (BODY: injection, painting, assy).
+ *               Operator men-scan master sample (part), lalu men-scan kanban
+ *               tiap kali satu box selesai. Satu scan = isi satu kanban.
+ *
+ * Ini SIFAT PROSES, bukan sifat pabrik: disimpan di TM_ROUTE_PROCESS per
+ * pabrik per proses. Dengan begitu assy 660A yang berinterlock dan injection
+ * biasa bisa berbeda dalam satu pabrik, dan Electric nanti mengisi masternya
+ * sendiri tanpa menyentuh kode.
+ */
+export const SCAN_MODES = ['PER_PIECE', 'PER_KANBAN'] as const;
+export const scanModeSchema = z.enum(SCAN_MODES);
+export type ScanMode = z.infer<typeof scanModeSchema>;
+
+export const SCAN_MODE_LABELS: Record<ScanMode, string> = {
+  PER_PIECE: 'Per barang (barcode seri)',
+  PER_KANBAN: 'Per kanban (satu scan = satu box)',
+};
+
+/**
+ * Cara scan bawaan sebuah jenis proses — dipakai saat baris master belum ada.
+ *
+ * Injection, painting, dan assembling body adalah proses plant BODY, dan di
+ * sana barang tidak berseri: satu scan = satu box (bella, prdreport).
+ * Selebihnya proses die casting UNIT dengan barcode 15 digit per barang.
+ *
+ * Hanya BAWAAN. Yang berlaku adalah isi TM_ROUTE_PROCESS per pabrik.
+ */
+export function modeScanBawaan(p: ProcessType): ScanMode {
+  return p === 'INJECTION' || p === 'PAINTING' || p === 'ASSEMBLING_BODY'
+    ? 'PER_KANBAN'
+    : 'PER_PIECE';
+}
+

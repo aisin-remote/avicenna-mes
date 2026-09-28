@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { Truck, Check, AlertCircle, Ban, AlertTriangle, PackageOpen } from 'lucide-react';
+import { Truck, Ban, AlertTriangle, PackageOpen } from 'lucide-react';
 import {
   shipLoadingAction,
   setTruckStatusAction,
@@ -13,6 +13,7 @@ import {
 } from '@/app/(app)/delivery/actions';
 import { durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+import { useToast } from '../ui/toast';
 
 const TRUCK_STEPS = [
   { value: 'PENDING', label: 'Belum datang' },
@@ -44,7 +45,7 @@ export function LoadingActions({
   totalActual: number;
 }) {
   const [confirming, setConfirming] = useState<'pick' | 'ship' | 'cancel' | null>(null);
-  const [message, setMessage] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  const toast = useToast();
   const [shortages, setShortages] = useState<ShipResult['shortages']>([]);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -57,38 +58,32 @@ export function LoadingActions({
   async function pick() {
     setConfirming(null);
     const res = await completePickingAction(id);
-    if ('error' in res) return setMessage({ tone: 'bad', text: res.error });
+    if ('error' in res) return toast.galat(res.error);
     setShortages(res.shortages);
-    setMessage({
-      tone: 'ok',
-      text: `Pulling ${res.documentNumber} ditutup — ${res.pickedLines} baris pindah ke staging.`,
-    });
+    toast.ok(`Pulling ${res.documentNumber} ditutup — ${res.pickedLines} baris pindah ke staging.`);
     startTransition(() => router.refresh());
   }
 
   async function ship() {
     setConfirming(null);
     const res = await shipLoadingAction(id);
-    if ('error' in res) return setMessage({ tone: 'bad', text: res.error });
+    if ('error' in res) return toast.galat(res.error);
     setShortages(res.shortages);
-    setMessage({
-      tone: 'ok',
-      text: `${res.documentNumber} dinyatakan berangkat — ${res.shippedLines} baris keluar stok.`,
-    });
+    toast.ok(`${res.documentNumber} dinyatakan berangkat — ${res.shippedLines} baris keluar stok.`);
     startTransition(() => router.refresh());
   }
 
   async function cancel() {
     setConfirming(null);
     const res = await cancelLoadingAction(id);
-    if ('error' in res) return setMessage({ tone: 'bad', text: res.error });
-    setMessage({ tone: 'ok', text: 'Loading list dibatalkan.' });
+    if ('error' in res) return toast.galat(res.error);
+    toast.ok('Loading list dibatalkan.');
     startTransition(() => router.refresh());
   }
 
   async function setTruck(value: (typeof TRUCK_STEPS)[number]['value']) {
     const res = await setTruckStatusAction(id, value);
-    if ('error' in res) return setMessage({ tone: 'bad', text: res.error });
+    if ('error' in res) return toast.galat(res.error);
     startTransition(() => router.refresh());
   }
 
@@ -143,29 +138,6 @@ export function LoadingActions({
         </section>
       ) : null}
 
-      <AnimatePresence>
-        {message ? (
-          <motion.p
-            key={message.text}
-            role="status"
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: durations.base, ease: easeSoft }}
-            className={cn(
-              'flex items-center gap-2 text-[14px]',
-              message.tone === 'ok' ? 'text-ok' : 'text-ng',
-            )}
-          >
-            {message.tone === 'ok' ? (
-              <Check className="size-4 shrink-0" strokeWidth={2.4} aria-hidden />
-            ) : (
-              <AlertCircle className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-            )}
-            {message.text}
-          </motion.p>
-        ) : null}
-      </AnimatePresence>
 
       {!closed ? (
         <div className="flex flex-wrap items-center gap-3">

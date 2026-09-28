@@ -11,6 +11,7 @@ import {
   ngMasters,
   bomLines,
   partProcesses,
+  routeProcesses,
   kanbans,
   programNumbers,
 } from './schema/index';
@@ -34,6 +35,7 @@ export const MASTER_TABLES = {
   'ng-masters': ngMasters,
   bom: bomLines,
   'part-processes': partProcesses,
+  'route-processes': routeProcesses,
   kanbans,
   'program-numbers': programNumbers,
 } as const;

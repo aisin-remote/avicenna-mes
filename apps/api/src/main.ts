@@ -1,11 +1,46 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
+import { periksaMigrasi, cariFolderMigrasi, pesanPeriksaMigrasi } from '@avicenna/db';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
+/**
+ * Menolak menyala bila skema database tidak cocok dengan kode ini.
+ *
+ * Dijalankan SEBELUM Nest membangun apa pun. Tanpa ini API menyala normal,
+ * /health menjawab 200, dan kegagalannya baru muncul di halaman acak sebagai
+ * 500 "Terjadi kesalahan pada server" — jauh dari sebabnya. Dua kali dalam
+ * seminggu ini: sekali migrasi belum dijalankan (kode baru, DB lama), sekali
+ * proses lama masih hidup setelah kolom dihapus (kode lama, DB baru).
+ *
+ * SKIP_MIGRATION_CHECK=true melewatinya — untuk keadaan darurat saja, dan
+ * dicatat keras di log supaya tidak ada yang lupa mematikannya lagi.
+ */
+async function pastikanMigrasiCocok(logger: Logger): Promise<void> {
+  if (process.env.SKIP_MIGRATION_CHECK === 'true') {
+    logger.warn('SKIP_MIGRATION_CHECK aktif — skema database TIDAK diperiksa. Jangan biarkan ini di produksi.');
+    return;
+  }
+
+  const folder = cariFolderMigrasi();
+  if (!folder) {
+    logger.warn('Folder migrasi tidak ditemukan — pemeriksaan skema dilewati. Set MIGRATIONS_DIR bila ini bukan lingkungan pengembangan.');
+    return;
+  }
+
+  const hasil = await periksaMigrasi(folder);
+  if (hasil.cocok) return;
+
+  logger.error('API TIDAK menyala: skema database tidak cocok dengan kode.');
+  for (const b of pesanPeriksaMigrasi(hasil)) logger.error(b);
+  process.exit(1);
+}
+
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
+  await pastikanMigrasiCocok(logger);
+
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
 
   app.useGlobalFilters(new AllExceptionsFilter());

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Truck, ScanLine, MapPin, FileText, User, Calendar, PackageOpen } from 'lucide-react';
+import { Truck, ScanLine, MapPin, FileText, User, Calendar, PackageOpen, Tags } from 'lucide-react';
 import { getLoading } from '@/lib/loading-api';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -52,6 +52,16 @@ export default async function LoadingDetailPage({
           <div className="flex flex-wrap items-center gap-3">
             <StatusChip status={doc.status} />
             <TruckChip status={doc.truckStatus} />
+            {/* Label DN: satu per box, discan di lini FG sebagai kartu customer
+                (direct pulling). Tetap boleh dicetak setelah berangkat — untuk
+                arsip — tapi bukan tombol utama. */}
+            <Link
+              href={`/delivery/${doc.id}/label`}
+              className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-[14px] font-semibold text-ink-soft transition-colors hover:bg-surface hover:text-ink"
+            >
+              <Tags className="size-[18px]" strokeWidth={2} aria-hidden />
+              Cetak label DN
+            </Link>
             {open ? (
               <Link
                 href={tahapPulling ? `/picking/${doc.id}` : `/loading/${doc.id}`}

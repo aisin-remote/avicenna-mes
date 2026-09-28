@@ -1,0 +1,141 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# TUMPUKAN APLIKASI — migrate, api, web.
+#
+# Menyambung ke tumpukan data lewat jaringan avicenna-net yang sudah ada.
+# `docker compose -f docker/compose.app.yml down -v` di sini AMAN: tidak ada
+# satu pun volume database yang dideklarasikan, jadi tidak ada yang bisa hilang.
+#
+#   docker compose -f docker/compose.app.yml up -d --build
+# ─────────────────────────────────────────────────────────────────────────────
+name: avicenna-app
+
+x-app-env: &app-env
+  NODE_ENV: production
+  TZ: ${TZ:-Asia/Jakarta}
+  # Nama host wadah, bukan IP. Docker yang menerjemahkannya; IP wadah berganti
+  # setiap kali ia dibuat ulang.
+  DATABASE_URL: mysql://${MYSQL_USER:-avicenna}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-avicenna}
+  REDIS_URL: redis://valkey:6379
+
+services:
+  # ── Migrasi: sekali jalan, lalu mati ──────────────────────────────────────
+  #
+  # Berdiri sendiri, bukan dijalankan API saat menyala. Drizzle tidak mengunci
+  # tabel migrasinya; dua replika API yang menyala bersamaan akan menjalankan
+  # migrasi yang sama dan yang kalah balapan gagal tanpa menyebut sebabnya.
+  migrate:
+    image: avicenna-api:${TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    container_name: avicenna-migrate
+    command: ["node", "migrate.cjs"]
+    environment: *app-env
+    networks: [avicenna]
+    # `no`: sekali gagal, biarkan gagal. restart otomatis pada migrasi yang
+    # separuh jalan akan mencobanya berulang-ulang di atas skema yang sudah
+    # berubah sebagian — dan tiap percobaan meninggalkan kerusakan baru.
+    restart: "no"
+
+  # ── Seed: DIJALANKAN TANGAN, tidak pernah otomatis ────────────────────────
+  #
+  # Berada di profil `tools`, jadi `up -d` biasa TIDAK menyentuhnya:
+  #
+  #     docker compose -f docker/compose.app.yml --profile tools run --rm seed
+  #
+  # Kenapa tidak otomatis: seed mengisi master data (pabrik, lini, role, menu,
+  # akun ADMIN). Dijalankan tiap kali wadah menyala, ia akan menimpa perubahan
+  # yang dibuat orang lewat layar master — dan tidak ada yang tahu kapan itu
+  # terjadi. Isinya memang dirancang aman diulang, tapi "aman diulang" bukan
+  # alasan untuk mengulanginya tanpa diminta.
+  #
+  # Tetap WAJIB dijalankan sekali setelah pemasangan pertama: tanpa itu tidak
+  # ada satu pun akun yang bisa masuk, dan aplikasinya menyala tanpa bisa
+  # dipakai siapa pun.
+  seed:
+    image: avicenna-api:${TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    container_name: avicenna-seed
+    profiles: [tools]
+    command: ["node", "node_modules/@avicenna/db/dist/seed.js"]
+    environment: *app-env
+    networks: [avicenna]
+    restart: "no"
+
+  api:
+    image: avicenna-api:${TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    container_name: avicenna-api
+    restart: unless-stopped
+    depends_on:
+      # API menolak menyala kalau migrasi gagal. Lebih baik tidak melayani sama
+      # sekali daripada melayani di atas skema yang belum lengkap: yang kedua
+      # menulis data yang bentuknya salah, dan itu tidak bisa ditarik kembali.
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *app-env
+      API_PORT: 3001
+      JWT_SECRET: ${JWT_SECRET:?wajib diisi — jangan pakai nilai dari .env contoh}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      DEVICE_JWT_EXPIRES_IN: ${DEVICE_JWT_EXPIRES_IN:-365d}
+      MQTT_URL: ${MQTT_URL:-mqtt://mosquitto:1883}
+      MQTT_ENABLED: ${MQTT_ENABLED:-false}
+      MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-avicenna}
+      # Jembatan staging SAP ada di SQL Server DI LUAR Docker. Dimatikan secara
+      # bawaan: menyala tanpa kredensial yang benar membuat log penuh galat
+      # koneksi setiap beberapa detik, dan galat yang sungguhan tenggelam.
+      SAP_MSSQL_ENABLED: ${SAP_MSSQL_ENABLED:-false}
+      STAGING_HOST: ${STAGING_HOST:-}
+      STAGING_PORT: ${STAGING_PORT:-}
+      STAGING_INSTANCE: ${STAGING_INSTANCE:-}
+      STAGING_DATABASE: ${STAGING_DATABASE:-}
+      STAGING_USER: ${STAGING_USER:-}
+      STAGING_PASSWORD: ${STAGING_PASSWORD:-}
+      MSSQL_SYNC_ENABLED: ${MSSQL_SYNC_ENABLED:-false}
+    ports:
+      # Tidak dibuka ke jaringan pabrik. Browser tidak pernah memanggil API
+      # langsung — web yang memanggilnya dari sisi server, lewat jaringan Docker.
+      - "127.0.0.1:${API_PORT:-3001}:3001"
+    networks: [avicenna]
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3001/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    image: avicenna-web:${TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/web.Dockerfile
+    container_name: avicenna-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      # Web memegang koneksi database SENDIRI — halaman report membacanya
+      # langsung lewat Server Component (lihat apps/web/src/lib/queries.ts),
+      # tanpa melewati API. DATABASE_URL di sini bukan salah tempel.
+      PORT: 3000
+      API_URL: http://api:3001
+    ports:
+      # SATU-SATUNYA pintu ke jaringan pabrik. Taruh reverse proxy di depannya
+      # untuk TLS; tanpa TLS, kartu login NPK|sandi lewat sebagai teks polos.
+      - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-3000}:3000"
+    networks: [avicenna]
+
+networks:
+  avicenna:
+    name: avicenna-net
+    # Dibuat tumpukan data. Kalau belum ada, compose berhenti dengan jelas —
+    # lebih baik daripada diam-diam membuat jaringan kedua dan aplikasi tidak
+    # pernah menemukan database.
+    external: true

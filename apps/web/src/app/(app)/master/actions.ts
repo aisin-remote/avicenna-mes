@@ -1,7 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { isMasterEntity, getEntityDef, type MasterEntity } from '@avicenna/contracts';
+import {
+  isMasterEntity,
+  getEntityDef,
+  MAKS_UKURAN_IMPOR,
+  type MasterEntity,
+  type HasilImpor,
+} from '@avicenna/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 
 export interface FormState {
@@ -111,4 +117,48 @@ export async function toggleActiveAction(
   }
   revalidatePath(`/master/${entity}`);
   return { ok: true };
+}
+
+/**
+ * Mengunggah berkas Excel ke sebuah master.
+ *
+ * Dua tahap, dan tahap pertama tidak menulis apa pun: layar memanggil dengan
+ * `ujiSaja` untuk menampilkan pratinjau, lalu memanggil lagi saat orang
+ * menekan simpan. Unggahan master tanpa pratinjau berarti kesalahan baru
+ * ketahuan setelah ratusan baris masuk — dan membatalkannya berarti menghapus
+ * baris satu per satu.
+ */
+export async function imporMasterAction(
+  entity: string,
+  formData: FormData,
+  ujiSaja: boolean,
+): Promise<HasilImpor | { error: string }> {
+  if (!isMasterEntity(entity)) return { error: `Entitas "${entity}" tidak dikenal` };
+
+  const berkas = formData.get('berkas');
+  if (!(berkas instanceof File) || berkas.size === 0) {
+    return { error: 'Berkas belum dipilih.' };
+  }
+  if (berkas.size > MAKS_UKURAN_IMPOR) {
+    return {
+      error: `Berkas ${(berkas.size / 1024 / 1024).toFixed(1)} MB melebihi batas ${
+        MAKS_UKURAN_IMPOR / 1024 / 1024
+      } MB.`,
+    };
+  }
+
+  const b64 = Buffer.from(await berkas.arrayBuffer()).toString('base64');
+
+  try {
+    const hasil = await apiFetch<HasilImpor>(`/master/${entity}/import`, {
+      method: 'POST',
+      body: JSON.stringify({ fileBase64: b64, ujiSaja }),
+    });
+    // Hanya menyegarkan saat benar-benar menulis; pratinjau tidak mengubah apa pun.
+    if (!ujiSaja && hasil.ditulis > 0) revalidatePath(`/master/${entity}`);
+    return hasil;
+  } catch (err) {
+    if (err instanceof ApiRequestError) return { error: err.message };
+    return { error: 'Tidak bisa menghubungi server API' };
+  }
 }

@@ -117,7 +117,43 @@ describe('pemilihan aturan', () => {
 
   it('aturanBerlaku menyaring menurut keadaan', () => {
     expect(aturanBerlaku().map((a) => a.nama)).toContain('SERIAL_SAJA');
-    expect(aturanBerlaku({ processType: 'CASTING_WIP' }).length).toBe(DAFTAR_ATURAN.length);
+    // Di proses per barang, aturan nomor-part polos TIDAK berlaku — hanya itu
+    // yang tersaring; sisanya berlaku di mana saja.
+    const diCasting = aturanBerlaku({ processType: 'CASTING_WIP', scanMode: 'PER_PIECE' });
+    expect(diCasting.length).toBe(DAFTAR_ATURAN.length - 1);
+    expect(diCasting.map((a) => a.nama)).not.toContain('NOMOR_PART');
+    expect(aturanBerlaku({ scanMode: 'PER_KANBAN' }).map((a) => a.nama)).toContain('NOMOR_PART');
+  });
+});
+
+describe('master sample (nomor part polos) — hanya di mode per-kanban', () => {
+  it('di PER_KANBAN, nomor part polos terbaca sebagai PART', () => {
+    const r = bacaBarcode('BL-98765-002', { scanMode: 'PER_KANBAN' });
+    expect(r.aturan).toBe('NOMOR_PART');
+    expect(r.partNumber).toBe('BL-98765-002');
+    expect(r.serialNumber).toBeUndefined();
+  });
+
+  it('di PER_PIECE, string yang sama tetap dibaca sebagai SERI', () => {
+    /*
+     * Bentuknya tidak bisa dibedakan dari nomor seri polos. Tanpa syarat mode,
+     * nomor seri UNIT yang belum dikenali ditafsirkan sebagai nomor part lalu
+     * ditolak "part tidak ada" — pesan yang menyesatkan.
+     */
+    const r = bacaBarcode('BL-98765-002', { scanMode: 'PER_PIECE' });
+    expect(r.aturan).toBe('SERIAL_SAJA');
+    expect(r.partNumber).toBeUndefined();
+  });
+
+  it('yang berpemisah tetap ke aturan berpemisah walau mode per-kanban', () => {
+    const r = bacaBarcode('BL-98765-002|BN-002|S1|20', { scanMode: 'PER_KANBAN' });
+    expect(r.aturan).toBe('BERPEMISAH');
+  });
+
+  it('barcode 15 digit berkode program tidak direbut aturan nomor part', () => {
+    // PROGRAM_15 ada DI ATAS NOMOR_PART di daftar — urutan itu yang menjaganya.
+    const r = bacaBarcode('12051421B22A276', { scanMode: 'PER_KANBAN' });
+    expect(r.aturan).toBe('PROGRAM_15');
   });
 });
 

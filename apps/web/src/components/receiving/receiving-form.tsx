@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { ScanLine, Trash2, Check, AlertCircle, PackagePlus } from 'lucide-react';
+import { ScanLine, Trash2, PackagePlus } from 'lucide-react';
 import {
   resolveBarcodeAction,
   submitReceiptAction,
@@ -12,6 +12,7 @@ import {
 import { ImportPanel, type ImportedLine } from './import-panel';
 import { springSoft, durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+import { useToast } from '../ui/toast';
 
 interface Option {
   value: number;
@@ -101,7 +102,7 @@ export function ReceivingForm({
         }))
       : [],
   );
-  const [message, setMessage] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -123,13 +124,12 @@ export function ReceivingForm({
     if (!value || busy) return;
 
     setBusy(true);
-    setMessage(null);
     const found = await resolveBarcodeAction(value);
     setCode('');
     setBusy(false);
 
     if (!found.found || !found.partId) {
-      setMessage({ tone: 'bad', text: found.message });
+      toast.galat(found.message);
       return;
     }
 
@@ -142,7 +142,7 @@ export function ReceivingForm({
           l.key === existing.key ? { ...l, qty: String(Number(l.qty || 0) + 1) } : l,
         ),
       );
-      setMessage({ tone: 'ok', text: `${found.partNumber} — jumlah ditambah` });
+      toast.ok(`${found.partNumber} — jumlah ditambah`);
       return;
     }
 
@@ -160,7 +160,7 @@ export function ReceivingForm({
       },
       ...prev,
     ]);
-    setMessage({ tone: 'ok', text: `${found.partNumber} ditambahkan` });
+    toast.ok(`${found.partNumber} ditambahkan`);
   }
 
   /**
@@ -197,7 +197,7 @@ export function ReceivingForm({
       }
       return next;
     });
-    setMessage({ tone: 'ok', text: `${imported.length} baris ditambahkan dari impor` });
+    toast.ok(`${imported.length} baris ditambahkan dari impor`);
   }
 
   function updateLine(key: string, patch: Partial<Line>) {
@@ -206,16 +206,16 @@ export function ReceivingForm({
 
   async function submit() {
     if (!editing && (!plantId || !supplierId)) {
-      setMessage({ tone: 'bad', text: 'Pabrik dan supplier wajib dipilih.' });
+      toast.galat('Pabrik dan supplier wajib dipilih.');
       return;
     }
     if (lines.length === 0) {
-      setMessage({ tone: 'bad', text: 'Belum ada barang yang discan.' });
+      toast.galat('Belum ada barang yang discan.');
       return;
     }
     const invalid = lines.find((l) => !(Number(l.qty) > 0));
     if (invalid) {
-      setMessage({ tone: 'bad', text: `Jumlah ${invalid.partNumber} harus lebih dari nol.` });
+      toast.galat(`Jumlah ${invalid.partNumber} harus lebih dari nol.`);
       return;
     }
 
@@ -245,7 +245,7 @@ export function ReceivingForm({
     setSaving(false);
 
     if ('error' in res) {
-      setMessage({ tone: 'bad', text: res.error });
+      toast.galat(res.error);
       return;
     }
     router.push(`/receiving/${res.id}`);
@@ -385,29 +385,6 @@ export function ReceivingForm({
           </div>
         </div>
 
-        <AnimatePresence>
-          {message ? (
-            <motion.p
-              key={message.text}
-              role="status"
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: durations.base, ease: easeSoft }}
-              className={cn(
-                'mt-3 flex items-center gap-2 text-[14px]',
-                message.tone === 'ok' ? 'text-ok' : 'text-ng',
-              )}
-            >
-              {message.tone === 'ok' ? (
-                <Check className="size-4 shrink-0" strokeWidth={2.4} aria-hidden />
-              ) : (
-                <AlertCircle className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-              )}
-              {message.text}
-            </motion.p>
-          ) : null}
-        </AnimatePresence>
       </section>
 
       {/* ── Daftar barang ────────────────────────────────────────────────── */}

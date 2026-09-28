@@ -1,0 +1,6 @@
+ALTER TABLE `TM_PROCESS_PARTS` ADD `INT_INPUT_LOCATION_ID` bigint unsigned;--> statement-breakpoint
+ALTER TABLE `TM_PROCESS_PARTS` ADD `INT_OUTPUT_LOCATION_ID` bigint unsigned;--> statement-breakpoint
+ALTER TABLE `TM_PROCESS_PARTS` ADD `INT_TRANSFER_LOCATION_ID` bigint unsigned;--> statement-breakpoint
+ALTER TABLE `TM_PROCESS_PARTS` ADD `FLG_SAP_PRODUCTION_ENABLED` boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE `TM_PROCESS_PARTS` ADD `FLG_SAP_TRANSFER_ENABLED` boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE `TM_PROCESS_PARTS` ADD `CHR_SAP_TRANSFER_MVT` varchar(3);

@@ -1,4 +1,5 @@
-import { Route } from 'lucide-react';
+import Link from 'next/link';
+import { Route, SlidersHorizontal } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
@@ -9,6 +10,10 @@ export const dynamic = 'force-dynamic';
 interface Matriks {
   proses: string[];
   finishGood: string[];
+  /** plantId -> processType -> push SAP aktif. Dari master Rute Proses. */
+  sapAktif: Record<number, Record<string, boolean>>;
+  prosesTerdaftar: Record<number, string[]>;
+  prosesTakTerdaftar: Record<number, Array<{ processType: string; lini: number; rute: number }>>;
   baris: BarisMatriks[];
 }
 
@@ -24,10 +29,29 @@ export default async function RutePage() {
   return (
     <>
       <PageHeader
-        crumbs={[{ label: 'Master', href: '/master/parts' }, { label: 'Rute Proses' }]}
-        title="Rute Proses"
-        description="Proses yang dilalui tiap part, beserta urutannya. Klik sel untuk mengubah."
+        crumbs={[{ label: 'Master Data', href: '/master/parts' }, { label: 'Rute Proses per Part' }]}
+        title="Rute Proses per Part"
+        description="Proses yang dilalui tiap part, beserta urutannya. Klik sel untuk menambah atau mencabut."
+        actions={
+          /*
+           * SLOC dan SAP TIDAK diatur di sini — itu per proses, urusan PPIC/IT,
+           * di menu Integrasi. Matriks ini hanya menjawab "part ini lewat
+           * proses apa", pertanyaan milik leader produksi.
+           *
+           * Tautan kedua ke CRUD junction: untuk unggah Excel massal 14 part.
+           */
+          <>
+            <Link
+              href="/master/part-processes"
+              className="inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-ink hover:text-ink"
+            >
+              <SlidersHorizontal className="size-4" strokeWidth={1.8} aria-hidden />
+              Daftar & unggah Excel
+            </Link>
+          </>
+        }
       />
+
 
       {matriks.baris.length === 0 ? (
         <Card className="px-6 py-14 text-center text-[14px] text-ink-muted">
@@ -66,6 +90,9 @@ export default async function RutePage() {
             finishGood={matriks.finishGood}
             baris={matriks.baris}
             liniPerProses={liniPerProses}
+            sapAktif={matriks.sapAktif}
+            prosesTerdaftar={matriks.prosesTerdaftar}
+            prosesTakTerdaftar={matriks.prosesTakTerdaftar}
           />
         </>
       )}

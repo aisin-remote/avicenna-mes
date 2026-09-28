@@ -19,6 +19,7 @@ import {
   Route,
   Tag,
   Hash,
+  Boxes,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -49,6 +50,7 @@ const ICONS: Record<string, LucideIcon> = {
   Route,
   Tag,
   Hash,
+  Boxes,
 };
 
 /** Mengembalikan ikon Database sebagai cadangan agar UI tidak pernah kosong. */

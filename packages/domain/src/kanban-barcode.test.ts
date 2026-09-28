@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   bacaKanban,
+  sepertiKanban,
+  susunLabelDn,
   KanbanTidakTerbaca,
   DAFTAR_ATURAN_KANBAN,
   type AturanKanban,
@@ -108,5 +110,67 @@ describe('pemilihan aturan kanban', () => {
     } finally {
       DAFTAR_ATURAN_KANBAN.shift();
     }
+  });
+});
+
+describe('sepertiKanban — pembeda kartu vs barcode part di layar FG', () => {
+  it('kartu berspasi dan BACK|SERI dianggap kartu', () => {
+    expect(sepertiKanban('BN-001|1456')).toBe(true);
+    expect(sepertiKanban('a b c d e f g h BN-001 xxxx1456 k l')).toBe(true);
+  });
+
+  it('barcode part 15 karakter dan PART|BACK|SERIAL|QTY BUKAN kartu', () => {
+    expect(sepertiKanban('12051421B22A276')).toBe(false);
+    expect(sepertiKanban('243202-10710|EI13|0001|1')).toBe(false);
+    expect(sepertiKanban('243202-10710|EI13|0001')).toBe(false);
+  });
+});
+
+describe('label DN — direct pulling di lini FG (layar D98E lama)', () => {
+  it('membaca part customer, nomor DN, dan urutan box', () => {
+    const r = bacaKanban('DN~L75~DN-202605-0006~1');
+    expect(r.aturan).toBe('KANBAN_LABEL_DN');
+    expect(r.customerPartNumber).toBe('L75');
+    expect(r.dnNumber).toBe('DN-202605-0006');
+    expect(r.dnSeq).toBe(1);
+    expect(r.serialNumber).toBe('DN-202605-0006/1');
+    expect(r.backNumber).toBeUndefined();
+  });
+
+  it('ruas pertama boleh kosong; urutan sampai tiga digit', () => {
+    expect(bacaKanban('~L75~LL-20260920-0003~120').dnSeq).toBe(120);
+  });
+
+  it('bukan label DN bila ruasnya bukan empat atau urutannya bukan angka', () => {
+    expect(() => bacaKanban('L75~DN-1~1')).toThrow(KanbanTidakTerbaca);
+    expect(() => bacaKanban('x~L75~DN-1~abc')).toThrow(KanbanTidakTerbaca);
+    expect(() => bacaKanban('x~L75~DN-1~1234')).toThrow(KanbanTidakTerbaca);
+  });
+
+  it('layar FG menganggapnya kartu', () => {
+    expect(sepertiKanban('DN~L75~DN-202605-0006~1')).toBe(true);
+  });
+});
+
+describe('susunLabelDn — label yang dicetak harus terbaca aturannya sendiri', () => {
+  it('bolak-balik utuh', () => {
+    const teks = susunLabelDn({
+      customerCode: 'TMMIN',
+      customerPartNumber: '90210-BZ010',
+      dnNumber: 'LL-20260920-0001',
+      dnSeq: 7,
+    });
+    expect(teks).toBe('TMMIN~90210-BZ010~LL-20260920-0001~7');
+    const r = bacaKanban(teks);
+    expect(r.aturan).toBe('KANBAN_LABEL_DN');
+    expect(r.customerPartNumber).toBe('90210-BZ010');
+    expect(r.dnNumber).toBe('LL-20260920-0001');
+    expect(r.dnSeq).toBe(7);
+  });
+
+  it('spasi dan "~" di dalam ruas dibuang supaya ruasnya tetap empat', () => {
+    expect(susunLabelDn({ customerCode: 'A B', customerPartNumber: 'X~Y', dnNumber: 'DN 1', dnSeq: 1 })).toBe(
+      'AB~XY~DN1~1',
+    );
   });
 });

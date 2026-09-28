@@ -83,6 +83,25 @@ export function signedQty(type: MutationType, absoluteQty: number): number {
   }
 }
 
+/** Hasil scan masuk ke SLOC produksi, lalu opsional berpindah ke SLOC tujuan. */
+export function rencanaMutasiScanProduksi(
+  qty: number,
+  outputLocationId: number | null,
+  transferLocationId: number | null,
+): Array<{ type: 'PRODUCTION_IN' | 'TRANSFER_OUT' | 'TRANSFER_IN'; locationId: number | null; qty: number }> {
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('qty scan harus lebih dari nol');
+  if (transferLocationId !== null && (!outputLocationId || transferLocationId === outputLocationId)) {
+    throw new Error('transfer membutuhkan dua SLOC berbeda');
+  }
+  return [
+    { type: 'PRODUCTION_IN', locationId: outputLocationId, qty: signedQty('PRODUCTION_IN', qty) },
+    ...(transferLocationId === null ? [] : [
+      { type: 'TRANSFER_OUT' as const, locationId: outputLocationId, qty: signedQty('TRANSFER_OUT', qty) },
+      { type: 'TRANSFER_IN' as const, locationId: transferLocationId, qty: signedQty('TRANSFER_IN', qty) },
+    ]),
+  ];
+}
+
 /** Selisih stok fisik terhadap catatan sistem — dipakai saat opname. */
 export function stockVariance(systemQty: number, physicalQty: number): number {
   return physicalQty - systemQty;

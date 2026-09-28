@@ -127,12 +127,78 @@ export class MasterService {
       // Label ringkas untuk sel tabel. Label panjang membantu saat memilih di
       // dropdown, tapi merusak lebar kolom kalau dipakai di daftar.
       short: shortLabelOf(r),
+      /*
+       * Pabrik pemilik baris, bila entitasnya per pabrik.
+       *
+       * Lokasi, lini, dan part ada satu salinan per pabrik: WP01 milik UNIT dan
+       * WP01 milik BODY adalah dua baris berbeda dengan label yang sama persis.
+       * Formulir memakai ini untuk hanya menawarkan milik pabrik yang sedang
+       * dipilih — tanpa itu dropdown menampilkan "WP01" dua kali, dan yang
+       * terpilih bisa milik pabrik lain tanpa ada yang tahu.
+       */
+      plantId: r.plantId == null ? null : Number(r.plantId),
     }));
+  }
+
+  /**
+   * Menolak referensi lintas pabrik.
+   *
+   * Lini UNIT yang SLOC-nya menunjuk WP01 milik BODY akan lolos semua
+   * pemeriksaan lain: foreign key-nya sah, labelnya sama, formulir menyimpan
+   * tanpa keluhan. Baru ketahuan saat stok UNIT muncul di laporan BODY.
+   * Diperiksa di sini, bukan hanya disaring di formulir, karena impor Excel
+   * dan pemanggil API lain melewati formulir.
+   */
+  private async pastikanSatuPabrik(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ) {
+    const def = getEntityDef(entity);
+    if (!def.fields.some((f) => f.name === 'plantId')) return;
+
+    const plantId = values.plantId ?? barisLama?.plantId;
+    if (plantId == null) return;
+
+    const details: Array<{ field: string; message: string }> = [];
+    for (const field of def.fields) {
+      if (field.kind !== 'reference' || !field.refEntity) continue;
+      const id = values[field.name];
+      if (id == null) continue;
+
+      const refDef = getEntityDef(field.refEntity);
+      if (!refDef.fields.some((f) => f.name === 'plantId')) continue;
+
+      const refTable = this.table(field.refEntity);
+      const rows = await this.db
+        .select({ plantId: refTable.plantId })
+        .from(refTable)
+        .where(eq(refTable.id, Number(id)))
+        .limit(1);
+      const ref = rows[0];
+      if (ref && Number(ref.plantId) !== Number(plantId)) {
+        details.push({
+          field: field.name,
+          message: `${refDef.singular} ini milik pabrik lain. Pilih ${refDef.singular.toLowerCase()} dari pabrik yang sama.`,
+        });
+      }
+    }
+
+    if (details.length > 0) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'ValidationError',
+        message: 'Data yang dikirim tidak valid',
+        details,
+      });
+    }
   }
 
   async create(entity: MasterEntity, body: unknown) {
     const parsed = buildCreateSchema(entity).safeParse(body);
     if (!parsed.success) throw validationError(parsed.error);
+
+    await this.pastikanSatuPabrik(entity, parsed.data as Record<string, unknown>);
 
     const table = this.table(entity);
     try {
@@ -157,7 +223,8 @@ export class MasterService {
     if (Object.keys(values).length === 0) return this.findOne(entity, id);
 
     const table = this.table(entity);
-    await this.findOne(entity, id);
+    const barisLama = await this.findOne(entity, id);
+    await this.pastikanSatuPabrik(entity, values, barisLama as Record<string, unknown>);
 
     try {
       await this.db.update(table).set(values).where(eq(table.id, id));
@@ -193,16 +260,43 @@ export class MasterService {
 }
 
 /** Menebak kolom mana yang paling layak jadi label pilihan. */
+/**
+ * Label pilihan di dropdown.
+ *
+ * ── Back number ikut, dan itu bukan hiasan ──────────────────────────────────
+ *
+ * Master AIIA memuat ENAM part yang namanya sama persis "TCC ASSY", dan empat
+ * lagi bernama "PAN SUB ASSY OIL NO.1". Tanpa back number, keenamnya tampil
+ * sebagai baris yang hanya beda nomor part — dan orang yang memilih program
+ * number harus mencocokkan digit satu per satu.
+ *
+ * Yang dipakai orang di lantai untuk mengenali part memang back number: CI11,
+ * CI12, EI13. Salah pilih di sini membuat sebuah kode program menerjemahkan
+ * barcode ke part yang keliru, dan seluruh hasil produksi di bawah kode itu
+ * mendarat di part yang salah — tanpa satu pun galat, karena setiap scannya
+ * sendiri terlihat wajar.
+ */
 function labelOf(row: Record<string, unknown>): string {
   const code = row.code ?? row.partNumber;
   const name = row.name;
-  if (code && name) return `${String(code)} — ${String(name)}`;
+  const back = row.backNumber;
+
+  const kepala = back ? `${String(code)} (${String(back)})` : String(code ?? '');
+  if (code && name) return `${kepala} — ${String(name)}`;
   return String(name ?? code ?? row.id);
 }
 
-/** Versi pendek: kode saja bila ada, jika tidak baru nama. */
+/**
+ * Versi pendek untuk sel tabel.
+ *
+ * Back number ikut di sini juga: kolom "Part" di daftar program number yang
+ * hanya menampilkan nomor part membuat enam baris TCC terlihat nyaris sama,
+ * dan kekeliruan pemetaan tidak terlihat saat daftarnya dibaca sekilas.
+ */
 function shortLabelOf(row: Record<string, unknown>): string {
-  return String(row.code ?? row.partNumber ?? row.name ?? row.id);
+  const code = row.code ?? row.partNumber;
+  if (code && row.backNumber) return `${String(code)} (${String(row.backNumber)})`;
+  return String(code ?? row.name ?? row.id);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

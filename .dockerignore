@@ -1,0 +1,37 @@
+# Semua yang TIDAK boleh ikut ke dalam konteks build.
+#
+# Bukan sekadar soal ukuran: node_modules dari macOS berisi binary yang salah
+# arsitektur untuk image Linux, dan .env berisi kredensial yang tidak boleh
+# tertanam di dalam image — image bisa di-push ke registry dan dibaca siapa pun
+# yang menariknya.
+node_modules
+**/node_modules
+.git
+.gitignore
+
+# Hasil build lokal. Dibangun ulang di dalam image supaya yang jalan di server
+# benar-benar berasal dari sumber yang sama dengan yang di-commit.
+dist
+**/dist
+.next
+**/.next
+.turbo
+**/.turbo
+out
+**/out
+
+# Kredensial — TIDAK PERNAH masuk image. Disuntikkan compose saat berjalan.
+.env
+.env.*
+!.env.production.example
+
+# Bukan urusan runtime
+docs
+*.md
+!README.md
+.vscode
+.idea
+.DS_Store
+**/*.log
+coverage
+**/coverage

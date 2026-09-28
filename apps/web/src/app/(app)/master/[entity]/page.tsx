@@ -5,6 +5,7 @@ import { isMasterEntity, getEntityDef, type MasterEntity } from '@avicenna/contr
 import { listMaster, getMasterOptions, type RefOption } from '@/lib/master-api';
 import { PageHeader } from '@/components/ui/page-header';
 import { MasterTable } from '@/components/master/master-table';
+import { MasterImport } from '@/components/master/master-import';
 import { Reveal } from '@/components/motion/reveal';
 
 export const dynamic = 'force-dynamic';
@@ -81,6 +82,13 @@ export default async function MasterEntityPage({ params, searchParams }: PagePro
       />
 
       <Reveal>
+        {/* Unduh template dan unggah Excel — di atas tabel, sebelum daftarnya,
+            karena keduanya dipakai saat master masih kosong atau baru diisi
+            massal. */}
+        <div className="mb-4">
+          <MasterImport entity={entity} label={def.label} />
+        </div>
+
         <MasterTable
           def={def}
           entity={entity}

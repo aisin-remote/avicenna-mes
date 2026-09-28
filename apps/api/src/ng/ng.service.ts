@@ -430,7 +430,7 @@ export class NgService {
            * keluaran lini pembuatnya; menguranginya dari gudang lain akan
            * membuat yang satu minus dan yang lain kelebihan.
            */
-          const lokasi = s.scanLineId ? await this.slocKeluaran(tx, s.scanLineId) : null;
+          const lokasi = await this.slocHasilScan(tx, s.scanEventId, s.scanLineId);
 
           await tx.insert(mutations).values({
             plantId: k.plantId,
@@ -539,7 +539,7 @@ export class NgService {
         .where(eq(ngRecords.id, row.id));
 
       if (row.scanEventId) {
-        const lokasi = row.lineId ? await this.slocKeluaran(tx, row.lineId) : null;
+        const lokasi = await this.slocHasilScan(tx, row.scanEventId, row.lineId);
         await tx.insert(mutations).values({
           plantId: row.plantId,
           partId: row.partId,
@@ -783,8 +783,22 @@ export class NgService {
     return satu;
   }
 
-  /** SLOC keluaran sebuah lini — gudang tempat hasilnya menumpuk. */
-  private async slocKeluaran(tx: Database, lineId: number): Promise<number | null> {
+  /** Setelah transfer otomatis, barang ada di tujuan transfer, bukan output lini. */
+  private async slocHasilScan(
+    tx: Database,
+    scanEventId: number | null,
+    lineId: number | null,
+  ): Promise<number | null> {
+    if (scanEventId) {
+      const [scan] = await tx.select({ meta: scanEvents.meta }).from(scanEvents)
+        .where(eq(scanEvents.id, scanEventId)).limit(1);
+      const rute = (scan?.meta as { sapRoute?: {
+        transferLocationId?: number | null; outputLocationId?: number | null;
+      } } | null)?.sapRoute;
+      const lokasi = rute?.transferLocationId ?? rute?.outputLocationId;
+      if (lokasi) return lokasi;
+    }
+    if (!lineId) return null;
     const [row] = await tx
       .select({ locationId: lines.outputLocationId })
       .from(lines)

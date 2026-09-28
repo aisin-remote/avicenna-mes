@@ -52,6 +52,26 @@ export class ScanController {
     return this.scan.station(body, req.principal);
   }
 
+  /**
+   * Periksa satu scan TANPA menulis — jawabannya berbentuk sama dengan station.
+   *
+   * Layar FG per barang menahan part sampai box penuh, baru men-scan kartu.
+   * Part yang ditahan diperiksa di sini dengan aturan yang persis sama
+   * (barcode, part, rute, duplikat), supaya penolakan muncul saat part
+   * dipegang — bukan setelah tiga part dan satu kartu terlanjur discan.
+   */
+  @Post('station/periksa')
+  @UsePipes(new ZodValidationPipe(scanInputSchema))
+  async periksaStation(@Body() body: ScanInput, @Req() req: Request) {
+    return this.scan.station(body, req.principal, { ujiSaja: true });
+  }
+
+  /** Master sample di lini per-kanban: part apa, dan boleh di lini ini? */
+  @Get('sample')
+  async sample(@Query('code') code: string, @Query('line') line: string) {
+    return this.scan.periksaSample(String(code ?? ''), String(line ?? ''));
+  }
+
   /** Identitas line, hitungan hari ini, dan scan terakhir — untuk memuat layar. */
   @Get('summary')
   async summary(@Query('line') line: string, @Query('limit') limit?: string) {

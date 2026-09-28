@@ -72,6 +72,13 @@ export default async function SapPage({
         description="Perpindahan barang didorong ke database jembatan, lalu ditarik SAP dari sana"
       />
 
+      <div className="mb-5 rounded-card border border-line bg-card px-4 py-3 text-[14px]">
+        Izin kirim hasil produksi dan transfer SLOC diatur per langkah part pada{' '}
+        <Link href="/master/part-processes" className="font-semibold text-accent underline">
+          Master Rute Proses
+        </Link>. Pengaturan ini menentukan dokumen yang masuk antrean di bawah.
+      </div>
+
       {/* Keadaan saklar pengiriman ditaruh paling atas: tanpa ini, antrean yang
           menumpuk terlihat seperti kerusakan padahal memang belum dinyalakan. */}
       {!ringkas.pengirimanAktif ? (

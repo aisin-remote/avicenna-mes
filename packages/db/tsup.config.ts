@@ -3,7 +3,12 @@ import { defineConfig } from 'tsup';
 export default defineConfig((options) => ({
   // load-env berdiri sendiri supaya script CLI (mis. staging:introspect) bisa
   // memuat .env dari root repo TANPA ikut menarik mysql2 dan seluruh skema.
-  entry: ['src/index.ts', 'src/load-env.ts'],
+  //
+  // seed ikut dibangun supaya bisa dijalankan DI DALAM image produksi.
+  // Tanpa ini ia hanya bisa lewat tsx, yang sengaja tidak ikut ke image —
+  // dan database yang baru dipasang tidak punya satu pun akun untuk masuk,
+  // sehingga aplikasinya menyala tetapi tidak bisa dipakai siapa pun.
+  entry: ['src/index.ts', 'src/load-env.ts', 'src/seed.ts'],
   format: ['cjs', 'esm'],
   dts: true,
   sourcemap: true,

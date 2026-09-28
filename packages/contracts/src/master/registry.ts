@@ -25,6 +25,7 @@ export const MASTER_ENTITIES = [
   'ng-masters',
   'bom',
   'part-processes',
+  'route-processes',
   'kanbans',
   'program-numbers',
 ] as const;
@@ -39,10 +40,11 @@ export type MasterEntity = (typeof MASTER_ENTITIES)[number];
  * di kolom enum, lalu setiap penyimpanan gagal dengan pesan dari MySQL yang
  * tidak menyebut sebabnya.
  */
-export { PROCESS_TYPES, PROCESS_GROUPS } from '../common';
-import { PROCESS_TYPES, PROCESS_GROUPS } from '../common';
+export { PROCESS_TYPES, PROCESS_GROUPS, SCAN_MODES } from '../common';
+import { PROCESS_TYPES, PROCESS_GROUPS, SCAN_MODES } from '../common';
 export const KANBAN_TYPES = ['REGULER', 'SPARE'] as const;
 export const KANBAN_OWNERS = ['INTERNAL', 'CUSTOMER'] as const;
+export type KanbanOwner = (typeof KANBAN_OWNERS)[number];
 export const TOOLING_KINDS = ['MOLD', 'DIES', 'JIG'] as const;
 export const LOCATION_KINDS = [
   'WAREHOUSE',
@@ -474,12 +476,107 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'product',
         label: 'Model',
         kind: 'text',
+        required: true,
         max: 64,
         inList: true,
-        hint: 'Mis. "OPN 889F". Inilah yang membedakan dua kode pada part yang sama.',
+        /*
+         * WAJIB, karena satu part memang punya beberapa kode program.
+         *
+         * Di master AIIA, 243202-10630 dipakai kode 10 (OPN 889F), 15
+         * (OPN D81F), dan 18 (OPN 889F PULSE). Tanpa model, ketiganya tampil
+         * sebagai baris kembar yang tidak bisa dibedakan siapa pun — dan yang
+         * menyunting salah satunya tidak punya cara tahu mana yang ia ubah.
+         */
+        hint: 'Mis. "OPN 889F". Satu part boleh punya beberapa kode; model inilah yang membedakannya.',
       },
       { name: 'customerId', label: 'Customer', kind: 'reference', refEntity: 'customers', inList: true },
       { name: 'isAssy', label: 'Part Rakitan', kind: 'boolean', defaultValue: false },
+      activeField,
+    ],
+  },
+
+  /**
+   * Pengaturan stok & SAP PER PROSES — satu baris per jenis proses per pabrik.
+   *
+   * Berlaku untuk semua part yang melewati proses itu. Kosong berarti memakai
+   * SLOC milik lini saat scan. Ada di menu Integrasi, karena pengurusnya
+   * PPIC/IT, bukan leader produksi.
+   */
+  'route-processes': {
+    key: 'route-processes',
+    label: 'Rute Proses',
+    singular: 'Proses',
+    icon: 'Route',
+    description: 'SLOC masuk/keluar/transfer dan izin push SAP untuk tiap jenis proses',
+    searchFields: [],
+    defaultSort: 'processType',
+    fields: [
+      plantRef,
+      {
+        name: 'processType',
+        label: 'Proses',
+        kind: 'select',
+        options: PROCESS_TYPES,
+        required: true,
+        inList: true,
+      },
+      {
+        name: 'scanMode',
+        label: 'Cara Scan',
+        kind: 'select',
+        options: SCAN_MODES,
+        required: true,
+        defaultValue: 'PER_PIECE',
+        inList: true,
+        hint: 'PER_PIECE: barcode seri per barang (UNIT). PER_KANBAN: master sample lalu kanban per box (BODY).',
+      },
+      {
+        name: 'inputLocationId',
+        label: 'SLOC Masuk',
+        kind: 'reference',
+        refEntity: 'locations',
+        inList: true,
+        hint: 'Gudang tempat komponen diambil. Kosong = pakai SLOC asal lini.',
+      },
+      {
+        name: 'outputLocationId',
+        label: 'SLOC Keluar',
+        kind: 'reference',
+        refEntity: 'locations',
+        inList: true,
+        hint: 'Gudang tempat hasil disimpan. Kosong = pakai SLOC tujuan lini.',
+      },
+      {
+        name: 'transferLocationId',
+        label: 'SLOC Transfer',
+        kind: 'reference',
+        refEntity: 'locations',
+        inList: true,
+        hint: 'Bila diisi, hasil scan langsung dipindah dari SLOC keluar ke sini (dua mutasi TRANSFER).',
+      },
+      {
+        name: 'sapProductionEnabled',
+        label: 'Push Produksi ke SAP',
+        kind: 'boolean',
+        defaultValue: false,
+        inList: true,
+        hint: 'Nonaktif: dokumen produksi tetap dibuat di outbox tetapi ditahan (HELD).',
+      },
+      {
+        name: 'sapTransferEnabled',
+        label: 'Push Transfer ke SAP',
+        kind: 'boolean',
+        defaultValue: false,
+        inList: true,
+        hint: 'Butuh SLOC Transfer terisi. Dokumen transfer menunggu dokumen produksinya lebih dulu.',
+      },
+      {
+        name: 'sapTransferMovementType',
+        label: 'Movement Type Transfer',
+        kind: 'text',
+        max: 3,
+        hint: 'Tiga digit, mis. 311. Disahkan sebelum push transfer — belum dikonfirmasi tim SAP.',
+      },
       activeField,
     ],
   },
@@ -549,8 +646,12 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
 
   'part-processes': {
     key: 'part-processes',
-    label: 'Rute Proses',
-    singular: 'Langkah Rute',
+    /*
+     * JUNCTION: part ini lewat proses apa, urutan ke berapa. Tidak lebih.
+     * SLOC dan bendera SAP-nya ada di 'route-processes', per proses.
+     */
+    label: 'Rute Proses per Part',
+    singular: 'Langkah Rute Part',
     icon: 'Route',
     description: 'Proses yang dilalui tiap part, beserta urutannya',
     searchFields: [],
@@ -589,6 +690,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         inList: true,
         hint: 'Boleh kosong bila prosesnya dikerjakan beberapa line yang setara.',
       },
+
       activeField,
     ],
   },
@@ -679,10 +781,34 @@ export function getEntityDef(key: MasterEntity): EntityDef {
  * diperlakukan sebagai "tidak diisi", bukan sebagai nol.
  */
 /** Mengubah nilai formulir menjadi angka; kosong tetap undefined agar required_error bekerja. */
-function toNumberOrUndefined(v: unknown): number | undefined {
-  if (v === '' || v === null || v === undefined) return undefined;
+function toNumberOrUndefined(v: unknown): number | null | undefined {
+  // null diteruskan apa adanya: itu tanda "kosongkan kolom" dari kosongDariFormulir.
+  if (v === null) return null;
+  if (v === '' || v === undefined) return undefined;
   const n = Number(v);
   return Number.isNaN(n) ? (v as never) : n;
+}
+
+/**
+ * Arti string kosong dari formulir, dan kenapa berbeda antara buat dan ubah.
+ *
+ *   buat            "" = tidak diisi -> undefined -> kolom memakai bawaannya
+ *   ubah, wajib     "" = tidak diisi -> undefined -> kolom TIDAK disentuh
+ *   ubah, opsional  "" = DIKOSONGKAN -> null      -> kolom diset NULL
+ *
+ * Tanpa baris ketiga, field opsional yang pernah terisi TIDAK PERNAH bisa
+ * dikosongkan lagi dari layar: formulir mengirim "", API menerjemahkannya
+ * sebagai "tidak diubah", dan menjawab 200. Pernah terjadi pada SLOC transfer
+ * rute proses — pengaturan uji tertinggal di produksi dan setiap scan casting
+ * diam-diam memindahkan barang ke PP04, tanpa satu pun galat.
+ *
+ * Yang absen dari payload (undefined) tetap berarti "tidak disentuh" — itu
+ * yang menjaga PATCH dari pemanggil API langsung tidak mengosongkan kolom
+ * yang tidak ia sebut.
+ */
+function kosongDariFormulir(f: FieldDef, mode: 'create' | 'update') {
+  const bolehDikosongkan = mode === 'update' && !f.required;
+  return (v: unknown) => (v === '' ? (bolehDikosongkan ? null : undefined) : v);
 }
 
 function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
@@ -700,7 +826,7 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
       if (f.required && mode === 'create') {
         return s.min(1, `${f.label} wajib diisi`);
       }
-      return z.preprocess((v) => (v === '' ? undefined : v), s.optional());
+      return z.preprocess(kosongDariFormulir(f, mode), s.nullable().optional());
     }
 
     case 'decimal': {
@@ -716,12 +842,15 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
         })
         .finite(`${f.label} harus berupa angka`);
       const withRange = f.min !== undefined ? base.min(f.min, `${f.label} minimal ${f.min}`) : base;
-      const target = f.required && mode === 'create' ? withRange : withRange.optional();
+      const target = f.required && mode === 'create' ? withRange : withRange.nullable().optional();
       // Dikembalikan sebagai string: kolom DECIMAL di MySQL menerima string,
       // dan itu menghindari pembulatan float di tengah jalan.
-      return z.preprocess(toNumberOrUndefined, target.transform((v: number | undefined) =>
-        v === undefined ? undefined : String(v),
-      ));
+      return z.preprocess(
+        (v) => toNumberOrUndefined(kosongDariFormulir(f, mode)(v)),
+        target.transform((v: number | null | undefined) =>
+          v === undefined ? undefined : v === null ? null : String(v),
+        ),
+      );
     }
 
     case 'date': {
@@ -729,7 +858,7 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
         .string({ required_error: `${f.label} wajib diisi` })
         .regex(/^\d{4}-\d{2}-\d{2}$/, `${f.label} harus berformat YYYY-MM-DD`);
       if (f.required && mode === 'create') return base;
-      return z.preprocess((v) => (v === '' ? undefined : v), base.optional());
+      return z.preprocess(kosongDariFormulir(f, mode), base.nullable().optional());
     }
 
     case 'number': {
@@ -744,8 +873,8 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
         .int(`${f.label} harus bilangan bulat`);
       const withRange =
         f.min !== undefined ? base.min(f.min, `${f.label} minimal ${f.min}`) : base;
-      const target = f.required && mode === 'create' ? withRange : withRange.optional();
-      return z.preprocess(toNumberOrUndefined, target);
+      const target = f.required && mode === 'create' ? withRange : withRange.nullable().optional();
+      return z.preprocess((v) => toNumberOrUndefined(kosongDariFormulir(f, mode)(v)), target);
     }
 
     case 'boolean': {
@@ -783,7 +912,7 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
         }),
       });
       if (f.required && mode === 'create') return s;
-      return z.preprocess((v) => (v === '' ? undefined : v), s.optional());
+      return z.preprocess(kosongDariFormulir(f, mode), s.nullable().optional());
     }
 
     case 'reference': {
@@ -794,8 +923,9 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
         })
         .int()
         .positive(`${f.label} wajib dipilih`);
-      const target = f.required && mode === 'create' ? base : base.optional();
-      return z.preprocess(toNumberOrUndefined, target);
+      const target = f.required && mode === 'create' ? base : base.nullable().optional();
+      // Kosong lebih dulu diartikan (null/undefined), baru sisanya diubah ke angka.
+      return z.preprocess((v) => toNumberOrUndefined(kosongDariFormulir(f, mode)(v)), target);
     }
   }
 

@@ -6,5 +6,6 @@ export * from './receiving';
 export * from './transfer';
 export * from './loading';
 export * from './master/registry';
+export * from './master/import';
 export * from './menu';
 export * from './admin';

@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowRight, Trash2, Plus, AlertCircle, Check, MoveRight } from 'lucide-react';
+import { ArrowRight, Trash2, Plus, MoveRight } from 'lucide-react';
 import type { StockAvailability } from '@avicenna/contracts';
 import { availabilityAction, submitTransferAction } from '@/app/(app)/transfer/actions';
 import { springSoft, durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+import { useToast } from '../ui/toast';
 
 interface Option {
   value: number;
@@ -59,7 +60,7 @@ export function TransferForm({
   const [loadingStock, setLoadingStock] = useState(false);
 
   const [lines, setLines] = useState<Line[]>([]);
-  const [message, setMessage] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  const toast = useToast();
   const [saving, setSaving] = useState(false);
   const router = useRouter();
   const [seq, setSeq] = useState(0);
@@ -72,7 +73,7 @@ export function TransferForm({
     const res = await availabilityAction(Number(id));
     setLoadingStock(false);
     if ('error' in res) {
-      setMessage({ tone: 'bad', text: res.error });
+      toast.galat(res.error);
       return;
     }
     setStock(res);
@@ -82,7 +83,7 @@ export function TransferForm({
     if (!stock) return;
     // Part ber-lot tanpa lot membuat telusurnya putus di titik ini.
     if (stock.trackingMode === 'LOT' && !lotId) {
-      setMessage({ tone: 'bad', text: 'Pilih lot yang dipindahkan.' });
+      toast.galat('Pilih lot yang dipindahkan.');
       return;
     }
     const next = seq + 1;
@@ -102,17 +103,17 @@ export function TransferForm({
       },
       ...prev,
     ]);
-    setMessage({ tone: 'ok', text: `${stock.partNumber} ditambahkan` });
+    toast.ok(`${stock.partNumber} ditambahkan`);
   }
 
   async function submit() {
-    if (!plantId) return setMessage({ tone: 'bad', text: 'Pabrik wajib dipilih.' });
-    if (!fromId) return setMessage({ tone: 'bad', text: 'Asal wajib dipilih.' });
-    if (!toId) return setMessage({ tone: 'bad', text: 'Tujuan wajib dipilih.' });
-    if (lines.length === 0) return setMessage({ tone: 'bad', text: 'Belum ada barang.' });
+    if (!plantId) return toast.galat('Pabrik wajib dipilih.');
+    if (!fromId) return toast.galat('Asal wajib dipilih.');
+    if (!toId) return toast.galat('Tujuan wajib dipilih.');
+    if (lines.length === 0) return toast.galat('Belum ada barang.');
 
     const bad = lines.find((l) => !(Number(l.qty) > 0));
-    if (bad) return setMessage({ tone: 'bad', text: `Jumlah ${bad.partNumber} harus lebih dari nol.` });
+    if (bad) return toast.galat(`Jumlah ${bad.partNumber} harus lebih dari nol.`);
 
     setSaving(true);
     const res = await submitTransferAction({
@@ -126,7 +127,7 @@ export function TransferForm({
     });
     setSaving(false);
 
-    if ('error' in res) return setMessage({ tone: 'bad', text: res.error });
+    if ('error' in res) return toast.galat(res.error);
     router.push(`/transfer/${res.id}`);
   }
 
@@ -276,29 +277,6 @@ export function TransferForm({
           </div>
         ) : null}
 
-        <AnimatePresence>
-          {message ? (
-            <motion.p
-              key={message.text}
-              role="status"
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: durations.base, ease: easeSoft }}
-              className={cn(
-                'mt-4 flex items-center gap-2 text-[14px]',
-                message.tone === 'ok' ? 'text-ok' : 'text-ng',
-              )}
-            >
-              {message.tone === 'ok' ? (
-                <Check className="size-4 shrink-0" strokeWidth={2.4} aria-hidden />
-              ) : (
-                <AlertCircle className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-              )}
-              {message.text}
-            </motion.p>
-          ) : null}
-        </AnimatePresence>
       </section>
 
       {/* ── Daftar ───────────────────────────────────────────────────────── */}

@@ -26,6 +26,11 @@ export class RoutingController {
     return this.routing.liniPerProses();
   }
 
+  /*
+   * Tidak ada lagi endpoint pengaturan SAP per langkah part. Pengaturannya per
+   * PROSES, dikelola lewat master generik: /master/route-processes.
+   */
+
   /** Mengganti seluruh rute satu part sekaligus. */
   @Put('part/:partId')
   simpan(

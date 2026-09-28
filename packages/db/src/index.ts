@@ -31,3 +31,4 @@ export {
   max,
   min,
 } from 'drizzle-orm';
+export { periksaMigrasi, cariFolderMigrasi, pesanPeriksaMigrasi, type HasilPeriksaMigrasi } from './migration-check';

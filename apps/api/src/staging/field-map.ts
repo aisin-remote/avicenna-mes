@@ -44,7 +44,7 @@ export const PETA_GM_KEPALA: PetaField[] = [
       'sehingga dorongan ulang mengenai baris yang sama alih-alih menggandakannya.',
   },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.plant, field: 'plant', arah: 'tulis',
-    asal: { jenis: 'kolom', tabel: 'TM_PLANT', kolom: 'CHR_CODE', lewat: 'TT_STOCK_MUTATION.INT_PLANT_ID' } },
+    asal: { jenis: 'kolom', tabel: 'TM_PLANT', kolom: 'CHR_SAP_CODE', lewat: 'TT_STOCK_MUTATION.INT_PLANT_ID' } },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.tanggal, field: 'tanggal', arah: 'tulis',
     asal: { jenis: 'turunan', rumus: 'DTM_OCCURRED_AT → char(8) YYYYMMDD' } },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.tanggalDokumen, field: 'tanggalDokumen', arah: 'tulis',
@@ -94,7 +94,7 @@ export const PETA_GM_BARIS: PetaField[] = [
     asal: { jenis: 'kolom', tabel: 'TT_LOT', kolom: 'CHR_BATCH_NO', lewat: 'TT_STOCK_MUTATION.INT_LOT_ID' } },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.movementTypeBaris, field: 'movementTypeBaris', arah: 'tulis',
     asal: { jenis: 'turunan', rumus: 'movement type per jenis mutasi (sap-movement.ts)' },
-    catatan: 'Per BARIS: konfirmasi produksi memuat 101 dan 261 dalam dokumen yang sama.' },
+    catatan: 'Untuk transfer scan produksi, diambil dari pengaturan langkah rute.' },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.tanggalEntry, field: 'tanggalEntry', arah: 'tulis',
     asal: { jenis: 'turunan', rumus: 'jam sekarang → char(8) YYYYMMDD' } },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.jamEntry, field: 'jamEntry', arah: 'tulis',
@@ -131,7 +131,6 @@ export const PETA_LENGKAP: PetaField[] = [...PETA_GM_KEPALA, ...PETA_GM_BARIS, .
 export const BELUM_DIDUKUNG: Record<string, string> = {
   GOODS_RECEIPT: `${PURCHASE_RECEIPT.kepala} / ${PURCHASE_RECEIPT.baris}`,
   DELIVERY: `${DELIVERY.kepala} / ${DELIVERY.baris}`,
-  PRODUCTION: 'TT_PRODUCTION_RESULT',
   SCRAP: '(belum ditentukan)',
   ADJUSTMENT: '(belum ditentukan)',
 };

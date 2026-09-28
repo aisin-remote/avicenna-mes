@@ -22,12 +22,19 @@
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "staging:introspect": "pnpm --filter @avicenna/api staging:introspect",
-    "staging:compare": "pnpm --filter @avicenna/api staging:compare"
+    "staging:compare": "pnpm --filter @avicenna/api staging:compare",
+    "deploy:data": "docker compose -f docker/compose.data.yml up -d",
+    "deploy:app": "docker compose -f docker/compose.app.yml up -d --build",
+    "deploy:seed": "docker compose -f docker/compose.app.yml --profile tools run --rm seed",
+    "deploy:logs": "docker compose -f docker/compose.app.yml logs -f --tail=100",
+    "deploy:ps": "docker compose -f docker/compose.data.yml ps && docker compose -f docker/compose.app.yml ps",
+    "db:import-aiia": "pnpm --filter @avicenna/db db:import-aiia",
+    "db:check": "pnpm --filter @avicenna/db db:check"
   },
   "devDependencies": {
-    "turbo": "2.10.12",
-    "typescript": "5.9.3",
     "@types/node": "22.10.5",
-    "prettier": "3.4.2"
+    "prettier": "3.4.2",
+    "turbo": "2.10.12",
+    "typescript": "5.9.3"
   }
 }

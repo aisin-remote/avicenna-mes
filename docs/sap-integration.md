@@ -56,6 +56,38 @@ Setiap perpindahan barang adalah **sepasang** mutasi: (−) di SLOC asal dan (+)
 di SLOC tujuan. Ini yang membuat angka per SLOC di sini bisa dicocokkan dengan
 angka di SAP.
 
+### Kebijakan per langkah rute produksi
+
+Di `/master/part-processes`, setiap part dan proses aktif punya pengaturan
+SLOC input, SLOC hasil, SLOC tujuan transfer, izin kirim hasil produksi,
+izin kirim transfer, dan movement type transfer. Contohnya Casting WIP dan
+Casting FG bisa berbeda walaupun sama-sama melewati Casting. Machining WIP
+dapat mencatat stok lokal tanpa membuat dokumen SAP.
+
+Saat scan produksi diterima, Avicenna menulis hasil ke SLOC hasil. Bila SLOC
+tujuan transfer diisi, scan yang sama langsung menulis mutasi keluar dari SLOC
+hasil dan masuk ke SLOC tujuan. Ketiganya disimpan satu transaksi bersama scan
+dan penempelan kanban FG. Dua izin kirim SAP mengontrol dokumen produksi dan
+transfer secara terpisah; menonaktifkan izin tidak membatalkan mutasi stok lokal.
+Pengaturan rute disalin ke metadata scan agar perubahan master tidak mengubah
+keputusan pengiriman transaksi lama.
+
+Backflush komponen memakai SLOC input langkah rute. Dokumen hasil produksi
+baru masuk outbox setelah backflush selesai. Dokumen transfer boleh masuk
+secara terpisah. Hasil produksi dikirim satu baris per scan ke
+`TT_PRODUCTION_RESULT`; transfer SLOC ke `TT_GOODS_MOVEMENT_H` dan `_L`.
+Keduanya menunggu balasan flag SAP setelah berhasil ditulis ke staging.
+Jika keduanya diaktifkan, transfer SAP ditahan sampai hasil produksi dari scan
+yang sama berstatus `CONFIRMED`; kalau produksi ditolak, transfer tidak maju.
+Movement type transfer wajib diisi pada rute dan diverifikasi tim SAP.
+
+**Sebelum push produksi diaktifkan**, pastikan bersama tim SAP apakah baris
+`TT_PRODUCTION_RESULT` memicu backflush BOM di SAP. Adapter ini hanya menulis
+hasil produksi; baris konsumsi `CONSUMPTION_OUT` tercatat di ledger Avicenna,
+tetapi tidak ditulis sebagai baris staging tersendiri. Movement type transfer,
+arti `STAGING_FLAG_*`, dan namespace `INT_NUMBER` juga perlu dicocokkan dengan
+proses SAP. Saklar global `STAGING_PUSH_ENABLED` tetap gerbang terakhir.
+
 ```
 Supplier → [WH00] → [WP01] → [PP02] → [PP04] → Customer
         (+)     (−)(+)    (−)(+)   (−)(+)   (−)
@@ -146,8 +178,8 @@ masalah.
 
 ## Urutan pengerjaan
 
-1. ~~**SLOC pada produksi**~~ — selesai. `lines.inputLocationId` / `outputLocationId`
-   menentukan SLOC asal dan tujuan tiap line.
+1. ~~**SLOC pada produksi**~~ — selesai. Lokasi pada langkah rute part
+   menentukan SLOC produksi; lokasi line menjadi bawaan bila rute belum diatur.
 2. ~~**Pisahkan Pulling dari Loading**~~ — selesai. Dokumen kini melewati
    DRAFT → PICKING → PICKED → LOADING → SHIPPED, dan stok berpindah
    PP02 → PP04 → keluar.
@@ -196,16 +228,15 @@ Pengumpul mencari dokumen yang belum punya baris outbox dengan `NOT EXISTS`,
 bukan dengan penanda posisi terakhir. Penanda posisi punya lubang yang
 terkenal: transaksi yang commit belakangan tetapi memperoleh id lebih kecil
 akan terlewat, dan tidak ada yang memberitahu. `NOT EXISTS` ditambah unique
-index pada (SOURCE_TABLE, SOURCE_ID) membuat pengumpulan idempoten dan tidak
+index pada (SOURCE_TABLE, SOURCE_ID, DOC_TYPE) membuat pengumpulan idempoten dan tidak
 bisa bocor.
 
 ### Jeda mengendap
 
-Dokumen hanya diambil bila mutasi terbarunya sudah lewat 60 detik. Backflush
-berjalan di antrean, beberapa detik SETELAH scan produksinya tercatat.
-Mengambil terlalu cepat berarti mengirim konfirmasi produksi tanpa baris
-pemakaian komponennya — barang jadi bertambah di SAP, materialnya tidak pernah
-berkurang.
+Dokumen baru dipertimbangkan bila mutasi terbarunya sudah lewat 60 detik.
+Khusus hasil produksi, jeda saja tidak cukup: kolektor menunggu penanda
+`backflushCompleted` pada scan sebelum membuat outbox. Ini mencegah konfirmasi
+produksi dikirim ketika job konsumsi komponen masih tertunda.
 
 ### Tujuh status, dan SENT bukan garis akhir
 
@@ -377,7 +408,7 @@ jenis dokumen ke pasangan kepala + barisnya sendiri:
 | Perpindahan SLOC | `TT_GOODS_MOVEMENT_H` / `_L` | **sudah dipetakan** |
 | Penerimaan | `TT_PURCHASE_RECEIPT_H` / `_L` | belum |
 | Pengiriman | `TT_DELIVERY` / `TT_DELIVERY_ITEM` | belum |
-| Produksi | `TT_PRODUCTION_RESULT` | belum |
+| Produksi | `TT_PRODUCTION_RESULT` | **sudah dipetakan**, menunggu validasi semantik SAP |
 | Saldo per SLOC | `TT_PARTS_SLOC` | belum diputuskan |
 
 Dokumen yang jenisnya belum dipetakan **DITAHAN**, bukan didorong ke tabel
@@ -465,6 +496,9 @@ pnpm staging:compare --live          # + dibandingkan dengan staging sungguhan
 `staging:compare --live` melaporkan kolom yang kita konfigurasikan tetapi tidak
 ada, dan kolom `NOT NULL` di staging yang belum kita isi — dua hal yang masing-
 masing akan menggagalkan setiap INSERT.
+Perintah compare ini menampilkan peta transfer `TT_GOODS_MOVEMENT`; tabel
+produksi diperiksa terpisah oleh preflight `TT_PRODUCTION_RESULT` saat pendorong
+produksi dijalankan.
 
 ## Tarik master dari staging
 
@@ -522,8 +556,9 @@ induk-komponen.** `TM_PROCESS_PARTS` yang paling dekat, tetapi isinya routing
 proses — work center, cycle time, lot size — bukan daftar material.
 
 Selama itu belum disediakan, `TM_BOM` tetap dikelola di Avicenna. Backflush
-bergantung sepenuhnya padanya: tanpa BOM, scan produksi menambah barang jadi
-tetapi tidak pernah mengurangi komponennya.
+lokal bergantung sepenuhnya padanya: tanpa BOM, scan produksi menambah barang
+jadi tetapi tidak mengurangi komponennya di Avicenna. Perlakuan konsumsi pada
+SAP perlu divalidasi tersendiri sebelum push produksi dinyalakan.
 
 ## Keadaan staging saat ini
 

@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
-import { Plus, Pencil, Trash2, AlertCircle, X, Users, ArrowRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Users, ArrowRight } from 'lucide-react';
 import {
   ROLE_KINDS,
   PROCESS_GROUPS,
@@ -13,6 +13,7 @@ import {
 import { simpanRoleAction, hapusRoleAction, type AksiState } from '@/app/(app)/admin/actions';
 import { springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+import { useToast } from '../ui/toast';
 
 const AWAL: AksiState = {};
 
@@ -159,13 +160,19 @@ function FormRole({
   const [kind, setKind] = useState(row?.kind ?? 'VIEW');
   const [konfirmasiHapus, setKonfirmasiHapus] = useState(false);
   const router = useRouter();
+  const toast = useToast();
 
   useEffect(() => {
+    if (state.ok) toast.ok(mode === 'buat' ? 'Role dibuat.' : 'Role tersimpan.');
+    if (hapusState.ok) toast.ok('Role dihapus.');
     if (state.ok || hapusState.ok) {
       router.refresh();
       onClose();
     }
-  }, [state.ok, hapusState.ok, router, onClose]);
+    // Galat umum jadi toast; galat per kolom tetap di bawah kolomnya.
+    if (state.error && !state.fieldErrors) toast.galat(state.error, 'Role tidak tersimpan');
+    if (hapusState.error) toast.galat(hapusState.error, 'Role tidak terhapus');
+  }, [state, hapusState, router, onClose, toast, mode]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -338,12 +345,6 @@ function FormRole({
             )}
           </fieldset>
 
-          {state.error || hapusState.error ? (
-            <p className="flex items-start gap-2 rounded-xl border border-ng/40 bg-ng/10 px-3 py-2.5 text-[13px] text-ng">
-              <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
-              <span>{state.error ?? hapusState.error}</span>
-            </p>
-          ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
             <div>

@@ -17,6 +17,7 @@ import {
   SOURCE_TYPES,
   TRACKING_MODES,
 } from './_shared';
+import { SCAN_MODES } from '@avicenna/contracts';
 import { plants } from './org';
 
 /** Line produksi. Satu line terikat pada satu pabrik dan satu jenis proses. */
@@ -231,6 +232,61 @@ export const partProcesses = mysqlTable(
     index('TM_PROCESS_PARTS_PLANT_PROCESS_IDX').on(t.plantId, t.processType),
   ],
 );
+
+/**
+ * ─── Pengaturan stok & SAP PER PROSES ───────────────────────────────────────
+ *
+ * Satu baris per jenis proses per pabrik: SLOC masuk/keluar/transfer dan izin
+ * push ke staging SAP. Berlaku untuk SEMUA part yang melewati proses itu.
+ *
+ * ── Kenapa per proses, bukan per part × proses ──────────────────────────────
+ *
+ * Sempat diletakkan di TM_PROCESS_PARTS (per langkah tiap part). Dengan 13
+ * part × ~4 langkah itu berarti 50-an baris pengaturan yang isinya nyaris
+ * sama, dirawat satu per satu, dan satu yang terlewat membuat satu part diam-
+ * diam tidak pernah sampai ke SAP. Di pabrik ini SLOC memang ditentukan oleh
+ * PROSESNYA — semua hasil casting masuk gudang yang sama — bukan oleh partnya.
+ *
+ * Kosong berarti memakai SLOC milik lini saat scan. TM_PROCESS_PARTS kini
+ * murni menjawab "part ini lewat proses apa, urutan ke berapa".
+ */
+export const routeProcesses = mysqlTable(
+  'TM_ROUTE_PROCESS',
+  {
+    id: pk(),
+    plantId: fk('INT_PLANT_ID')
+      .notNull()
+      .references(() => plants.id),
+    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    /**
+     * Cara scan di proses ini — lihat SCAN_MODES di contracts.
+     *
+     * PER_PIECE: barcode seri per barang (UNIT). PER_KANBAN: master sample lalu
+     * kanban per box (BODY). Sifat proses, bukan pabrik: assy 660A yang
+     * berinterlock dan injection biasa boleh berbeda dalam satu pabrik.
+     */
+    scanMode: mysqlEnum('CHR_SCAN_MODE', SCAN_MODES).notNull().default('PER_PIECE'),
+    /** Kosong = pakai SLOC asal lini. */
+    inputLocationId: fk('INT_INPUT_LOCATION_ID'),
+    /** Kosong = pakai SLOC tujuan lini. */
+    outputLocationId: fk('INT_OUTPUT_LOCATION_ID'),
+    /** Bila diisi, hasil scan langsung dipindah dari SLOC keluar ke sini. */
+    transferLocationId: fk('INT_TRANSFER_LOCATION_ID'),
+    /** Izin membuat dokumen produksi ke staging SAP. Nonaktif = dokumen ditahan (HELD). */
+    sapProductionEnabled: boolean('FLG_SAP_PRODUCTION_ENABLED').notNull().default(false),
+    /** Izin membuat dokumen transfer SLOC ke staging SAP. Butuh transferLocationId. */
+    sapTransferEnabled: boolean('FLG_SAP_TRANSFER_ENABLED').notNull().default(false),
+    /** Movement type SAP untuk transfer, mis. 311. Belum dikonfirmasi tim SAP. */
+    sapTransferMovementType: varchar('CHR_SAP_TRANSFER_MVT', { length: 3 }),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('TM_ROUTE_PROCESS_PLANT_PROCESS_UNIQUE').on(t.plantId, t.processType)],
+);
+
+export const routeProcessesRelations = relations(routeProcesses, ({ one }) => ({
+  plant: one(plants, { fields: [routeProcesses.plantId], references: [plants.id] }),
+}));
 
 export const partProcessesRelations = relations(partProcesses, ({ one }) => ({
   plant: one(plants, { fields: [partProcesses.plantId], references: [plants.id] }),

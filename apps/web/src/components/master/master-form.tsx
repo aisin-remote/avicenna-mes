@@ -7,10 +7,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, AlertCircle, Check } from 'lucide-react';
 import type { EntityDef, FieldDef, MasterEntity } from '@avicenna/contracts';
 import { saveMasterAction, type FormState } from '@/app/(app)/master/actions';
+import { useToast } from '../ui/toast';
 import { durations, easeSoft, springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
-export type RefOptions = Record<string, Array<{ value: number; label: string; short?: string }>>;
+export type RefOption = { value: number; label: string; short?: string; plantId?: number | null };
+export type RefOptions = Record<string, RefOption[]>;
 
 const initial: FormState = {};
 
@@ -48,6 +50,19 @@ export function MasterForm({
   onClose: () => void;
 }) {
   const [state, formAction, pending] = useActionState(saveMasterAction, initial);
+  /*
+   * Pabrik yang sedang dipilih di formulir ini.
+   *
+   * Dipakai untuk menyaring dropdown referensi: lokasi, lini, dan part ada
+   * satu salinan per pabrik dengan kode yang sama, jadi tanpa saringan "WP01"
+   * muncul dua kali dan yang terpilih bisa milik pabrik lain. Server tetap
+   * menolak referensi lintas pabrik — saringan ini supaya orang tidak sampai
+   * ke penolakan itu.
+   */
+  const [plantId, setPlantId] = useState<string>(
+    row?.plantId == null ? '' : String(row.plantId),
+  );
+  const toast = useToast();
   const router = useRouter();
   const titleId = useId();
   // Portal hanya bisa dibuat setelah komponen hidup di browser; saat render
@@ -55,12 +70,40 @@ export function MasterForm({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // Disetel ulang tiap kali panel dibuka untuk baris lain — bukan tiap render,
+  // supaya pilihan pabrik yang sedang diubah orang tidak melompat balik.
+  const rowId = row?.id;
+  const rowPlantId = row?.plantId == null ? '' : String(row.plantId);
+  useEffect(() => {
+    if (open) setPlantId(rowPlantId);
+  }, [open, rowId, rowPlantId]);
+
   useEffect(() => {
     if (state.ok) {
+      toast.ok(`${def.singular} tersimpan.`);
       onClose();
       router.refresh();
     }
-  }, [state.ok, onClose, router]);
+  }, [state.ok, onClose, router, toast, def.singular]);
+
+  /*
+   * Galat tingkat formulir (bukan per kolom) jadi toast.
+   *
+   * Panel ini bisa lebih tinggi dari layar — part punya 14 kolom. Banner di
+   * atasnya luput saat orang menekan Simpan di bawah; toast tidak ikut
+   * menggulir. Galat per kolom tetap di bawah kolomnya: di situlah diperbaiki.
+   */
+  useEffect(() => {
+    if (state.error && !state.fieldErrors) toast.galat(state.error, 'Tidak tersimpan');
+    /*
+     * Bergantung pada objek `state`, BUKAN `state.error`.
+     *
+     * useActionState mengembalikan objek baru tiap kali aksi selesai. Kalau
+     * yang diamati string pesannya, dua kali Simpan dengan galat yang sama
+     * hanya memunculkan satu toast — yang kedua diam, dan orangnya mengira
+     * tombolnya tidak jalan. Persis kegagalan yang toast ini ingin hilangkan.
+     */
+  }, [state, toast]);
 
   // Esc menutup panel — jalan pintas yang diharapkan ada pada panel semacam ini.
   useEffect(() => {
@@ -134,23 +177,20 @@ export function MasterForm({
               <input type="hidden" name="__id" value={row?.id ?? ''} />
 
               <div className="scroll-slim flex-1 space-y-5 overflow-y-auto px-6 py-6">
-                {state.error && !state.fieldErrors ? (
-                  <p
-                    role="alert"
-                    className="flex items-start gap-2 rounded-2xl border border-ng/25 bg-ng/8 px-4 py-3 text-[14px] text-ng"
-                  >
-                    <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
-                    {state.error}
-                  </p>
-                ) : null}
 
                 {def.fields.map((field) => (
                   <Field
                     key={field.name}
                     field={field}
                     value={row?.[field.name]}
-                    options={options[field.refEntity ?? ''] ?? []}
+                    options={saringPerPabrik(options[field.refEntity ?? ''] ?? [], plantId)}
                     error={state.fieldErrors?.[field.name]}
+                    tergantungPabrik={
+                      field.kind === 'reference' &&
+                      !plantId &&
+                      (options[field.refEntity ?? ''] ?? []).some((o) => o.plantId != null)
+                    }
+                    onChange={field.name === 'plantId' ? setPlantId : undefined}
                   />
                 ))}
               </div>
@@ -194,16 +234,34 @@ export function MasterForm({
 const inputClass =
   'h-11 w-full rounded-2xl border border-line bg-surface px-4 text-[15px] outline-none transition-colors duration-200 focus:border-line-strong focus:bg-card';
 
+/**
+ * Pilihan yang boleh ditawarkan untuk pabrik yang sedang dipilih.
+ *
+ * Pilihan tanpa pabrik (customer, supplier) selalu lolos. Kalau pabrik belum
+ * dipilih, semuanya lolos — dropdown-nya dinonaktifkan oleh pemanggil, jadi
+ * tidak ada yang bisa memilih dari daftar campuran itu.
+ */
+function saringPerPabrik(options: RefOption[], plantId: string): RefOption[] {
+  if (!plantId) return options;
+  const id = Number(plantId);
+  return options.filter((o) => o.plantId == null || o.plantId === id);
+}
+
 function Field({
   field,
   value,
   options,
   error,
+  tergantungPabrik = false,
+  onChange,
 }: {
   field: FieldDef;
   value: unknown;
-  options: Array<{ value: number; label: string; short?: string }>;
+  options: RefOption[];
   error?: string;
+  /** Pilihannya per pabrik tetapi pabrik belum dipilih — kunci dulu. */
+  tergantungPabrik?: boolean;
+  onChange?: (value: string) => void;
 }) {
   const id = useId();
   const [checked, setChecked] = useState(
@@ -272,9 +330,11 @@ function Field({
           id={id}
           name={field.name}
           defaultValue={value === undefined || value === null ? '' : String(value)}
-          className={inputClass}
+          onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+          disabled={tergantungPabrik}
+          className={cn(inputClass, 'disabled:opacity-60')}
         >
-          <option value="">— pilih —</option>
+          <option value="">{tergantungPabrik ? '— pilih pabrik dulu —' : '— pilih —'}</option>
           {options.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}

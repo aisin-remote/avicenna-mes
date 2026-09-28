@@ -2,7 +2,7 @@ import './load-env';
 import bcrypt from 'bcryptjs';
 import { getDb, closeDb } from './client';
 import { eq, inArray, notInArray } from 'drizzle-orm';
-import { MENU_ITEMS } from '@avicenna/contracts';
+import { MENU_ITEMS, modeScanBawaan } from '@avicenna/contracts';
 import {
   plants,
   roles,
@@ -13,6 +13,7 @@ import {
   customers,
   parts,
   partProcesses,
+  routeProcesses,
   kanbans,
   customerParts,
   ngMasters,
@@ -481,6 +482,49 @@ async function main() {
     { plantId: body.id, code: 'BUREK', name: 'Burek / Kotor', processGroup: 'PAINTING' as const, sortOrder: 10 },
     { plantId: body.id, code: 'DLL', name: 'DLL', processGroup: null, sortOrder: 99 },
   ]);
+
+  /*
+   * ── Rute proses per PROSES (pengaturan SLOC & SAP) ────────────────────────
+   *
+   * Satu baris per jenis proses per pabrik, semuanya kosong: SLOC mengikuti
+   * lini, SAP nonaktif. Disediakan supaya layar Integrasi > Rute Proses punya
+   * baris untuk disunting — tanpa ini PPIC harus membuat 10 baris dulu sebelum
+   * bisa mengatur apa pun, dan yang terlewat satu tidak terlihat.
+   *
+   * Hanya proses yang memang punya lini di pabrik itu; proses BODY tidak
+   * dibuatkan baris di UNIT.
+   */
+  const liniAktif = await db
+    .select({ plantId: lines.plantId, processType: lines.processType })
+    .from(lines)
+    .where(eq(lines.isActive, true));
+  /*
+   * DELIVERY ikut untuk tiap pabrik walau tidak punya lini: setiap rute wajar
+   * berakhir di sana (periksaRute), dan sejak kolom matriks mengikuti master
+   * ini, DELIVERY yang tidak terdaftar berarti tidak ada rute yang bisa
+   * diselesaikan.
+   */
+  const pasangan = [
+    ...new Set([
+      ...liniAktif.map((l) => `${l.plantId}|${l.processType}`),
+      ...plantRows.map((p) => `${p.id}|DELIVERY`),
+    ]),
+  ];
+  await insertMissing(
+    'route processes',
+    routeProcesses,
+    ['plantId', 'processType'],
+    pasangan.map((k) => {
+      const [plantId, processType] = k.split('|');
+      const proses = processType as (typeof routeProcesses.$inferInsert)['processType'];
+      return {
+        plantId: Number(plantId),
+        processType: proses,
+        // Bawaan per jenis proses; yang berlaku tetap isi masternya.
+        scanMode: modeScanBawaan(proses),
+      };
+    }),
+  );
 
   await seedMenu();
 

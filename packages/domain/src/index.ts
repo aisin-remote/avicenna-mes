@@ -1,5 +1,6 @@
 export * from './kanban';
 export * from './scan';
+export * from './scan-mode';
 export * from './ng';
 export * from './barcode';
 export * from './loading-mode';

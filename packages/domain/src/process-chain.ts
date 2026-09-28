@@ -92,12 +92,19 @@ export type ScanRejectReason =
   | 'BARCODE_UNREADABLE'
   | 'PART_NOT_RECOGNIZED'
   | 'PROCESS_NOT_IN_ROUTE'
+  | 'STOCK_LOCATION_INVALID'
   | 'KANBAN_REQUIRED'
   | 'KANBAN_UNREADABLE'
   | 'KANBAN_NOT_REGISTERED'
   | 'KANBAN_PART_MISMATCH'
   | 'KANBAN_FULL'
-  | 'KANBAN_NOT_EXPECTED';
+  | 'KANBAN_UNIT_ALREADY_PAIRED'
+  | 'KANBAN_NOT_EXPECTED'
+  | 'KANBAN_ALREADY_PRODUCED'
+  | 'DN_NOT_FOUND'
+  | 'DN_CLOSED'
+  | 'DN_PART_NOT_LISTED'
+  | 'CUSTOMER_PART_UNKNOWN';
 
 /** Pesan untuk operator. Ditulis sebagai instruksi, bukan sekadar keterangan. */
 export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
@@ -115,6 +122,7 @@ export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
    */
   PART_NOT_RECOGNIZED: 'Part tidak dikenali dari barcode ini. JANGAN diproses — laporkan ke leader.',
   PROCESS_NOT_IN_ROUTE: 'Part ini tidak melewati proses di lini ini. Periksa part-nya.',
+  STOCK_LOCATION_INVALID: 'SLOC rute belum lengkap atau tidak sesuai pabrik. Laporkan ke leader.',
 
   /*
    * Enam alasan seputar kanban. Dipisah sedetail ini karena operator harus tahu
@@ -126,7 +134,20 @@ export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
   KANBAN_NOT_REGISTERED: 'Kartu kanban ini belum terdaftar. Laporkan ke leader.',
   KANBAN_PART_MISMATCH: 'Kartu kanban ini bukan untuk part tersebut. Ambil kartu yang benar.',
   KANBAN_FULL: 'Kartu kanban ini sudah terisi penuh. Ambil kartu kosong.',
+  KANBAN_UNIT_ALREADY_PAIRED: 'Part ini sudah menempel pada kanban lain. Laporkan ke leader.',
   KANBAN_NOT_EXPECTED: 'Lini ini tidak memakai kanban. Cukup scan part code.',
+  // Mode per-kanban: kartu yang sudah tercatat produksi belum dipull lagi.
+  KANBAN_ALREADY_PRODUCED: 'Kanban ini sudah discan produksi. Ambil kartu berikutnya.',
+
+  /*
+   * Label DN (direct pulling di lini FG). Label ini bukan kartu terdaftar —
+   * ia menunjuk ke loading list, jadi yang bisa keliru adalah dokumennya.
+   */
+  DN_NOT_FOUND: 'Loading list pada label ini tidak ada. Buat dulu di menu Delivery.',
+  DN_CLOSED: 'Loading list pada label ini sudah berangkat atau dibatalkan. Periksa labelnya.',
+  DN_PART_NOT_LISTED: 'Part ini tidak ada dalam loading list tersebut. Periksa label dan part-nya.',
+  CUSTOMER_PART_UNKNOWN:
+    'Nomor part customer pada label tidak cocok dengan part ini. Laporkan ke leader.',
 };
 
 /**

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { processTypeSchema } from './common';
+import { processTypeSchema, type ScanMode } from './common';
 
 export const scanKindSchema = z.enum([
   'PRODUCTION',
@@ -73,7 +73,46 @@ export const stationResultSchema = z.object({
   partNumber: z.string().nullable(),
   partName: z.string().nullable(),
   qty: z.number(),
+  /** Seri yang tercatat: seri barang (per barang) atau seri kanban (per kanban). */
+  serialNumber: z.string().nullable(),
+  /**
+   * Isi satu kanban menurut master part — layar FG menahan sebanyak ini
+   * sebelum meminta kartu. Hanya terisi pada ACCEPTED.
+   */
+  qtyPerKanban: z.number().nullable().optional(),
+  /** Pemilik kartu yang ditempel: INTERNAL, atau CUSTOMER untuk direct kanban. */
+  kanbanOwner: z.enum(['INTERNAL', 'CUSTOMER']).nullable().optional(),
+  /**
+   * Loading list yang ditunjuk label DN — direct pulling di lini FG.
+   *
+   * Terisi bila kartunya label DN. Layar menampilkannya sebagai "detail
+   * loading list": tiap part, berapa box sudah diambil dari berapa rencana —
+   * padanan tabel Part Number / Progress / Total di layar D98E lama.
+   */
+  loadingList: z
+    .object({
+      deliveryId: z.number(),
+      documentNumber: z.string(),
+      pdsNumber: z.string().nullable(),
+      customerName: z.string().nullable(),
+      status: z.string(),
+      items: z.array(
+        z.object({
+          partNumber: z.string().nullable(),
+          backNumber: z.string().nullable(),
+          customerPartNumber: z.string().nullable(),
+          pickedKanban: z.number(),
+          plannedKanban: z.number(),
+          qtyPerKanban: z.number(),
+        }),
+      ),
+    })
+    .nullable()
+    .optional(),
+  /** Jumlah scan hari produksi ini di lini ini. */
   counterToday: z.number(),
+  /** Jumlah pcs hari produksi ini — berbeda dari counterToday di lini per-kanban. */
+  pcsToday: z.number(),
   scannedAt: z.string(),
 });
 export type StationResult = z.infer<typeof stationResultSchema>;
@@ -85,8 +124,11 @@ export interface StationSummary {
     processType: string;
     plantCode: string | null;
     plantName: string | null;
+    /** PER_PIECE: scan part per barang. PER_KANBAN: master sample lalu kanban per box. */
+    scanMode: ScanMode;
   };
   counterToday: number;
+  pcsToday: number;
   recent: Array<{
     id: number;
     kind: string;
@@ -97,4 +139,21 @@ export interface StationSummary {
     partNumber: string | null;
     partName: string | null;
   }>;
+}
+
+/**
+ * Hasil pemeriksaan master sample di lini per-kanban (GET /scan/sample).
+ *
+ * Layar menyimpan ini sepanjang shift dan mengirim partNumber-nya sebagai
+ * rawCode pada setiap scan kanban. Kalau sample-nya salah, semua scan sesudahnya
+ * salah — karena itu pemeriksaannya di server, bukan sekadar "ada di master".
+ */
+export interface SampleCheck {
+  partId: number;
+  partNumber: string;
+  backNumber: string | null;
+  partName: string;
+  qtyPerKanban: number | null;
+  /** false = part ini belum punya rute sama sekali, jadi lininya tidak bisa diperiksa. */
+  ruteDiperiksa: boolean;
 }

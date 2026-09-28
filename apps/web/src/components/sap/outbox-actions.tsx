@@ -2,11 +2,11 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'motion/react';
-import { RefreshCw, Check, AlertCircle, RotateCcw } from 'lucide-react';
+import { motion } from 'motion/react';
+import { RefreshCw, RotateCcw } from 'lucide-react';
 import { collectNowAction, retryAction } from '@/app/(app)/sap/actions';
-import { durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+import { useToast } from '../ui/toast';
 
 /**
  * Tombol untuk mengumpulkan sekarang dan mencoba ulang yang gagal.
@@ -16,7 +16,7 @@ import { cn } from '../ui/cn';
  * mengisi movement type — dan perlu tahu hasilnya sekarang, bukan semenit lagi.
  */
 export function OutboxActions({ idGagal }: { idGagal: number[] }) {
-  const [pesan, setPesan] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [sibuk, setSibuk] = useState(false);
   const router = useRouter();
@@ -25,13 +25,10 @@ export function OutboxActions({ idGagal }: { idGagal: number[] }) {
     setSibuk(true);
     const res = await collectNowAction();
     setSibuk(false);
-    if ('error' in res) return setPesan({ tone: 'bad', text: res.error });
-    setPesan({
-      tone: 'ok',
-      text: `${res.dikumpulkan} dokumen siap kirim, ${res.ditahan} ditahan, ${res.dilewati} dilewati${
+    if ('error' in res) return toast.galat(res.error);
+    toast.ok(`${res.dikumpulkan} dokumen siap kirim, ${res.ditahan} ditahan, ${res.dilewati} dilewati${
         res.dilepas > 0 ? `, ${res.dilepas} dilepas dari tahanan` : ''
-      }.`,
-    });
+      }.`);
     startTransition(() => router.refresh());
   }
 
@@ -39,8 +36,8 @@ export function OutboxActions({ idGagal }: { idGagal: number[] }) {
     setSibuk(true);
     const res = await retryAction(idGagal);
     setSibuk(false);
-    if ('error' in res) return setPesan({ tone: 'bad', text: res.error });
-    setPesan({ tone: 'ok', text: `${res.diulang} dokumen dikembalikan ke antrean kirim.` });
+    if ('error' in res) return toast.galat(res.error);
+    toast.ok(`${res.diulang} dokumen dikembalikan ke antrean kirim.`);
     startTransition(() => router.refresh());
   }
 
@@ -68,29 +65,6 @@ export function OutboxActions({ idGagal }: { idGagal: number[] }) {
         </button>
       ) : null}
 
-      <AnimatePresence>
-        {pesan ? (
-          <motion.p
-            key={pesan.text}
-            role="status"
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: durations.base, ease: easeSoft }}
-            className={cn(
-              'flex items-center gap-2 text-[14px]',
-              pesan.tone === 'ok' ? 'text-ok' : 'text-ng',
-            )}
-          >
-            {pesan.tone === 'ok' ? (
-              <Check className="size-4 shrink-0" strokeWidth={2.4} aria-hidden />
-            ) : (
-              <AlertCircle className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-            )}
-            {pesan.text}
-          </motion.p>
-        ) : null}
-      </AnimatePresence>
     </div>
   );
 }

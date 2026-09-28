@@ -9,7 +9,7 @@
  * │ pindah dengan benar di gudang, tetapi jurnalnya masuk ke tempat yang │
  * │ keliru, dan itu baru ketahuan saat tutup buku.                       │
  * │                                                                      │
- * │ Sebelum MSSQL_SAP_ENABLED dinyalakan, angka-angka ini WAJIB          │
+ * │ Sebelum STAGING_PUSH_ENABLED dinyalakan, angka-angka ini WAJIB        │
  * │ dicocokkan dengan tim SAP.                                           │
  * └──────────────────────────────────────────────────────────────────────┘
  */
@@ -69,13 +69,32 @@ export function sapMovementFor(mutationType: string): SapMovement | undefined {
   return SAP_MOVEMENTS[mutationType];
 }
 
+/** Kebijakan pada saat scan, disimpan bersama scan agar perubahan master tidak berlaku surut. */
+export interface SapRoutePolicy {
+  productionEnabled?: boolean;
+  transferEnabled?: boolean;
+  transferMovementType?: string | null;
+}
+
+export function bolehKirimDokumenRute(
+  sourceTable: string,
+  docType: string,
+  policy?: SapRoutePolicy,
+): boolean {
+  if (sourceTable !== 'TT_HISTORY_SCAN') return true;
+  if (docType === 'PRODUCTION') return policy?.productionEnabled === true;
+  if (docType === 'TRANSFER') return policy?.transferEnabled === true;
+  return true;
+}
+
 /**
  * Jenis dokumen sebuah kelompok mutasi.
  *
  * Satu kelompok bisa memuat beberapa jenis mutasi — produksi menghasilkan
  * PRODUCTION_IN untuk barang jadi DAN CONSUMPTION_OUT untuk komponennya.
- * Keduanya satu dokumen konfirmasi produksi di SAP, jadi jenis dokumennya
- * diambil dari baris yang menentukan, bukan sekadar baris pertama.
+ * Keduanya dikelompokkan sebagai satu dokumen outbox produksi. Adapter
+ * TT_PRODUCTION_RESULT saat ini menulis hasilnya saja; konsumsi komponen
+ * di SAP bergantung pada semantik backflush yang harus dikonfirmasi.
  */
 export function docTypeOf(mutationTypes: string[]): SapDocType | undefined {
   // Urutan menentukan: yang lebih spesifik didahulukan.

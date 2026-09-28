@@ -14,6 +14,11 @@
       "types": "./dist/load-env.d.ts",
       "import": "./dist/load-env.mjs",
       "require": "./dist/load-env.js"
+    },
+    "./seed": {
+      "types": "./dist/seed.d.ts",
+      "import": "./dist/seed.mjs",
+      "require": "./dist/seed.js"
     }
   },
   "scripts": {
@@ -26,7 +31,9 @@
     "db:seed": "tsx src/seed.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",
-    "db:check-names": "tsx src/check-names.ts"
+    "db:check-names": "tsx src/check-names.ts",
+    "db:import-aiia": "tsx src/import-aiia.ts",
+    "db:check": "tsx src/check.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

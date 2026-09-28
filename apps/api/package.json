@@ -24,6 +24,7 @@
     "bcryptjs": "2.4.3",
     "bullmq": "6.3.4",
     "drizzle-orm": "0.45.2",
+    "exceljs": "^4.4.0",
     "ioredis": "5.4.2",
     "mqtt": "5.10.3",
     "mssql": "12.7.2",

@@ -3,12 +3,13 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
-import { Plus, Pencil, Trash2, Check, X, AlertCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import type { EntityDef, MasterEntity } from '@avicenna/contracts';
 import { MasterForm, type RefOptions } from './master-form';
 import { deleteMasterAction } from '@/app/(app)/master/actions';
 import { durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+import { useToast } from '../ui/toast';
 
 type Row = Record<string, unknown> & { id: number };
 
@@ -44,9 +45,9 @@ export function MasterTable({
    */
   const [formKey, setFormKey] = useState(0);
   const [confirmId, setConfirmId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+  const toast = useToast();
 
   const listFields = def.fields.filter((f) => f.inList);
 
@@ -63,17 +64,23 @@ export function MasterTable({
   }
 
   function doDelete(id: number) {
-    setError(null);
     const fd = new FormData();
     fd.set('__entity', entity);
     fd.set('__id', String(id));
     startTransition(async () => {
       const res = await deleteMasterAction({}, fd);
-      if (res.error) setError(res.error);
-      else {
-        setConfirmId(null);
-        router.refresh();
+      /*
+       * Toast, bukan banner di atas tabel. Tombol hapus ada di baris ke-40
+       * tabel yang panjang; banner 2.000 piksel di atasnya tidak pernah
+       * terbaca, dan orangnya mengira tombolnya tidak jalan.
+       */
+      if (res.error) {
+        toast.galat(res.error, `${def.singular} tidak terhapus`);
+        return;
       }
+      setConfirmId(null);
+      toast.ok(`${def.singular} dihapus.`);
+      router.refresh();
     });
   }
 
@@ -93,18 +100,6 @@ export function MasterTable({
         </motion.button>
       </div>
 
-      {error ? (
-        <div
-          role="alert"
-          className="mb-4 flex items-start gap-2 rounded-2xl border border-ng/25 bg-ng/8 px-4 py-3 text-[14px] text-ng"
-        >
-          <AlertCircle className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
-          <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} aria-label="Tutup pesan">
-            <X className="size-4" strokeWidth={2} aria-hidden />
-          </button>
-        </div>
-      ) : null}
 
       <div className="scroll-slim overflow-x-auto rounded-card border border-line bg-card">
         <table className="w-full border-collapse text-[14px]">
@@ -196,10 +191,7 @@ export function MasterTable({
                           </button>
                           <button
                             type="button"
-                            onClick={() => {
-                              setError(null);
-                              setConfirmId(row.id);
-                            }}
+                            onClick={() => setConfirmId(row.id)}
                             aria-label={`Hapus ${String(row.code ?? row.partNumber ?? row.id)}`}
                             className="grid size-9 place-items-center rounded-full border border-line bg-card text-ink-muted transition-colors hover:border-ng/40 hover:text-ng"
                           >

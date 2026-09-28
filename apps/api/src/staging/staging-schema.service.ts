@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { StagingDbService } from './staging-db.service';
-import { GOODS_MOVEMENT, SUMBER_MASTER } from './staging-tables';
+import { GOODS_MOVEMENT, PRODUCTION_RESULT, SUMBER_MASTER } from './staging-tables';
 import { kolomKepala, kolomBaris } from './field-map';
 
 export interface KolomStaging {
@@ -137,6 +137,32 @@ export class StagingSchemaService {
    * putaran hanya menambah beban tanpa menambah keamanan.
    */
   private preflightTersimpan?: HasilPreflight;
+  private preflightProduksiTersimpan?: HasilPreflight;
+
+  /** Memeriksa tabel hasil produksi dan kunci unik sebelum satu scan didorong. */
+  async preflightProduksi(paksa = false): Promise<HasilPreflight> {
+    if (this.preflightProduksiTersimpan && !paksa) return this.preflightProduksiTersimpan;
+    const tabel = PRODUCTION_RESULT.tabel;
+    const kolom = await this.kolomDari(tabel);
+    const tabelDitemukan = kolom.length > 0;
+    const ada = new Set(kolom.map((k) => k.nama.toUpperCase()));
+    const diperlukan = Object.values(PRODUCTION_RESULT.kolom);
+    const kolomHilang = diperlukan.filter((k) => !ada.has(k.toUpperCase())).map((k) => `${tabel}.${k}`);
+    const indeks = tabelDitemukan ? await this.indeksDari(tabel) : [];
+    const nomor = PRODUCTION_RESULT.kolom.nomor.toUpperCase();
+    const indeksUnikIdempotency = indeks.some((i) => i.unik && i.kolom.length === 1 &&
+      i.kolom[0]?.toUpperCase() === nomor);
+    const catatan = [
+      ...(!tabelDitemukan ? [`Tabel ${tabel} tidak ditemukan.`] : []),
+      ...(!indeksUnikIdempotency ? [`Unique index ${tabel}.${nomor} tidak ditemukan.`] : []),
+    ];
+    const hasil: HasilPreflight = {
+      lulus: tabelDitemukan && kolomHilang.length === 0 && indeksUnikIdempotency,
+      tabelDitemukan, kolomHilang, indeksUnikIdempotency, catatan,
+    };
+    this.preflightProduksiTersimpan = hasil;
+    return hasil;
+  }
 
   async preflight(paksa = false): Promise<HasilPreflight> {
     if (this.preflightTersimpan && !paksa) return this.preflightTersimpan;
@@ -223,6 +249,7 @@ export class StagingSchemaService {
   /** Dipanggil setelah konfigurasi diubah, supaya hasil lama tidak menempel. */
   lupakanPreflight(): void {
     this.preflightTersimpan = undefined;
+    this.preflightProduksiTersimpan = undefined;
   }
 
   /** Gambaran penuh untuk layar diagnostik dan perintah introspeksi. */

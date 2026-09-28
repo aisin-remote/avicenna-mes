@@ -121,6 +121,35 @@ export const GOODS_MOVEMENT = {
   },
 } as const;
 
+/** Hasil scan produksi → satu baris TT_PRODUCTION_RESULT per scan. */
+export const PRODUCTION_RESULT = {
+  tabel: env('STAGING_TABLE_PRODUCTION', 'TT_PRODUCTION_RESULT'),
+  kolom: {
+    nomor: 'INT_NUMBER',
+    tanggal: 'CHR_DATE',
+    bulan: 'INT_BULAN',
+    tahun: 'INT_TAHUN',
+    plant: 'CHR_PLANT',
+    workCenter: 'CHR_WORK_CENTER',
+    partNo: 'CHR_PART_NO',
+    backNo: 'CHR_BACK_NO',
+    partName: 'CHR_PART_NAME',
+    uom: 'CHR_UOM',
+    qtyOk: 'INT_QTY_OK',
+    qtyTotal: 'INT_TOTAL_QTY',
+    qtyActual: 'INT_ACTUAL',
+    ngProcess: 'INT_NG_PRC',
+    ngTotal: 'INT_TOTAL_NG',
+    tanggalEntry: 'CHR_DATE_ENTRY',
+    jamEntry: 'CHR_TIME_ENTRY',
+    user: 'CHR_USER',
+    status: 'CHR_STATUS',
+    upload: 'CHR_UPLOAD',
+    pesan: 'CHR_MESSAGE',
+    matdoc: 'CHR_MATDOC',
+  },
+} as const;
+
 /** Penerimaan barang → TT_PURCHASE_RECEIPT_H / _L. */
 export const PURCHASE_RECEIPT = {
   kepala: env('STAGING_TABLE_PR_H', 'TT_PURCHASE_RECEIPT_H'),
