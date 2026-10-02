@@ -65,18 +65,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const profil = hasil.keadaan === 'ada' ? hasil.profil : null;
 
   return (
-    <ShellFrame
-      pengguna={{
-        nama: profil?.name ?? user.name,
-        npk: profil?.npk ?? user.npk,
-        role: profil?.roleLabel ?? profil?.role ?? user.role,
-        jabatan: profil?.roleKind ?? null,
-        lingkupProses: profil?.roleProcessGroup ?? null,
-        pabrik: profil?.plantCode ?? null,
-      }}
-      navGroups={navGroups}
-    >
-      {children}
-    </ShellFrame>
+    <div className="app-scale-90">
+      <ShellFrame
+        pengguna={{
+          nama: profil?.name ?? user.name,
+          npk: profil?.npk ?? user.npk,
+          role: profil?.roleLabel ?? profil?.role ?? user.role,
+          jabatan: profil?.roleKind ?? null,
+          lingkupProses: profil?.roleProcessGroup ?? null,
+          pabrik: profil?.plantCode ?? null,
+        }}
+        navGroups={navGroups}
+      >
+        {children}
+      </ShellFrame>
+    </div>
   );
 }

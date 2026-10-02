@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="5" y="8" width="52" height="52" rx="14" fill="#111110"/>
+  <text
+    x="31"
+    y="45"
+    fill="#ffffff"
+    font-family="ui-monospace, SFMono-Regular, Consolas, monospace"
+    font-size="27"
+    font-weight="700"
+    text-anchor="middle"
+  >A</text>
+  <circle cx="54" cy="10" r="8" fill="#16a34a" stroke="#ffffff" stroke-width="4"/>
+</svg>

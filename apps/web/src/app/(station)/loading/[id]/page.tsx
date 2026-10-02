@@ -14,11 +14,7 @@ export const dynamic = 'force-dynamic';
  * tidak ikut dirender. Alamatnya tetap /loading/<id>: route group tidak
  * memengaruhi URL.
  */
-export default async function LoadingStationPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function LoadingStationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const numericId = Number(id);
   if (!Number.isInteger(numericId)) notFound();
@@ -34,11 +30,11 @@ export default async function LoadingStationPage({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-card px-6 py-4">
+      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-card/95 px-3 py-3 backdrop-blur sm:flex-wrap sm:gap-x-6 sm:gap-y-3 sm:px-6 sm:py-4">
         <Link
-          href={`/delivery/${doc.id}`}
-          aria-label="Kembali ke detail pengiriman"
-          className="grid size-11 place-items-center rounded-full border border-line text-ink-muted transition-colors hover:border-ink hover:text-ink"
+          href="/delivery-scan"
+          aria-label="Kembali ke scan delivery"
+          className="grid size-10 shrink-0 place-items-center rounded-full border border-line text-ink-muted transition-colors hover:border-ink hover:text-ink sm:size-11"
         >
           <ArrowLeft className="size-5" strokeWidth={1.9} aria-hidden />
         </Link>
@@ -48,13 +44,13 @@ export default async function LoadingStationPage({
             <Truck className="size-5 shrink-0 text-ink-muted" strokeWidth={1.9} aria-hidden />
             <span className="tabular truncate">{doc.documentNumber}</span>
           </p>
-          <p className="text-[14px] text-ink-muted">
+          <p className="truncate text-[12px] text-ink-muted sm:text-[14px]">
             {doc.customerName ?? '—'} · rit {doc.cycle}
             {doc.dock ? ` · dock ${doc.dock}` : ''}
           </p>
         </div>
 
-        <div className="ml-auto flex flex-wrap items-center gap-x-6 gap-y-2 text-[14px]">
+        <div className="ml-auto hidden flex-wrap items-center gap-x-6 gap-y-2 text-[14px] md:flex">
           <Meta label="Tanggal kirim">
             {new Date(`${doc.deliveryDate}T00:00:00`).toLocaleDateString('id-ID', {
               day: '2-digit',
@@ -62,12 +58,13 @@ export default async function LoadingStationPage({
               year: 'numeric',
             })}
           </Meta>
+          <Meta label="Manifest">{doc.manifestNumber ?? '—'}</Meta>
           <Meta label="Truk">{doc.truckNumber ?? '—'}</Meta>
           <Meta label="Petugas">{user?.name ?? '—'}</Meta>
         </div>
       </header>
 
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-3 sm:p-6">
         {doc.status === 'SHIPPED' || doc.status === 'RECEIVED' ? (
           <p className="rounded-card border border-ok/40 bg-ok/10 px-5 py-4 text-[15px] font-semibold text-ok">
             Loading list ini sudah berangkat. Tidak ada lagi yang perlu discan.

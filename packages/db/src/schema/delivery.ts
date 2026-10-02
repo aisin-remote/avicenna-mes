@@ -18,9 +18,9 @@ import { locations } from './inventory';
 /**
  * Loading list — dokumen muat satu truk.
  *
- * Mengikuti `loading_lists` milik bella. Di sana dokumennya didorong masuk dari
- * sistem luar lewat URL; di sini dikelola sendiri, jadi nomornya dibuat sistem
- * dan `pdsNumber` menyimpan rujukan ke dokumen customer bila ada.
+ * Kepala dan rencana item disalin read-only dari database staging SAP.
+ * AVICENNA hanya menyimpan status operasional pulling/loading dan hasil scan;
+ * nomor loading list, manifest, PDS, customer, serta rencananya tidak dibuat di sini.
  *
  * Alurnya: dokumen dibuat berisi rencana per part (berapa kanban), lalu saat
  * muat barang kanban discan satu per satu dan jumlah aktualnya bertambah.

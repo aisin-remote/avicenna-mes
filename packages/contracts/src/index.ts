@@ -5,6 +5,7 @@ export * from './ng';
 export * from './receiving';
 export * from './transfer';
 export * from './loading';
+export * from './kanban-crop';
 export * from './master/registry';
 export * from './master/import';
 export * from './menu';

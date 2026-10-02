@@ -103,3 +103,6 @@ export function productionDayWindow(
   end.setDate(end.getDate() + 1);
   return { start, end, key: productionDateKey(at, dayStartHour) };
 }
+
+/** Hari pengiriman mengikuti shift 1 pukul 06:00 sampai shift 3 selesai. */
+export const DELIVERY_DAY_START_HOUR = 6;

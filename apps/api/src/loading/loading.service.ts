@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { eq, and, desc, count, inArray, sql, type Database } from '@avicenna/db';
+import { eq, and, or, desc, count, inArray, like, sql, type Database } from '@avicenna/db';
 import {
   deliveries,
   deliveryLines,
@@ -14,10 +14,10 @@ import {
   lots,
   mutations,
   scanEvents,
+  sapOutbox,
 } from '@avicenna/db';
 import {
   convertCustomerPartNumber,
-  buildDocumentNumber,
   allocateFifo,
   modeLoading,
   perluKanbanInternal,
@@ -25,18 +25,21 @@ import {
   MODE_LOADING_INSTRUKSI,
   bacaKanban,
   KanbanTidakTerbaca,
+  DELIVERY_DAY_START_HOUR,
+  productionDayWindow,
+  deliveryAttentionReason,
   type PartNumberFormat,
 } from '@avicenna/domain';
 import type {
-  LoadingCreateInput,
   LoadingPhase,
   LoadingScanInput,
   LoadingScanResult,
+  LoadingSummary,
 } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
 import type { Principal } from '../auth/auth.types';
 
-/** Pelanggaran unique index MySQL. */
+/** Pelanggaran unique index MySQL, dipakai mengenali retry scan idempoten. */
 const MYSQL_DUP_ENTRY = 1062;
 
 @Injectable()
@@ -45,163 +48,32 @@ export class LoadingService {
 
   constructor(@InjectDb() private readonly db: Database) {}
 
-  /**
-   * Membuat dokumen loading list beserta rencana muatnya.
-   *
-   * Di bella dokumen ini datang dari J922 lewat URL; di sini dibuat sendiri,
-   * jadi nomornya dihasilkan sistem dan nomor PDS customer hanya jadi rujukan.
-   */
-  async create(input: LoadingCreateInput, principal?: Principal) {
-    const customerRows = await this.db
-      .select()
-      .from(customers)
-      .where(eq(customers.id, input.customerId))
-      .limit(1);
-    const customer = customerRows[0];
-    if (!customer) throw new BadRequestException('Customer tidak ditemukan');
+  /** Manifest bisa menaungi beberapa loading list, jadi semua kandidat dikembalikan. */
+  async resolveDocument(rawCode: string) {
+    const code = rawCode.trim();
+    if (!code) throw new BadRequestException('Scan manifest atau loading list lebih dulu');
+    if (code.length > 128) throw new BadRequestException('Barcode dokumen terlalu panjang');
 
-    const plantRows = await this.db
-      .select()
-      .from(plants)
-      .where(eq(plants.id, input.plantId))
-      .limit(1);
-    if (!plantRows[0]) throw new BadRequestException('Pabrik tidak ditemukan');
+    const matches = await this.db
+      .select({
+        id: deliveries.id,
+        documentNumber: deliveries.documentNumber,
+        manifestNumber: deliveries.manifestNumber,
+        customerName: customers.name,
+        deliveryDate: deliveries.deliveryDate,
+        cycle: deliveries.cycle,
+        status: deliveries.status,
+      })
+      .from(deliveries)
+      .leftJoin(customers, eq(deliveries.customerId, customers.id))
+      .where(or(eq(deliveries.documentNumber, code), eq(deliveries.manifestNumber, code)))
+      .orderBy(desc(deliveries.deliveryDate), desc(deliveries.id))
+      .limit(100);
 
-    // Kedua SLOC diperiksa dengan aturan yang sama: milik pabrik yang benar,
-    // dan bukan lokasi yang sama — memindahkan barang ke tempatnya sendiri
-    // menghasilkan dua mutasi yang saling meniadakan dan tidak berarti apa-apa.
-    for (const [id, label] of [
-      [input.locationId, 'SLOC asal'],
-      [input.stagingLocationId, 'SLOC staging'],
-    ] as const) {
-      if (!id) continue;
-      const locRows = await this.db.select().from(locations).where(eq(locations.id, id)).limit(1);
-      const loc = locRows[0];
-      if (!loc) throw new BadRequestException(`${label} tidak ditemukan`);
-      if (loc.plantId !== input.plantId) {
-        throw new BadRequestException(
-          `${label} ${loc.code} milik pabrik lain. Pilih lokasi di pabrik yang sama.`,
-        );
-      }
+    if (matches.length === 0) {
+      throw new NotFoundException(`Manifest atau loading list "${code}" tidak ditemukan`);
     }
-    if (input.locationId && input.locationId === input.stagingLocationId) {
-      throw new BadRequestException('SLOC asal dan staging tidak boleh sama.');
-    }
-
-    const partIds = [...new Set(input.lines.map((l) => l.partId))];
-    if (partIds.length !== input.lines.length) {
-      throw new BadRequestException(
-        'Ada part yang dimasukkan dua kali. Gabungkan jadi satu baris.',
-      );
-    }
-
-    const partRows = await this.db.select().from(parts).where(inArray(parts.id, partIds));
-    const partById = new Map(partRows.map((p) => [p.id, p]));
-    for (const line of input.lines) {
-      const part = partById.get(line.partId);
-      if (!part) throw new BadRequestException(`Part dengan id ${line.partId} tidak ditemukan`);
-      if (part.plantId !== input.plantId) {
-        throw new BadRequestException(
-          `Part ${part.partNumber} terdaftar di pabrik lain. Pilih pabrik yang sesuai.`,
-        );
-      }
-    }
-
-    // Penomoran customer yang dipilih harus benar-benar milik customer dan
-    // part di baris itu — kalau tidak, barcode nanti dicocokkan ke baris yang salah.
-    const customerPartIds = input.lines
-      .map((l) => l.customerPartId)
-      .filter((v): v is number => typeof v === 'number');
-    if (customerPartIds.length > 0) {
-      const cpRows = await this.db
-        .select()
-        .from(customerParts)
-        .where(inArray(customerParts.id, customerPartIds));
-      const cpById = new Map(cpRows.map((c) => [c.id, c]));
-      for (const line of input.lines) {
-        if (!line.customerPartId) continue;
-        const cp = cpById.get(line.customerPartId);
-        if (!cp) throw new BadRequestException('Penomoran customer tidak ditemukan');
-        if (cp.customerId !== input.customerId || cp.partId !== line.partId) {
-          throw new BadRequestException(
-            `Penomoran customer "${cp.customerPartNumber}" bukan milik part di baris ini.`,
-          );
-        }
-      }
-    }
-
-    const at = new Date(`${input.deliveryDate}T00:00:00`);
-
-    /*
-     * Nomor urut dihitung dari jumlah dokumen pabrik itu pada tanggal yang
-     * sama, jadi dua orang yang menyimpan pada saat bersamaan bisa memperoleh
-     * angka yang sama dan yang kedua ditolak unique index. Itu bukan kesalahan
-     * pengguna dan tidak perlu sampai ke layar: cukup ambil nomor berikutnya
-     * lalu coba lagi. Dibatasi beberapa kali supaya kegagalan lain tidak
-     * berubah menjadi perulangan tanpa akhir.
-     */
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await this.insertDocument(input, at, partById, principal);
-      } catch (err) {
-        const e = err as { errno?: number; cause?: { errno?: number } };
-        const dup = (e?.errno ?? e?.cause?.errno) === MYSQL_DUP_ENTRY;
-        if (!dup || attempt >= 4) throw err;
-      }
-    }
-  }
-
-  private async insertDocument(
-    input: LoadingCreateInput,
-    at: Date,
-    partById: Map<number, typeof parts.$inferSelect>,
-    principal: Principal | undefined,
-  ) {
-    // Dihitung ulang tiap percobaan: kalau nomor tadi bentrok, berarti ada
-    // dokumen baru yang masuk dan hitungannya memang sudah berubah.
-    const seqBase = await this.countOn(input.plantId, input.deliveryDate);
-
-    return this.db.transaction(async (tx) => {
-      const documentNumber = buildDocumentNumber('LL', at, seqBase + 1);
-
-      const inserted = await tx.insert(deliveries).values({
-        plantId: input.plantId,
-        customerId: input.customerId,
-        documentNumber,
-        pdsNumber: input.pdsNumber || null,
-        deliveryDate: input.deliveryDate,
-        cycle: input.cycle,
-        dock: input.dock || null,
-        locationId: input.locationId ?? null,
-        stagingLocationId: input.stagingLocationId ?? null,
-        status: 'DRAFT',
-        truckStatus: 'PENDING',
-        truckNumber: input.truckNumber || null,
-        driverName: input.driverName || null,
-        createdById: principal?.kind === 'user' ? principal.sub : null,
-      });
-      const deliveryId = Number((inserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
-
-      for (const line of input.lines) {
-        const part = partById.get(line.partId)!;
-        // qtyPerKanban DISALIN ke baris, tidak dibaca ulang dari master saat
-        // menghitung. Master bisa berubah, dokumen yang sudah dikirim tidak boleh ikut berubah.
-        const qtyPerKanban = line.qtyPerKanban || part.qtyPerKanban || 0;
-        await tx.insert(deliveryLines).values({
-          deliveryId,
-          partId: line.partId,
-          customerPartId: line.customerPartId ?? null,
-          plannedKanban: line.plannedKanban,
-          qtyPerKanban,
-          plannedQty: line.plannedKanban * qtyPerKanban,
-          actualKanban: 0,
-          actualQty: 0,
-        });
-      }
-
-      this.logger.log(`loading list ${documentNumber}: ${input.lines.length} baris`);
-      return { id: deliveryId, documentNumber, lineCount: input.lines.length };
-    });
+    return { code, matches };
   }
 
   /**
@@ -296,8 +168,24 @@ export class LoadingService {
       }
     }
 
+    const kanbanContext = {
+      customerFormat: (doc.format ?? 'NONE') as PartNumberFormat,
+      // Delivery menerima kartu BODY berformat posisi tetap. Pencocokan part
+      // di bawah tetap menjadi pagar bila format serupa datang dari pabrik lain.
+      scanMode: 'PER_KANBAN' as const,
+    };
+    let customerPart = input.customerPart.trim();
+    let customerSerial = input.serialNumber;
+    try {
+      const customerKanban = bacaKanban(input.customerPart, kanbanContext);
+      customerPart = customerKanban.customerPartNumber ?? customerKanban.partNumber ?? customerPart;
+      customerSerial ??= customerKanban.serialNumber;
+    } catch {
+      // Nomor part polos tetap didukung untuk scanner lama dan pengetesan manual.
+    }
+
     const converted = convertCustomerPartNumber(
-      input.customerPart,
+      customerPart,
       (doc.format ?? 'NONE') as PartNumberFormat,
     );
 
@@ -323,7 +211,7 @@ export class LoadingService {
     const match =
       candidates.find((c) => c.customerPartNumber === converted) ??
       candidates.find((c) => c.partNumber === converted) ??
-      candidates.find((c) => c.customerPartNumber === input.customerPart.trim()) ??
+      candidates.find((c) => c.customerPartNumber === customerPart) ??
       /*
        * Nomor part internal APA ADANYA, tanpa konversi.
        *
@@ -335,7 +223,7 @@ export class LoadingService {
        * Ditaruh paling belakang: hanya dipakai bila seluruh pencocokan yang
        * lebih khas sudah gagal, jadi tidak bisa menyerobot padanan yang benar.
        */
-      candidates.find((c) => c.partNumber === input.customerPart.trim()) ??
+      candidates.find((c) => c.partNumber === customerPart) ??
       (input.internalPart
         ? candidates.find((c) => c.partNumber === input.internalPart)
         : undefined);
@@ -368,9 +256,7 @@ export class LoadingService {
     if (phase === 'LOADING' && perluKanbanInternal(mode) && input.internalKanban) {
       let kb;
       try {
-        kb = bacaKanban(input.internalKanban, {
-          customerFormat: (doc.format ?? 'NONE') as PartNumberFormat,
-        });
+        kb = bacaKanban(input.internalKanban, kanbanContext);
       } catch (err) {
         if (err instanceof KanbanTidakTerbaca) {
           return this.tolakScan(
@@ -382,14 +268,13 @@ export class LoadingService {
         }
         throw err;
       }
-
-      const [kartu] = await this.db
+      const kartuDenganSeriSama = await this.db
         .select({ id: kanbans.id, partId: kanbans.partId })
         .from(kanbans)
-        .where(eq(kanbans.serialNumber, kb.serialNumber ?? ''))
-        .limit(1);
+        .where(eq(kanbans.serialNumber, kb.serialNumber ?? ''));
+      const kartu = kartuDenganSeriSama.find((item) => item.partId === match.partId);
 
-      if (!kartu) {
+      if (kartuDenganSeriSama.length === 0) {
         return this.tolakScan(
           input.deliveryId,
           phase,
@@ -398,7 +283,7 @@ export class LoadingService {
         );
       }
 
-      if (kartu.partId !== match.partId) {
+      if (!kartu) {
         return this.tolakScan(
           input.deliveryId,
           phase,
@@ -477,15 +362,13 @@ export class LoadingService {
           kind: 'DELIVERY',
           partId: match.partId,
           rawCode: input.customerPart,
-          serialNumber: input.serialNumber || null,
+          serialNumber: customerSerial || null,
           qty: match.qtyPerKanban,
           userId: principal?.kind === 'user' ? principal.sub : null,
           scannedAt: new Date(),
-          // clientRef-lah yang mencegah kiriman ulang terhitung dua kali. Tanpa
-          // itu dipakai kunci acak: nomor urut kanban tidak bisa dipakai karena
-          // setelah undo, nomor yang sama akan muncul lagi.
-          // Tahap ikut masuk kunci: kanban yang sama memang discan dua kali,
-          // sekali saat diambil dari gudang dan sekali saat naik truk.
+          // clientRef mencegah kiriman ulang jaringan terhitung dua kali.
+          // Nomor kartu tidak dipakai sebagai kunci: setelah undo, kartu yang
+          // sama memang harus boleh discan ulang dan riwayat lama tetap disimpan.
           dedupeKey: input.clientRef
             ? `load:${input.deliveryId}:${phase}:${input.clientRef}`
             : `load:${input.deliveryId}:${phase}:${match.lineId}:${randomUUID()}`,
@@ -500,7 +383,10 @@ export class LoadingService {
         // Dokumen maju sendiri pada scan pertama tiap tahap, tanpa perlu
         // ditekan manual — operator sudah memegang barang, bukan tetikus.
         if (phase === 'PULLING' && doc.status === 'DRAFT') {
-          await tx.update(deliveries).set({ status: 'PICKING' }).where(eq(deliveries.id, input.deliveryId));
+          await tx
+            .update(deliveries)
+            .set({ status: 'PICKING' })
+            .where(eq(deliveries.id, input.deliveryId));
         }
         if (phase === 'LOADING' && doc.status === 'PICKED') {
           await tx
@@ -528,11 +414,11 @@ export class LoadingService {
 
         duplicate = true;
         const rows = await this.db
-          .select({ actualKanban: deliveryLines.actualKanban })
+          .select({ value: kolom })
           .from(deliveryLines)
           .where(eq(deliveryLines.id, match.lineId))
           .limit(1);
-        return rows[0]?.actualKanban ?? match.actualKanban;
+        return rows[0]?.value ?? (phase === 'PULLING' ? match.pickedKanban : match.actualKanban);
       });
 
     const over = nextActual > sasaran;
@@ -638,7 +524,10 @@ export class LoadingService {
       );
     }
 
-    const lines = await this.db.select().from(deliveryLines).where(eq(deliveryLines.deliveryId, id));
+    const lines = await this.db
+      .select()
+      .from(deliveryLines)
+      .where(eq(deliveryLines.deliveryId, id));
     const diambil = lines.filter((l) => l.pickedKanban > 0);
     if (diambil.length === 0) {
       throw new BadRequestException(
@@ -656,7 +545,12 @@ export class LoadingService {
     const partRows = await this.db
       .select()
       .from(parts)
-      .where(inArray(parts.id, diambil.map((l) => l.partId)));
+      .where(
+        inArray(
+          parts.id,
+          diambil.map((l) => l.partId),
+        ),
+      );
     for (const p of partRows) {
       if (p.trackingMode === 'LOT') {
         lotTracked.set(p.id, await this.fifoLotsOf(p.id, doc.locationId ?? undefined));
@@ -771,7 +665,10 @@ export class LoadingService {
       );
     }
 
-    const lines = await this.db.select().from(deliveryLines).where(eq(deliveryLines.deliveryId, id));
+    const lines = await this.db
+      .select()
+      .from(deliveryLines)
+      .where(eq(deliveryLines.deliveryId, id));
     const loaded = lines.filter((l) => l.actualKanban > 0);
     if (loaded.length === 0) {
       throw new BadRequestException(
@@ -794,7 +691,12 @@ export class LoadingService {
     const partRows = await this.db
       .select()
       .from(parts)
-      .where(inArray(parts.id, loaded.map((l) => l.partId)));
+      .where(
+        inArray(
+          parts.id,
+          loaded.map((l) => l.partId),
+        ),
+      );
     for (const p of partRows) {
       if (p.trackingMode === 'LOT') {
         lotTracked.set(p.id, await this.fifoLotsOf(p.id, doc.stagingLocationId ?? undefined));
@@ -883,27 +785,36 @@ export class LoadingService {
     return { id, truckStatus };
   }
 
-  async cancel(id: number) {
-    const rows = await this.db.select().from(deliveries).where(eq(deliveries.id, id)).limit(1);
-    const doc = rows[0];
-    if (!doc) throw new NotFoundException('Loading list tidak ditemukan');
-    if (doc.status === 'SHIPPED' || doc.status === 'RECEIVED') {
-      throw new BadRequestException(
-        'Dokumen yang sudah berangkat tidak bisa dibatalkan. Catat koreksinya sebagai penyesuaian stok.',
-      );
-    }
-    await this.db.update(deliveries).set({ status: 'CANCELLED' }).where(eq(deliveries.id, id));
-    return { id, status: 'CANCELLED' as const };
-  }
-
-  async list(params: { page: number; perPage: number }) {
+  async list(params: {
+    page: number;
+    perPage: number;
+    operationalDate?: string;
+    all?: boolean;
+    query?: string;
+    attention?: 'all' | 'only';
+  }) {
     const offset = (params.page - 1) * params.perPage;
+    const operationalDate =
+      params.operationalDate ?? productionDayWindow(new Date(), DELIVERY_DAY_START_HOUR).key;
+    const term = params.query ? `%${params.query}%` : null;
+    const filter = and(
+      params.all ? undefined : eq(deliveries.deliveryDate, operationalDate),
+      term
+        ? or(
+            like(deliveries.documentNumber, term),
+            like(deliveries.manifestNumber, term),
+            like(deliveries.pdsNumber, term),
+            like(customers.name, term),
+          )
+        : undefined,
+    );
 
-    const [rows, totalRows] = await Promise.all([
+    const summaryQuery = () =>
       this.db
         .select({
           id: deliveries.id,
           documentNumber: deliveries.documentNumber,
+          manifestNumber: deliveries.manifestNumber,
           pdsNumber: deliveries.pdsNumber,
           customerName: customers.name,
           deliveryDate: deliveries.deliveryDate,
@@ -913,39 +824,91 @@ export class LoadingService {
           plannedKanban: sql<string>`COALESCE(SUM(${deliveryLines.plannedKanban}), 0)`,
           pickedKanban: sql<string>`COALESCE(SUM(${deliveryLines.pickedKanban}), 0)`,
           actualKanban: sql<string>`COALESCE(SUM(${deliveryLines.actualKanban}), 0)`,
+          sapStatus: sapOutbox.status,
+          sapDocNumber: sapOutbox.sapDocNumber,
+          sapError: sapOutbox.lastError,
         })
         .from(deliveries)
         .leftJoin(customers, eq(deliveries.customerId, customers.id))
         .leftJoin(deliveryLines, eq(deliveryLines.deliveryId, deliveries.id))
+        .leftJoin(
+          sapOutbox,
+          and(
+            eq(sapOutbox.sourceTable, 'TT_DELIVERY'),
+            eq(sapOutbox.sourceId, deliveries.id),
+            eq(sapOutbox.docType, 'DELIVERY'),
+          ),
+        )
+        .where(filter)
         .groupBy(
           deliveries.id,
           deliveries.documentNumber,
+          deliveries.manifestNumber,
           deliveries.pdsNumber,
           customers.name,
           deliveries.deliveryDate,
           deliveries.cycle,
           deliveries.status,
           deliveries.truckStatus,
+          sapOutbox.status,
+          sapOutbox.sapDocNumber,
+          sapOutbox.lastError,
         )
-        .orderBy(desc(deliveries.deliveryDate), desc(deliveries.id))
-        .limit(params.perPage)
-        .offset(offset),
-      this.db.select({ value: count() }).from(deliveries),
+        .orderBy(desc(deliveries.deliveryDate), desc(deliveries.id));
+
+    type SummaryRow = Awaited<ReturnType<typeof summaryQuery>>[number];
+    const normalize = (row: SummaryRow): LoadingSummary => {
+      const summary = {
+        ...row,
+        plannedKanban: Number(row.plannedKanban),
+        pickedKanban: Number(row.pickedKanban),
+        actualKanban: Number(row.actualKanban),
+      };
+      return { ...summary, attentionReason: deliveryAttentionReason(summary) };
+    };
+
+    if (params.attention) {
+      /*
+       * ponytail: halaman delivery hanya memuat satu hari operasional, jadi
+       * menyaring hasil agregat di memori lebih kecil daripada menggandakan
+       * CASE/HAVING SQL. Pindahkan ke SQL bila satu hari mencapai ribuan LL.
+       */
+      const allRows = (await summaryQuery()).map(normalize);
+      const attentionRows = allRows.filter((row) => row.attentionReason);
+      const selected = params.attention === 'only' ? attentionRows : allRows;
+      const total = selected.length;
+      return {
+        data: selected.slice(offset, offset + params.perPage),
+        meta: {
+          page: params.page,
+          perPage: params.perPage,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / params.perPage)),
+          operationalDate,
+          attention: attentionRows.length,
+          allTotal: allRows.length,
+        },
+      };
+    }
+
+    const [rows, totalRows] = await Promise.all([
+      summaryQuery().limit(params.perPage).offset(offset),
+      this.db
+        .select({ value: count() })
+        .from(deliveries)
+        .leftJoin(customers, eq(deliveries.customerId, customers.id))
+        .where(filter),
     ]);
 
     const total = totalRows[0]?.value ?? 0;
     return {
-      data: rows.map((r) => ({
-        ...r,
-        plannedKanban: Number(r.plannedKanban),
-        pickedKanban: Number(r.pickedKanban),
-        actualKanban: Number(r.actualKanban),
-      })),
+      data: rows.map(normalize),
       meta: {
         page: params.page,
         perPage: params.perPage,
         total,
         totalPages: Math.max(1, Math.ceil(total / params.perPage)),
+        operationalDate,
       },
     };
   }
@@ -955,12 +918,15 @@ export class LoadingService {
       .select({
         id: deliveries.id,
         documentNumber: deliveries.documentNumber,
+        manifestNumber: deliveries.manifestNumber,
         pdsNumber: deliveries.pdsNumber,
         plantId: deliveries.plantId,
         customerId: deliveries.customerId,
         customerName: customers.name,
         customerCode: customers.code,
         partNumberFormat: customers.partNumberFormat,
+        directKanban: customers.directKanban,
+        plantScanDirectKanban: plants.scanDirectKanbanSaatMuat,
         deliveryDate: deliveries.deliveryDate,
         cycle: deliveries.cycle,
         dock: deliveries.dock,
@@ -975,10 +941,22 @@ export class LoadingService {
         truckNumber: deliveries.truckNumber,
         driverName: deliveries.driverName,
         departedAt: deliveries.departedAt,
+        sapStatus: sapOutbox.status,
+        sapDocNumber: sapOutbox.sapDocNumber,
+        sapError: sapOutbox.lastError,
       })
       .from(deliveries)
       .leftJoin(customers, eq(deliveries.customerId, customers.id))
+      .leftJoin(plants, eq(deliveries.plantId, plants.id))
       .leftJoin(locations, eq(deliveries.locationId, locations.id))
+      .leftJoin(
+        sapOutbox,
+        and(
+          eq(sapOutbox.sourceTable, 'TT_DELIVERY'),
+          eq(sapOutbox.sourceId, deliveries.id),
+          eq(sapOutbox.docType, 'DELIVERY'),
+        ),
+      )
       // Alias tersendiri: tabel lokasi dipakai dua kali dalam query yang sama.
       // Nama tabelnya ditulis langsung di sini — satu-satunya tempat begitu —
       // karena Drizzle belum bisa menjadikan tabel yang sama dua alias berbeda.
@@ -1011,53 +989,15 @@ export class LoadingService {
       .where(eq(deliveryLines.deliveryId, id))
       .orderBy(deliveryLines.id);
 
-    return { ...doc, lines };
-  }
-
-  /**
-   * Daftar part yang bisa dimuat untuk sebuah customer.
-   *
-   * Part tanpa penomoran customer tetap ditampilkan — barangnya boleh dikirim,
-   * hanya saja barcode kanban customer tidak akan cocok otomatis, dan itu
-   * ditandai di layar supaya ketahuan sebelum truk datang.
-   */
-  async customerCatalog(customerId: number, plantId?: number) {
-    const rows = await this.db
-      .select({
-        partId: parts.id,
-        partNumber: parts.partNumber,
-        partName: parts.name,
-        plantId: parts.plantId,
-        uom: parts.uom,
-        partQtyPerKanban: parts.qtyPerKanban,
-        customerPartId: customerParts.id,
-        customerPartNumber: customerParts.customerPartNumber,
-        customerQtyPerKanban: customerParts.qtyPerKanban,
-      })
-      .from(parts)
-      .leftJoin(
-        customerParts,
-        and(eq(customerParts.partId, parts.id), eq(customerParts.customerId, customerId)),
-      )
-      .where(
-        plantId
-          ? and(eq(parts.isActive, true), eq(parts.plantId, plantId))
-          : eq(parts.isActive, true),
-      )
-      .orderBy(parts.partNumber);
-
-    return rows.map((r) => ({
-      partId: r.partId,
-      partNumber: r.partNumber,
-      partName: r.partName,
-      plantId: r.plantId,
-      uom: r.uom,
-      customerPartId: r.customerPartId,
-      customerPartNumber: r.customerPartNumber,
-      // Penomoran customer boleh menimpa isi kanban standar — kemasan tiap
-      // customer berbeda meski partnya sama.
-      qtyPerKanban: r.customerQtyPerKanban ?? r.partQtyPerKanban ?? 0,
-    }));
+    const { directKanban, plantScanDirectKanban, ...detail } = doc;
+    return {
+      ...detail,
+      loadingMode: modeLoading({
+        directKanban: directKanban ?? false,
+        plantScanDirectKanban: plantScanDirectKanban ?? false,
+      }),
+      lines,
+    };
   }
 
   /**
@@ -1153,13 +1093,5 @@ export class LoadingService {
       pickedKanban: Number(rows[0]?.pickedKanban ?? 0),
       actualKanban: Number(rows[0]?.actualKanban ?? 0),
     };
-  }
-
-  private async countOn(plantId: number, date: string): Promise<number> {
-    const rows = await this.db
-      .select({ value: count() })
-      .from(deliveries)
-      .where(and(eq(deliveries.plantId, plantId), eq(deliveries.deliveryDate, date)));
-    return rows[0]?.value ?? 0;
   }
 }

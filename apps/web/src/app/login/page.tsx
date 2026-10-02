@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import { AlertCircle, ArrowRight } from 'lucide-react';
 import { loginAction, loginQrAction, type LoginState } from './actions';
 import { durations, easeSoft } from '@/components/motion/transitions';
+import { BrandWrite } from '@/components/shell/brand-write';
 
 const initial: LoginState = {};
 
@@ -13,7 +14,19 @@ export default function LoginPage() {
   const [qrState, qrAction, qrPending] = useActionState(loginQrAction, initial);
 
   return (
-    <main className="grid min-h-screen place-items-center p-5">
+    <main className="relative grid min-h-screen place-items-center overflow-hidden p-5">
+      <div
+        className="login-intro pointer-events-none absolute inset-0 z-10 grid place-items-center bg-canvas"
+        aria-hidden
+      >
+        <span className="flex flex-col items-center gap-3">
+          <BrandWrite />
+          <span className="login-intro-tagline text-[12px] uppercase tracking-[0.34em] text-ink-muted">
+            Manufacturing Execution System
+          </span>
+        </span>
+      </div>
+
       {/*
         Animasi kemunculan memakai CSS, bukan Motion.
 
@@ -21,7 +34,7 @@ export default function LoginPage() {
         tersembunyi, pengguna terkunci di luar sistem sepenuhnya. Animasi CSS
         tetap menampilkan form apa pun yang terjadi pada bundle.
       */}
-      <div className="a-stagger w-full max-w-[420px] rounded-panel border border-line bg-shell p-9 shadow-shell">
+      <div className="login-card-enter a-stagger w-full max-w-[420px] rounded-panel border border-line bg-shell p-9 shadow-shell">
         <div>
           <div className="text-[24px] font-extrabold leading-none tracking-tight">AVICENNA</div>
           <p className="mt-2 text-[14px] text-ink-muted">

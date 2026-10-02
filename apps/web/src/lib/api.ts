@@ -1,4 +1,5 @@
 import 'server-only';
+import { redirect } from 'next/navigation';
 import { getToken } from './session';
 
 const BASE = process.env.API_URL ?? 'http://127.0.0.1:3001';
@@ -28,6 +29,10 @@ export async function apiFetch<T>(
   }
 
   const res = await fetch(`${BASE}${path}`, { ...rest, headers, cache: 'no-store' });
+
+  // Sesi habis: layout memang mengarahkan ke /login, tapi page dirender
+  // paralel dan bisa keburu melempar 401 lebih dulu. Arahkan dari sini juga.
+  if (res.status === 401 && authenticated) redirect('/login');
 
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;

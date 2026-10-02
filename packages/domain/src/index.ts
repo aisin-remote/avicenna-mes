@@ -1,4 +1,5 @@
 export * from './kanban';
+export * from './kanban-crop';
 export * from './scan';
 export * from './scan-mode';
 export * from './ng';

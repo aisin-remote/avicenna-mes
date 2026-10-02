@@ -85,6 +85,20 @@
       "when": 1789800273877,
       "tag": "0011_shocking_typhoid_mary",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1790732521116,
+      "tag": "0012_cultured_tarot",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1790751031715,
+      "tag": "0013_majestic_randall",
+      "breakpoints": true
     }
   ]
 }

@@ -3,11 +3,7 @@ import { cookies } from 'next/headers';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import { PreferencesProvider } from '@/components/shell/preferences-provider';
 import { ToastProvider } from '@/components/ui/toast';
-import {
-  PREFERENCES_COOKIE,
-  parseStoredPreferences,
-  htmlAttributes,
-} from '@/lib/preferences';
+import { PREFERENCES_COOKIE, parseStoredPreferences, htmlAttributes } from '@/lib/preferences';
 import './globals.css';
 
 /**
@@ -66,7 +62,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       style={{ colorScheme: stored.resolved }}
       suppressHydrationWarning
     >
-      <body className="min-h-screen font-[family-name:var(--font-sans)] antialiased">
+      <body
+        className="min-h-screen font-[family-name:var(--font-sans)] antialiased"
+        suppressHydrationWarning
+      >
         <PreferencesProvider initial={stored}>
           {/* Toast di akar: berlaku di shell, layar stasiun, maupun halaman masuk. */}
           <ToastProvider>{children}</ToastProvider>

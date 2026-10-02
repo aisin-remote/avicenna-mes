@@ -4,11 +4,40 @@ import type { LoadingSummary } from '@avicenna/contracts';
 
 export interface LoadingListResult {
   data: LoadingSummary[];
-  meta: { page: number; perPage: number; total: number; totalPages: number };
+  meta: {
+    page: number;
+    perPage: number;
+    total: number;
+    totalPages: number;
+    operationalDate: string;
+    attention?: number;
+    allTotal?: number;
+  };
 }
 
-export function listLoadings(page = 1, perPage = 25): Promise<LoadingListResult> {
-  return apiFetch<LoadingListResult>(`/loading?page=${page}&perPage=${perPage}`);
+export function listLoadings(
+  page = 1,
+  perPage = 25,
+  operationalDate?: string,
+  attention?: 'all' | 'only',
+): Promise<LoadingListResult> {
+  const qs = new URLSearchParams({ page: String(page), perPage: String(perPage) });
+  if (operationalDate) qs.set('date', operationalDate);
+  if (attention) qs.set('attention', attention);
+  return apiFetch<LoadingListResult>(`/loading?${qs.toString()}`);
+}
+
+/** Registry lintas hari untuk Mutation Delivery. */
+export function listLoadingMutations(
+  page = 1,
+  perPage = 25,
+  filters: { date?: string; query?: string } = {},
+): Promise<LoadingListResult> {
+  const qs = new URLSearchParams({ page: String(page), perPage: String(perPage) });
+  if (filters.date) qs.set('date', filters.date);
+  else qs.set('all', '1');
+  if (filters.query) qs.set('q', filters.query);
+  return apiFetch<LoadingListResult>(`/loading?${qs.toString()}`);
 }
 
 export interface LoadingLineDetail {
@@ -30,12 +59,14 @@ export interface LoadingLineDetail {
 export interface LoadingDetail {
   id: number;
   documentNumber: string;
+  manifestNumber: string | null;
   pdsNumber: string | null;
   plantId: number;
   customerId: number;
   customerName: string | null;
   customerCode: string | null;
   partNumberFormat: string | null;
+  loadingMode: 'TIGA_ARAH' | 'KANBAN_CUSTOMER' | 'TANPA_SCAN';
   deliveryDate: string;
   cycle: number;
   dock: string | null;
@@ -50,26 +81,12 @@ export interface LoadingDetail {
   truckNumber: string | null;
   driverName: string | null;
   departedAt: string | null;
+  sapStatus: string | null;
+  sapDocNumber: string | null;
+  sapError: string | null;
   lines: LoadingLineDetail[];
 }
 
 export function getLoading(id: number): Promise<LoadingDetail> {
   return apiFetch<LoadingDetail>(`/loading/${id}`);
-}
-
-export interface CatalogPart {
-  partId: number;
-  partNumber: string;
-  partName: string;
-  plantId: number;
-  uom: string;
-  customerPartId: number | null;
-  customerPartNumber: string | null;
-  qtyPerKanban: number;
-}
-
-export function getCustomerCatalog(customerId: number, plantId?: number): Promise<CatalogPart[]> {
-  const qs = new URLSearchParams({ customerId: String(customerId) });
-  if (plantId) qs.set('plantId', String(plantId));
-  return apiFetch<CatalogPart[]>(`/loading/catalog?${qs.toString()}`);
 }

@@ -1,6 +1,19 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Truck, ScanLine, MapPin, FileText, User, Calendar, PackageOpen, Tags } from 'lucide-react';
+import {
+  Truck,
+  ScanLine,
+  MapPin,
+  FileText,
+  User,
+  Calendar,
+  PackageOpen,
+  Tags,
+  Printer,
+  ListChecks,
+  AlertTriangle,
+} from 'lucide-react';
+import { deliveryAttentionReason } from '@avicenna/domain';
 import { getLoading } from '@/lib/loading-api';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -18,11 +31,7 @@ function sloc(code: string | null, name: string | null, peran: string): string {
   return name ? `${code} — ${name}` : code;
 }
 
-export default async function LoadingDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function LoadingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const numericId = Number(id);
   if (!Number.isInteger(numericId)) notFound();
@@ -37,6 +46,13 @@ export default async function LoadingDetailPage({
   const totalPlanned = doc.lines.reduce((s, l) => s + l.plannedKanban, 0);
   const totalPicked = doc.lines.reduce((s, l) => s + l.pickedKanban, 0);
   const totalActual = doc.lines.reduce((s, l) => s + l.actualKanban, 0);
+  const attentionReason = deliveryAttentionReason({
+    status: doc.status,
+    plannedKanban: totalPlanned,
+    pickedKanban: totalPicked,
+    actualKanban: totalActual,
+    sapStatus: doc.sapStatus,
+  });
   const open = doc.status !== 'SHIPPED' && doc.status !== 'RECEIVED' && doc.status !== 'CANCELLED';
   // Tahap yang sedang berjalan menentukan tombol mana yang ditawarkan — dua
   // tombol scan sekaligus hanya membuat orang menebak mana yang benar.
@@ -47,24 +63,14 @@ export default async function LoadingDetailPage({
       <PageHeader
         crumbs={[{ label: 'Pengiriman', href: '/delivery' }, { label: doc.documentNumber }]}
         title={doc.documentNumber}
-        description={`${doc.customerName ?? '—'} · rit ${doc.cycle}`}
+        description={`${doc.customerName ?? '—'} · rit ${doc.cycle} · sumber SAP/staging`}
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <StatusChip status={doc.status} />
             <TruckChip status={doc.truckStatus} />
-            {/* Label DN: satu per box, discan di lini FG sebagai kartu customer
-                (direct pulling). Tetap boleh dicetak setelah berangkat — untuk
-                arsip — tapi bukan tombol utama. */}
-            <Link
-              href={`/delivery/${doc.id}/label`}
-              className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-[14px] font-semibold text-ink-soft transition-colors hover:bg-surface hover:text-ink"
-            >
-              <Tags className="size-[18px]" strokeWidth={2} aria-hidden />
-              Cetak label DN
-            </Link>
             {open ? (
               <Link
-                href={tahapPulling ? `/picking/${doc.id}` : `/loading/${doc.id}`}
+                href={tahapPulling ? `/picking/${doc.id}` : '/delivery-scan'}
                 className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
               >
                 {tahapPulling ? (
@@ -80,6 +86,90 @@ export default async function LoadingDetailPage({
       />
 
       <div className="space-y-5">
+        {attentionReason ? (
+          <Reveal>
+            <section className="rounded-card border border-ng/35 bg-ng/8 p-5">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 size-6 shrink-0 text-ng" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-[16px] font-bold text-ng">{attentionReason}</h2>
+                  <p className="mt-1 text-[13px] text-ink-soft">
+                    {doc.sapError ??
+                      `Rencana ${totalPlanned}, diambil ${totalPicked}, dan dimuat ${totalActual} kanban.`}
+                  </p>
+                  {doc.sapStatus ? (
+                    <p className="tabular mt-2 text-[12px] text-ink-muted">
+                      Status SAP: <strong>{doc.sapStatus}</strong>
+                      {doc.sapDocNumber ? ` · dokumen ${doc.sapDocNumber}` : ''}
+                    </p>
+                  ) : null}
+                </div>
+                {['FAILED', 'REJECTED', 'HELD'].includes(doc.sapStatus ?? '') ? (
+                  <Link
+                    href={`/sap?status=${doc.sapStatus}`}
+                    className="shrink-0 rounded-full border border-ng/30 px-4 py-2 text-[13px] font-semibold text-ng hover:border-ng"
+                  >
+                    Buka antrean SAP
+                  </Link>
+                ) : null}
+              </div>
+            </section>
+          </Reveal>
+        ) : null}
+
+        <Reveal>
+          <Card>
+            <CardHeader
+              icon={Printer}
+              title="Dokumen PPIC"
+              subtitle="Buka dokumen secara terpisah agar setiap print job bisa memakai printer berbeda."
+            />
+            <div className="grid gap-3 border-t border-line px-6 py-5 md:grid-cols-3">
+              {[
+                {
+                  href: `/delivery/${doc.id}/manifest`,
+                  icon: FileText,
+                  title: 'Manifest',
+                  description: doc.manifestNumber ?? 'Nomor mengikuti data staging',
+                },
+                {
+                  href: `/delivery/${doc.id}/picklist`,
+                  icon: ListChecks,
+                  title: 'Picklist / Loading List',
+                  description: `${doc.lines.length} part · ${totalPlanned} kanban`,
+                },
+                {
+                  href: `/delivery/${doc.id}/label`,
+                  icon: Tags,
+                  title: 'Kanban',
+                  description: `${totalPlanned} label per box`,
+                },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.title}
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group flex min-w-0 items-center gap-4 rounded-2xl border border-line bg-surface/60 p-4 transition-all hover:-translate-y-0.5 hover:border-line-strong hover:bg-card hover:shadow-lift"
+                  >
+                    <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-card text-ink shadow-sm ring-1 ring-line transition-colors group-hover:bg-ink group-hover:text-white">
+                      <Icon className="size-5" strokeWidth={2} aria-hidden />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[15px] font-bold text-ink">{item.title}</span>
+                      <span className="mt-1 block truncate text-[13px] text-ink-muted">
+                        {item.description}
+                      </span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </Card>
+        </Reveal>
+
         <Reveal>
           <Card>
             <CardHeader icon={FileText} title="Keterangan dokumen" />
@@ -94,6 +184,9 @@ export default async function LoadingDetailPage({
               </InfoRow>
               <InfoRow icon={FileText} label="Nomor PDS">
                 {doc.pdsNumber ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Nomor manifest">
+                {doc.manifestNumber ?? '—'}
               </InfoRow>
               <InfoRow icon={MapPin} label="Dock">
                 {doc.dock ?? '—'}

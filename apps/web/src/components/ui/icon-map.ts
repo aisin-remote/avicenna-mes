@@ -20,6 +20,7 @@ import {
   Tag,
   Hash,
   Boxes,
+  Scissors,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -51,6 +52,7 @@ const ICONS: Record<string, LucideIcon> = {
   Tag,
   Hash,
   Boxes,
+  Scissors,
 };
 
 /** Mengembalikan ikon Database sebagai cadangan agar UI tidak pernah kosong. */

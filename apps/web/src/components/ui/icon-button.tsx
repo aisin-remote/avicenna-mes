@@ -28,6 +28,8 @@ export function IconButton({
   variant = 'outline',
   className,
   badge,
+  expanded,
+  controls,
 }: {
   icon: LucideIcon;
   /** Wajib: tombol ini tidak punya teks, jadi pembaca layar bergantung padanya. */
@@ -38,6 +40,8 @@ export function IconButton({
   className?: string;
   /** Titik notifikasi kecil di pojok kanan atas. */
   badge?: boolean;
+  expanded?: boolean;
+  controls?: string;
 }) {
   const box = size === 'sm' ? 'size-9' : 'size-11';
   const glyph = size === 'sm' ? 'size-4' : 'size-[18px]';
@@ -53,6 +57,9 @@ export function IconButton({
       type="button"
       onClick={onClick}
       aria-label={label}
+      aria-expanded={expanded}
+      aria-controls={controls}
+      aria-haspopup={expanded === undefined ? undefined : 'true'}
       title={label}
       whileHover={{ scale: 1.04 }}
       whileTap={{ scale: 0.94 }}

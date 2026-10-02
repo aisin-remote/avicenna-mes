@@ -1,38 +1,9 @@
 import { z } from 'zod';
 
 /**
- * Loading list — dokumen muat satu truk.
- *
- * Di bella dokumen ini didorong masuk dari sistem luar. Di sini dikelola
- * sendiri: dibuat manual atau diimpor, lalu diisi saat muat barang dengan
- * men-scan kanban.
+ * Loading list berasal dari SAP/staging. MES hanya menyimpan salinan
+ * operasionalnya untuk proses pulling dan loading, bukan membuat dokumennya.
  */
-
-export const loadingLineInputSchema = z.object({
-  partId: z.coerce.number().int().positive('Part wajib dipilih'),
-  customerPartId: z.coerce.number().int().positive().optional(),
-  plannedKanban: z.coerce.number().int().min(0).default(0),
-  qtyPerKanban: z.coerce.number().int().min(0).default(0),
-});
-export type LoadingLineInput = z.infer<typeof loadingLineInputSchema>;
-
-export const loadingCreateSchema = z.object({
-  plantId: z.coerce.number().int().positive('Pabrik wajib dipilih'),
-  customerId: z.coerce.number().int().positive('Customer wajib dipilih'),
-  /** Nomor PDS dari customer, bila ada. */
-  pdsNumber: z.string().trim().max(64).optional(),
-  cycle: z.coerce.number().int().min(1).default(1),
-  dock: z.string().trim().max(32).optional(),
-  /** SLOC tempat barang jadi diambil saat pulling (PP02). */
-  locationId: z.coerce.number().int().positive().optional(),
-  /** SLOC staging tempat barang menunggu truk (PP04). */
-  stagingLocationId: z.coerce.number().int().positive().optional(),
-  deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal harus YYYY-MM-DD'),
-  truckNumber: z.string().trim().max(32).optional(),
-  driverName: z.string().trim().max(128).optional(),
-  lines: z.array(loadingLineInputSchema).min(1, 'Minimal satu baris part'),
-});
-export type LoadingCreateInput = z.infer<typeof loadingCreateSchema>;
 
 /**
  * Tahap mana yang sedang discan.
@@ -89,6 +60,7 @@ export interface LoadingScanResult {
 export interface LoadingSummary {
   id: number;
   documentNumber: string;
+  manifestNumber: string | null;
   pdsNumber: string | null;
   customerName: string | null;
   deliveryDate: string;
@@ -98,4 +70,8 @@ export interface LoadingSummary {
   plannedKanban: number;
   pickedKanban: number;
   actualKanban: number;
+  sapStatus: string | null;
+  sapDocNumber: string | null;
+  sapError: string | null;
+  attentionReason: string | null;
 }

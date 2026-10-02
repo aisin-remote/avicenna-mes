@@ -98,6 +98,7 @@ export function ShellFrame({
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
           pengguna={pengguna}
+          groups={navGroups}
           navOpen={menuOpen}
           onToggleNav={() => setMenuOpen((v) => !v)}
           onOpenSettings={() => setSettingsOpen(true)}
