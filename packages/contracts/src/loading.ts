@@ -20,7 +20,7 @@ export const loadingScanSchema = z.object({
   deliveryId: z.coerce.number().int().positive(),
   phase: loadingPhaseSchema.default('LOADING'),
   /** Nomor part pada barcode kanban — format customer. */
-  customerPart: z.string().trim().min(1, 'Barcode kosong').max(64),
+  customerPart: z.string().trim().min(1, 'Barcode kosong').max(255),
   /** Nomor part internal, bila barcode memuatnya. */
   internalPart: z.string().trim().max(64).optional(),
   /**
@@ -62,6 +62,9 @@ export interface LoadingSummary {
   documentNumber: string;
   manifestNumber: string | null;
   pdsNumber: string | null;
+  purchaseOrderNumber: string | null;
+  deliveryType: string | null;
+  sapGiStatus: string | null;
   customerName: string | null;
   deliveryDate: string;
   cycle: number;
@@ -70,7 +73,11 @@ export interface LoadingSummary {
   plannedKanban: number;
   pickedKanban: number;
   actualKanban: number;
+  unmappedItems: number;
+  invalidQtyPerBox: number;
+  missingSloc: boolean;
   sapStatus: string | null;
+  sapIsSimulation: boolean | null;
   sapDocNumber: string | null;
   sapError: string | null;
   attentionReason: string | null;

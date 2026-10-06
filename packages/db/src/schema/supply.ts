@@ -17,6 +17,7 @@ import { parts, suppliers } from './master';
 import { locations } from './inventory';
 import { plants, users } from './org';
 import { lines } from './master';
+import type { AresOrderSource } from '@avicenna/contracts';
 
 /**
  * ─── BOM ──────────────────────────────────────────────────────────────────
@@ -134,11 +135,15 @@ export const receipts = mysqlTable(
     status: mysqlEnum('CHR_STATUS', ['DRAFT', 'RECEIVED', 'CANCELLED']).notNull().default('DRAFT'),
     receivedById: fk('INT_RECEIVED_BY_ID').references(() => users.id),
     note: varchar('CHR_NOTE', { length: 255 }),
+    aresOrderId: fk('INT_ARES_ORDER_ID'),
+    sourceSnapshot: json('CHR_SOURCE_SNAPSHOT').$type<AresOrderSource>(),
+    closedAt: timestamp('DTM_CLOSED_AT'),
     ...timestamps,
   },
   (t) => [
     uniqueIndex('TT_PURCHASE_RECEIPT_H_PLANT_DOCUMENT_UNIQUE').on(t.plantId, t.documentNumber),
     index('TT_PURCHASE_RECEIPT_H_SUPPLIER_DATE_IDX').on(t.supplierId, t.receivedAt),
+    index('TT_PURCHASE_RECEIPT_H_ARES_IDX').on(t.aresOrderId, t.status),
   ],
 );
 

@@ -79,7 +79,7 @@ export async function listParts({ page, perPage, search, plantId }: PartListPara
 }
 
 /** Ringkasan untuk dashboard. Satu round-trip per kartu, dijalankan paralel. */
-export async function getDashboardSummary() {
+export async function getDashboardSummary(at = new Date()) {
   const db = getDb();
 
   /*
@@ -98,7 +98,7 @@ export async function getDashboardSummary() {
    * Batasnya dikirim sebagai parameter Date supaya driver yang mengurus
    * konversinya, bukan dirangkai sebagai teks tanggal.
    */
-  const hariProduksi = productionDayWindow(new Date());
+  const hariProduksi = productionDayWindow(at);
 
   const [plantCount, lineCount, partCount, customerCount, todayScans] = await Promise.all([
     db.select({ value: count() }).from(plants),
@@ -110,6 +110,7 @@ export async function getDashboardSummary() {
       .from(scanEvents)
       .where(
         and(
+          eq(scanEvents.kind, 'PRODUCTION'),
           gte(scanEvents.scannedAt, hariProduksi.start),
           lt(scanEvents.scannedAt, hariProduksi.end),
         ),
@@ -122,6 +123,8 @@ export async function getDashboardSummary() {
     parts: partCount[0]?.value ?? 0,
     customers: customerCount[0]?.value ?? 0,
     scansToday: todayScans[0]?.value ?? 0,
+    productionStart: hariProduksi.start,
+    productionEnd: hariProduksi.end,
   };
 }
 
@@ -169,9 +172,9 @@ export interface LineProduksi {
  * malam terbelah ke dua tanggal, dan angka di layar tidak akan pernah cocok
  * dengan hitungan manual orang lapangan.
  */
-export async function listLinesWithProduction(): Promise<LineProduksi[]> {
+export async function listLinesWithProduction(at = new Date()): Promise<LineProduksi[]> {
   const db = getDb();
-  const { start, end } = productionDayWindow(new Date());
+  const { start, end } = productionDayWindow(at);
 
   const rows = await db
     .select({
@@ -212,25 +215,6 @@ export async function listLinesWithProduction(): Promise<LineProduksi[]> {
     qtyHariIni: Number(r.qtyHariIni),
     scanTerakhir: r.scanTerakhir ? new Date(r.scanTerakhir) : null,
   }));
-}
-
-export async function recentScans(limit = 20) {
-  const db = getDb();
-  return db
-    .select({
-      id: scanEvents.id,
-      kind: scanEvents.kind,
-      rawCode: scanEvents.rawCode,
-      qty: scanEvents.qty,
-      scannedAt: scanEvents.scannedAt,
-      lineCode: lines.code,
-      partName: parts.name,
-    })
-    .from(scanEvents)
-    .leftJoin(lines, eq(scanEvents.lineId, lines.id))
-    .leftJoin(parts, eq(scanEvents.partId, parts.id))
-    .orderBy(desc(scanEvents.scannedAt))
-    .limit(limit);
 }
 
 /** Data lintas modul untuk command palette; hasil dibatasi menu dan pabrik sesi. */
@@ -383,9 +367,7 @@ export async function searchGlobalData(opts: {
       (row): GlobalSearchResult => ({
         type: 'Penerimaan',
         title: row.documentNumber,
-        subtitle: [row.supplierDocNumber, row.supplierName, row.status]
-          .filter(Boolean)
-          .join(' · '),
+        subtitle: [row.supplierDocNumber, row.supplierName, row.status].filter(Boolean).join(' · '),
         href: `/receiving/${row.id}`,
         icon: 'Truck',
       }),

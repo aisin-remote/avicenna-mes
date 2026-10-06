@@ -6,6 +6,7 @@ import {
   time,
   timestamp,
   mysqlEnum,
+  json,
   uniqueIndex,
   index,
 } from 'drizzle-orm/mysql-core';
@@ -42,6 +43,21 @@ export const deliveries = mysqlTable(
     manifestNumber: varchar('CHR_DOK_NO', { length: 64 }),
     /** Nomor PDS dari customer — rujukan ke dokumen mereka. */
     pdsNumber: varchar('CHR_PDS_NO', { length: 64 }),
+    /** Nilai referensi dari staging SAP; belum dipakai mengendalikan workflow MES. */
+    purchaseOrderNumber: varchar('CHR_PO_NO', { length: 64 }),
+    salesOrganization: varchar('CHR_SORG', { length: 16 }),
+    distributionChannel: varchar('CHR_DIS_CHANNEL', { length: 16 }),
+    division: varchar('CHR_DIVISION', { length: 16 }),
+    deliveryType: varchar('CHR_DEL_TYPE', { length: 16 }),
+    sapGiStatus: varchar('CHR_GI_DEL', { length: 16 }),
+    invoiceNumber: varchar('CHR_INV_NO', { length: 64 }),
+    qcStatus: varchar('CHR_QC_STATUS', { length: 16 }),
+    sapActualDeliveryDate: date('DTM_DEL_DATE_ACT', { mode: 'string' }),
+    sapHeaderMovementStatus: varchar('CHR_SM_H_FLAG', { length: 16 }),
+    sapLineMovementStatus: varchar('CHR_SM_L_FLAG', { length: 16 }),
+    sapReceiveStatus: varchar('CHR_FLAG_RECEIVE', { length: 16 }),
+    sapReceiveDate: date('DTM_DATE_RECEIVE', { mode: 'string' }),
+    sapReceiveTime: time('DTM_TIME_RECEIVE'),
     deliveryDate: date('DTM_DEL_DATE', { mode: 'string' }).notNull(),
     cycle: int('INT_CYCLE').notNull().default(1),
     dock: varchar('CHR_CUS_DEST', { length: 32 }),
@@ -129,6 +145,12 @@ export const deliveryLines = mysqlTable(
       .references(() => parts.id),
     /** Penomoran customer untuk part ini, dipakai mencocokkan barcode saat muat. */
     customerPartId: fk('INT_CUSTOMER_PART_ID'),
+    customerPartNumberSource: varchar('CHR_CUST_PART_NO', { length: 64 }),
+    /** Nomor baris asli SAP. Part yang sama boleh muncul pada lebih dari satu item. */
+    sapItemNumber: varchar('CHR_DEL_ITEM', { length: 16 }),
+    /** Qty yang disediakan sumber, disimpan berdampingan dengan rencana MES. */
+    sapDeliveryQty: int('INT_DEL_QTY').notNull().default(0),
+    itemType: varchar('CHR_ITEM_TYPE', { length: 16 }),
     /** Rencana: berapa kanban yang harus dimuat. */
     plannedKanban: int('INT_PLANNED_KANBAN').notNull().default(0),
     plannedQty: int('INT_TOTAL_QTY').notNull().default(0),
@@ -142,7 +164,8 @@ export const deliveryLines = mysqlTable(
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('TT_DELIVERY_ITEM_UNIQUE').on(t.deliveryId, t.partId),
+    uniqueIndex('TT_DELIVERY_ITEM_SOURCE_UNIQUE').on(t.deliveryId, t.sapItemNumber),
+    index('TT_DELIVERY_ITEM_DELIVERY_PART_IDX').on(t.deliveryId, t.partId),
     index('TT_DELIVERY_ITEM_PART_IDX').on(t.partId),
   ],
 );
@@ -157,3 +180,15 @@ export const deliveryLinesRelations = relations(deliveryLines, ({ one }) => ({
   delivery: one(deliveries, { fields: [deliveryLines.deliveryId], references: [deliveries.id] }),
   part: one(parts, { fields: [deliveryLines.partId], references: [parts.id] }),
 }));
+
+/** Hasil refresh terakhir per hari, termasuk dokumen yang belum bisa diimpor. */
+export const deliverySyncs = mysqlTable(
+  'TT_DELIVERY_SYNC',
+  {
+    id: pk(),
+    operationalDate: date('DTM_OPERATIONAL_DATE', { mode: 'string' }).notNull(),
+    syncedAt: timestamp('DTM_SYNCED_AT').notNull(),
+    result: json('CHR_RESULT').notNull(),
+  },
+  (t) => [uniqueIndex('TT_DELIVERY_SYNC_DATE_UNIQUE').on(t.operationalDate)],
+);

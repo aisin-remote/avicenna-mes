@@ -3,6 +3,7 @@ export * from './auth';
 export * from './scan';
 export * from './ng';
 export * from './receiving';
+export * from './receiving-session';
 export * from './transfer';
 export * from './loading';
 export * from './kanban-crop';

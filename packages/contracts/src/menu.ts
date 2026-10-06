@@ -142,7 +142,7 @@ const MENU_TETAP: MenuDef[] = [
     href: '/trace',
     icon: 'GitBranch',
     group: 'Logistik',
-    sortOrder: 60,
+    sortOrder: 70,
   },
   {
     key: 'kanban.crop',
@@ -150,7 +150,15 @@ const MENU_TETAP: MenuDef[] = [
     href: '/kanban',
     icon: 'Scissors',
     group: 'Logistik',
-    sortOrder: 70,
+    sortOrder: 80,
+  },
+  {
+    key: 'delivery.return',
+    label: 'Scan Surat Jalan',
+    href: '/delivery-return',
+    icon: 'ClipboardCheck',
+    group: 'Logistik',
+    sortOrder: 60,
   },
 
   {

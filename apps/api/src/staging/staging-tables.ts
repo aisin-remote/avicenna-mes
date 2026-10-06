@@ -1,3 +1,21 @@
+export function tanggalIsoAtauNull(value: unknown): string | null {
+  const compact = (bersih(value) ?? '').replaceAll('-', '');
+  if (!/^\d{8}$/.test(compact) || compact === '00000000') return null;
+  const iso = `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}`;
+  const date = new Date(`${iso}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== iso ? null : iso;
+}
+
+export function jamIsoAtauNull(value: unknown): string | null {
+  const compact = (bersih(value) ?? '').replaceAll(':', '');
+  if (!/^\d{6}$/.test(compact)) return null;
+  return Number(compact.slice(0, 2)) < 24 &&
+    Number(compact.slice(2, 4)) < 60 &&
+    Number(compact.slice(4, 6)) < 60
+    ? `${compact.slice(0, 2)}:${compact.slice(2, 4)}:${compact.slice(4, 6)}`
+    : null;
+}
+
 /**
  * Nama tabel dan kolom di database jembatan (staging) SAP.
  *
@@ -60,7 +78,7 @@ export function keJamStaging(d: Date): string {
 export function bersih(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
-  return s.length > 0 ? s : null;
+  return s.length > 0 && s.toUpperCase() !== 'NULL' ? s : null;
 }
 
 /**
@@ -210,6 +228,13 @@ export const DELIVERY = {
     cycle: 'CHR_CYCLE',
     tanggalKirim: 'CHR_DEL_DATE',
     tanggalKirimAktual: 'CHR_DEL_DATE_ACT',
+    poNo: 'CHR_PO_NO',
+    salesOrg: 'CHR_SORG',
+    distributionChannel: 'CHR_DIS_CHANNEL',
+    division: 'CHR_DIVISION',
+    deliveryType: 'CHR_DEL_TYPE',
+    invoiceNo: 'CHR_INV_NO',
+    qcStatus: 'CHR_QC_STATUS',
     tanggalBuat: 'CHR_CREATE_DATE',
     hapus: 'CHR_DELETE_FLAG',
 
@@ -233,6 +258,7 @@ export const DELIVERY = {
     qtyScan: 'INT_SCAN_QTY',
     qtyAktual: 'INT_ACTUAL_DEL',
     qtyPerBox: 'INT_QTY_PER_BOX',
+    itemType: 'CHR_ITEM_TYPE',
     hapus: 'CHR_DELETE_FLAG',
   },
 } as const;
@@ -381,7 +407,7 @@ export const SUMBER_MASTER: SumberMaster[] = [
        * dipakai saat part BARU dibuat; part yang sudah ada tidak pernah
        * ditimpa, sehingga koreksi manual tidak hilang pada putaran berikutnya.
        */
-      processType: 'ASSEMBLING',
+      processType: 'ASSEMBLING_UNIT',
       partType: 'FINISHED_GOOD',
       sourceType: 'MANUFACTURED',
       trackingMode: 'SERIAL',

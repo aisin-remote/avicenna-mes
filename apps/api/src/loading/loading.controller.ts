@@ -21,6 +21,12 @@ const truckStatusSchema = z.object({
 });
 type TruckStatusInput = z.infer<typeof truckStatusSchema>;
 
+const returnedDocumentSchema = z.object({
+  code: z.string().trim().min(1, 'Barcode surat jalan kosong').max(128),
+});
+type ReturnedDocumentInput = z.infer<typeof returnedDocumentSchema>;
+const undoSchema = z.object({ reason: z.string().trim().min(3).max(255) });
+
 @Controller('loading')
 export class LoadingController {
   constructor(private readonly loading: LoadingService) {}
@@ -53,9 +59,31 @@ export class LoadingController {
     return this.loading.resolveDocument(code ?? '');
   }
 
+  /** Status sinkronisasi terakhir; tetap JSON saat tanggal belum pernah disinkronkan. */
+  @Get('sync-status')
+  async syncStatus(@Query('date') date?: string) {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+      throw new BadRequestException('date harus berformat YYYY-MM-DD');
+    return { data: await this.loading.syncStatus(date) };
+  }
+
+  /** Scan surat jalan yang kembali sebagai bukti barang diterima customer. */
+  @Post('receive')
+  receive(
+    @Body(new ZodValidationPipe(returnedDocumentSchema)) body: ReturnedDocumentInput,
+    @Req() req: Request,
+  ) {
+    return this.loading.receiveReturnedDocument(body.code, req.principal);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.loading.findOne(id);
+  }
+
+  @Get(':id/history')
+  history(@Param('id', ParseIntPipe) id: number) {
+    return this.loading.history(id);
   }
 
   /** Scan satu kanban saat muat barang. */
@@ -72,9 +100,17 @@ export class LoadingController {
   undo(
     @Param('id', ParseIntPipe) id: number,
     @Param('lineId', ParseIntPipe) lineId: number,
+    @Req() req: Request,
+    @Body(new ZodValidationPipe(undoSchema)) body: z.infer<typeof undoSchema>,
     @Query('phase') phase?: string,
   ) {
-    return this.loading.undoScan(id, lineId, phase === 'PULLING' ? 'PULLING' : 'LOADING');
+    return this.loading.undoScan(
+      id,
+      lineId,
+      phase === 'PULLING' ? 'PULLING' : 'LOADING',
+      req.principal,
+      body.reason,
+    );
   }
 
   /** Tutup pulling: barang berpindah dari gudang finish good ke staging. */

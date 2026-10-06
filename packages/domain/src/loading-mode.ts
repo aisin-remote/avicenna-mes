@@ -85,10 +85,16 @@ export function deliveryAttentionReason(row: {
   pickedKanban: number;
   actualKanban: number;
   sapStatus?: string | null;
+  unmappedItems?: number;
+  invalidQtyPerBox?: number;
+  missingSloc?: boolean;
 }): string | null {
   if (row.sapStatus === 'REJECTED') return 'Good Issue ditolak SAP';
   if (row.sapStatus === 'FAILED') return 'Good Issue gagal dikirim';
   if (row.sapStatus === 'HELD') return 'Good Issue tertahan';
+  if ((row.invalidQtyPerBox ?? 0) > 0) return 'Qty per box belum lengkap';
+  if ((row.unmappedItems ?? 0) > 0) return 'Part customer belum termapping';
+  if (row.missingSloc) return 'SLOC pengiriman belum lengkap';
   if (row.pickedKanban > row.plannedKanban) return 'Pulling melebihi rencana';
   if (row.actualKanban > row.pickedKanban) return 'Loading melebihi hasil pulling';
   if (

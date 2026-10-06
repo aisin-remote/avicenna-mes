@@ -29,6 +29,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/seed.ts",
+    "db:seed-delivery-trial": "tsx src/seed-delivery-trial.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",
     "db:check-names": "tsx src/check-names.ts",

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Query } from '@nestjs/common';
 import { StagingDbService } from './staging-db.service';
 import { StagingSchemaService } from './staging-schema.service';
 import { StagingPushService } from './staging-push.service';
@@ -40,7 +40,12 @@ export class StagingController {
     }
     const sambungan = await this.db.cek();
     if (!sambungan.tersambung) {
-      return { sambungan, preflight: null, target: `${GOODS_MOVEMENT.kepala} + ${GOODS_MOVEMENT.baris}`, flag: FLAG };
+      return {
+        sambungan,
+        preflight: null,
+        target: `${GOODS_MOVEMENT.kepala} + ${GOODS_MOVEMENT.baris}`,
+        flag: FLAG,
+      };
     }
     const preflight = await this.skema.preflight(true).catch((err: Error) => ({
       lulus: false,
@@ -49,7 +54,12 @@ export class StagingController {
       indeksUnikIdempotency: false,
       catatan: [err.message],
     }));
-    return { sambungan, preflight, target: `${GOODS_MOVEMENT.kepala} + ${GOODS_MOVEMENT.baris}`, flag: FLAG };
+    return {
+      sambungan,
+      preflight,
+      target: `${GOODS_MOVEMENT.kepala} + ${GOODS_MOVEMENT.baris}`,
+      flag: FLAG,
+    };
   }
 
   /**
@@ -92,5 +102,17 @@ export class StagingController {
   @Post('pull')
   tarik(@Query('uji') uji?: string) {
     return this.pull.tarikSemua(uji !== 'false');
+  }
+
+  /** Menarik delivery untuk hari operasional terpilih. Bawaannya uji coba. */
+  @Post('pull-delivery')
+  tarikPengiriman(@Query('date') date?: string, @Query('uji') uji?: string) {
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new BadRequestException('date harus berformat YYYY-MM-DD');
+    }
+    return this.pull.tarikPengiriman(
+      date ? new Date(`${date}T12:00:00`) : new Date(),
+      uji !== 'false',
+    );
   }
 }

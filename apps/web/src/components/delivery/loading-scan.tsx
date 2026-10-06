@@ -37,6 +37,7 @@ interface LineState {
 interface QueuedScan {
   customerPart: string;
   internalKanban?: string;
+  clientRef: string;
 }
 
 /** Kata-kata yang berbeda antara kedua tahap. Sisanya identik. */
@@ -52,7 +53,7 @@ const KATA = {
     sisa: 'Sisa kanban',
     muatan: 'Muatan',
     selesai:
-      'Semua kanban sudah cocok. Selesaikan pengiriman untuk mengantrekan Good Issue 601 ke SAP.',
+      'Semua kanban sudah cocok. Selesaikan pengiriman di halaman Delivery untuk membuat antrean Good Issue lokal.',
   },
 } as const;
 
@@ -84,6 +85,9 @@ export function LoadingScan({
   const [result, setResult] = useState<LoadingScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [undoLine, setUndoLine] = useState<number | null>(null);
+  const [undoReason, setUndoReason] = useState('');
+  const [undoBusy, setUndoBusy] = useState(false);
   const [pending, setPending] = useState(0);
   const [customerKanban, setCustomerKanban] = useState<string | null>(null);
   const [currentScan, setCurrentScan] = useState<{
@@ -106,9 +110,38 @@ export function LoadingScan({
   }, [prefs.scanSound]);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const undoDialog = useRef<HTMLDialogElement>(null);
   const queue = useRef<QueuedScan[]>([]);
+  const queueKey = `delivery-scan:${doc.id}:${phase}`;
   const draining = useRef(false);
   const sound = useScanSound(soundOn);
+
+  useEffect(() => {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(queueKey) ?? '[]');
+      if (Array.isArray(stored)) {
+        queue.current = stored.filter(
+          (scan): scan is QueuedScan =>
+            typeof scan?.customerPart === 'string' &&
+            typeof scan?.clientRef === 'string' &&
+            (scan.internalKanban === undefined || typeof scan.internalKanban === 'string'),
+        );
+        setPending(queue.current.length);
+      }
+    } catch {
+      setError('Antrean tersimpan tidak terbaca. Periksa progres sebelum scan ulang.');
+    }
+  }, [queueKey]);
+
+  function persistQueue() {
+    setPending(queue.current.length);
+    try {
+      if (queue.current.length) localStorage.setItem(queueKey, JSON.stringify(queue.current));
+      else localStorage.removeItem(queueKey);
+    } catch {
+      setError('Antrean belum tersimpan di perangkat. Jangan tutup halaman sampai terkirim.');
+    }
+  }
 
   const focusInput = useCallback(() => {
     inputRef.current?.focus();
@@ -119,14 +152,19 @@ export function LoadingScan({
     focusInput();
   }, [focusInput]);
 
-  // Fokus dikembalikan SETELAH render selesai. Memanggilnya langsung setelah
-  // setBusy(false) tidak cukup — saat itu komponen belum dirender ulang.
   useEffect(() => {
-    if (!busy) focusInput();
-  }, [busy, focusInput]);
+    if (undoLine === null) undoDialog.current?.close();
+    else if (!undoDialog.current?.open) undoDialog.current?.showModal();
+  }, [undoLine]);
+
+  // Fokus dikembalikan setelah render dan setelah dialog koreksi ditutup.
+  useEffect(() => {
+    if (!busy && undoLine === null) focusInput();
+  }, [busy, undoLine, focusInput]);
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
+      if (undoDialog.current?.open) return;
       const target = e.target as HTMLElement;
       if (target.closest('button') || target.closest('input')) return;
       setTimeout(focusInput, 0);
@@ -167,10 +205,16 @@ export function LoadingScan({
     );
     queue.current.push({
       customerPart: customerKanban ?? value,
+      clientRef:
+        typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+              byte.toString(16).padStart(2, '0'),
+            ).join(''),
       ...(threeWay ? { internalKanban: value } : {}),
     });
     if (threeWay) setCustomerKanban(null);
-    setPending(queue.current.length);
+    persistQueue();
     setCode('');
     void drain();
   }
@@ -181,8 +225,11 @@ export function LoadingScan({
     setBusy(true);
     try {
       while (queue.current.length > 0) {
-        const value = queue.current.shift()!;
-        setPending(queue.current.length);
+        const value = queue.current[0]!;
+        setCurrentScan({
+          customer: displayKanban(value.customerPart),
+          internal: value.internalKanban ? displayKanban(value.internalKanban) : null,
+        });
 
         const res = await scanKanbanAction({
           deliveryId: doc.id,
@@ -191,16 +238,21 @@ export function LoadingScan({
           ...(value.internalKanban ? { internalKanban: value.internalKanban } : {}),
           // Kunci idempoten dari sisi klien: kalau jaringan putus dan
           // permintaan dikirim ulang, kanban yang sama tidak terhitung dua kali.
-          clientRef: crypto.randomUUID(),
+          clientRef: value.clientRef,
         });
 
         if ('error' in res) {
           setError(res.error);
           setResult(null);
           sound.reject();
+          if (res.retryable) break;
+          queue.current.shift();
+          persistQueue();
           continue;
         }
 
+        queue.current.shift();
+        persistQueue();
         setError(null);
         setResult(res);
         if (res.status === 'REJECTED') sound.reject();
@@ -212,6 +264,8 @@ export function LoadingScan({
           );
         }
       }
+    } catch {
+      setError('Koneksi terputus. Scan tetap tersimpan; tekan Kirim ulang saat koneksi kembali.');
     } finally {
       draining.current = false;
       setBusy(false);
@@ -219,16 +273,35 @@ export function LoadingScan({
   }
 
   async function undo(lineId: number) {
-    const res = await undoKanbanAction(doc.id, lineId, phase);
-    focusInput();
-    if ('error' in res) {
-      setError(res.error);
+    if (draining.current || queue.current.length) {
+      setError('Selesaikan antrean scan sebelum melakukan koreksi.');
       return;
     }
+    setUndoReason('');
     setError(null);
-    setLines((prev) =>
-      prev.map((l) => (l.id === lineId ? { ...l, actualKanban: res.actualKanban } : l)),
-    );
+    setUndoLine(lineId);
+  }
+
+  async function submitUndo() {
+    const reason = undoReason.trim();
+    if (undoLine === null || undoBusy || reason.length < 3) return;
+    setUndoBusy(true);
+    try {
+      const res = await undoKanbanAction(doc.id, undoLine, phase, reason);
+      if ('error' in res) {
+        setError(res.error);
+        return;
+      }
+      setError(null);
+      setResult(null);
+      setCurrentScan({ customer: null, internal: null });
+      setLines((prev) =>
+        prev.map((l) => (l.id === undoLine ? { ...l, actualKanban: res.actualKanban } : l)),
+      );
+      setUndoLine(null);
+    } finally {
+      setUndoBusy(false);
+    }
   }
 
   const totalPlanned = lines.reduce((s, l) => s + l.plannedKanban, 0);
@@ -238,6 +311,65 @@ export function LoadingScan({
 
   return (
     <div className="grid gap-3 sm:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <dialog
+        ref={undoDialog}
+        aria-labelledby="undo-title"
+        onCancel={(e) => {
+          e.preventDefault();
+          if (!undoBusy) setUndoLine(null);
+        }}
+        className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-card border border-line bg-card p-5 text-ink shadow-shell backdrop:bg-black/40"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitUndo();
+          }}
+        >
+          <h2 id="undo-title" className="text-[18px] font-bold">
+            Batalkan satu kanban
+          </h2>
+          <p className="mt-1 text-[13px] text-ink-muted">
+            {lines.find((line) => line.id === undoLine)?.partNumber} · Koreksi dicatat dalam audit.
+          </p>
+          <label htmlFor="undo-reason" className="mt-4 block text-[14px] font-semibold">
+            Alasan koreksi
+          </label>
+          <input
+            id="undo-reason"
+            autoFocus
+            required
+            minLength={3}
+            maxLength={255}
+            value={undoReason}
+            onChange={(e) => setUndoReason(e.target.value)}
+            disabled={undoBusy}
+            className="mt-2 h-12 w-full rounded-xl border border-line bg-surface px-3 text-[16px] outline-none focus:border-accent"
+          />
+          {error ? (
+            <p role="alert" className="mt-2 text-[13px] text-ng">
+              {error}
+            </p>
+          ) : null}
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              disabled={undoBusy}
+              onClick={() => setUndoLine(null)}
+              className="h-12 rounded-full border border-line px-5 text-[14px] font-semibold disabled:opacity-50"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={undoBusy || undoReason.trim().length < 3}
+              className="h-12 rounded-full bg-accent px-5 text-[14px] font-semibold text-white disabled:opacity-50"
+            >
+              {undoBusy ? 'Menyimpan…' : 'Simpan koreksi'}
+            </button>
+          </div>
+        </form>
+      </dialog>
       {/* ── Kiri: input dan status ──────────────────────────────────────── */}
       <div className="space-y-3 sm:space-y-6">
         <section className="rounded-card border border-line bg-card p-4 sm:p-6">
@@ -352,6 +484,15 @@ export function LoadingScan({
             {pending > 0 ? (
               <span className="tabular rounded-full border border-line px-3 py-1 text-[13px] font-semibold text-ink-muted">
                 {pending} menunggu dikirim
+                {!busy ? (
+                  <button
+                    type="button"
+                    onClick={() => void drain()}
+                    className="ml-2 font-bold text-accent"
+                  >
+                    Kirim ulang
+                  </button>
+                ) : null}
               </span>
             ) : null}
           </div>

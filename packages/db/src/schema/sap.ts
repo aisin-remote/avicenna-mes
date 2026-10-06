@@ -1,5 +1,6 @@
 import {
   mysqlTable,
+  boolean,
   varchar,
   int,
   mysqlEnum,
@@ -90,6 +91,7 @@ export const sapOutbox = mysqlTable(
     payload: json('CHR_PAYLOAD').notNull(),
 
     status: mysqlEnum('CHR_STATUS', SAP_OUTBOX_STATUSES).notNull().default('PENDING'),
+    isSimulation: boolean('FLG_SIMULATION').notNull().default(false),
     attempts: int('INT_ATTEMPTS').notNull().default(0),
     lastError: varchar('CHR_LAST_ERROR', { length: 1000 }),
     /** Nomor dokumen material yang dikembalikan SAP, bila ada. */

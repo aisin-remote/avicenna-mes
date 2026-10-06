@@ -15,7 +15,6 @@ import {
 
 const CUSTOMER_CODE = 'TRIAL3W';
 const CUSTOMER_PART = 'TRIAL-CUST-001';
-const CARD_SERIALS = ['TRIAL-9001', 'TRIAL-9002'] as const;
 
 function operationalDate(): string {
   const fields = Object.fromEntries(
@@ -40,6 +39,7 @@ async function main() {
   const dateKey = date.replaceAll('-', '');
   const documentNumber = `LL-TRIAL-${dateKey}-01`;
   const manifestNumber = `MNF-TRIAL-${dateKey}`;
+  const cardSerials = [`TRIAL-${dateKey}-01`, `TRIAL-${dateKey}-02`];
 
   const [plant] = await db.select().from(plants).orderBy(plants.id).limit(1);
   if (!plant) throw new Error('Belum ada plant. Jalankan pnpm db:seed lebih dulu.');
@@ -108,7 +108,7 @@ async function main() {
   }
   if (!customerPart) throw new Error('Mapping part customer trial gagal dibuat.');
 
-  for (const serialNumber of CARD_SERIALS) {
+  for (const serialNumber of cardSerials) {
     let [card] = await db
       .select()
       .from(kanbans)
@@ -160,6 +160,13 @@ async function main() {
       documentNumber,
       manifestNumber,
       pdsNumber: `PDS-TRIAL-${dateKey}`,
+      purchaseOrderNumber: `PO-TRIAL-${dateKey}`,
+      salesOrganization: 'J901',
+      distributionChannel: 'C1',
+      division: '01',
+      deliveryType: 'ZMAK',
+      sapGiStatus: 'A',
+      qcStatus: '0',
       deliveryDate: date,
       cycle: 1,
       dock: 'TRIAL',
@@ -175,11 +182,6 @@ async function main() {
       .from(deliveries)
       .where(and(eq(deliveries.plantId, plant.id), eq(deliveries.documentNumber, documentNumber)))
       .limit(1);
-  } else if (!['SHIPPED', 'RECEIVED'].includes(delivery.status)) {
-    await db
-      .update(deliveries)
-      .set({ status: 'PICKED', truckStatus: 'ARRIVED', departedAt: null })
-      .where(eq(deliveries.id, delivery.id));
   }
   if (!delivery) throw new Error('Loading list trial gagal dibuat.');
   if (delivery.status === 'SHIPPED' || delivery.status === 'RECEIVED') {
@@ -193,6 +195,9 @@ async function main() {
     .limit(1);
   const lineValues = {
     customerPartId: customerPart.id,
+    sapItemNumber: '000010',
+    sapDeliveryQty: 40,
+    itemType: 'ZMAK',
     plannedKanban: 2,
     plannedQty: 40,
     qtyPerKanban: 20,
@@ -201,9 +206,7 @@ async function main() {
     actualKanban: 0,
     actualQty: 0,
   };
-  if (line) {
-    await db.update(deliveryLines).set(lineValues).where(eq(deliveryLines.id, line.id));
-  } else {
+  if (!line) {
     await db.insert(deliveryLines).values({
       deliveryId: delivery.id,
       partId: part.id,
@@ -230,7 +233,7 @@ async function main() {
   }
 
   console.log(`[trial] manifest/loading list: ${manifestNumber} / ${documentNumber}`);
-  CARD_SERIALS.forEach((serial, index) => {
+  cardSerials.forEach((serial, index) => {
     console.log(
       `[trial] box ${index + 1}: customer=${CUSTOMER_CODE}~${CUSTOMER_PART}~${documentNumber}~${index + 1}`,
     );

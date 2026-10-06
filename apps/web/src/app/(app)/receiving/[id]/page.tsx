@@ -1,7 +1,11 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Package, Pencil } from 'lucide-react';
-import { getReceipt } from '@/lib/receiving-api';
+import { getReceipt, getReceivingSession } from '@/lib/receiving-api';
+import { getSessionUser } from '@/lib/session';
+import { ReceivingSummary } from '@/components/receiving/session-summary';
+import { ApiRequestError } from '@/lib/api';
+import { unstable_rethrow } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Table, Th, Td, Tr } from '@/components/ui/table';
@@ -10,11 +14,7 @@ import { Reveal } from '@/components/motion/reveal';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ReceiptDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const numericId = Number(id);
   if (!Number.isInteger(numericId)) notFound();
@@ -22,8 +22,21 @@ export default async function ReceiptDetailPage({
   let receipt;
   try {
     receipt = await getReceipt(numericId);
-  } catch {
-    notFound();
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiRequestError && error.status === 404) notFound();
+    throw error;
+  }
+
+  if (receipt.aresOrderId) {
+    const [session, user] = await Promise.all([getReceivingSession(numericId), getSessionUser()]);
+    return (
+      <ReceivingSummary
+        session={session}
+        canScan={user?.roleKind === 'ADMIN' || user?.roleKind === 'SCANNING'}
+        admin={user?.roleKind === 'ADMIN'}
+      />
+    );
   }
 
   return (

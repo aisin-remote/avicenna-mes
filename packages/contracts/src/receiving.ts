@@ -79,4 +79,9 @@ export interface ReceiptSummary {
   status: string;
   lineCount: number;
   totalQty: string | number;
+  aresOrderNumber: string | null;
+  revision: number | null;
+  boxOrdered: number | null;
+  boxScanned: number;
+  closedAt: string | Date | null;
 }

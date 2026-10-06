@@ -77,6 +77,7 @@ export default async function DeliveryMutationPage({ searchParams }: PageProps) 
               <tr>
                 <Th>Loading List</Th>
                 <Th>Manifest / PDS</Th>
+                <Th>PO / Type</Th>
                 <Th>Customer</Th>
                 <Th>Tanggal</Th>
                 <Th align="right">Rit</Th>
@@ -88,7 +89,7 @@ export default async function DeliveryMutationPage({ searchParams }: PageProps) 
             </thead>
             <tbody>
               {data.length === 0 ? (
-                <EmptyState colSpan={9}>
+                <EmptyState colSpan={10}>
                   Tidak ada loading list yang cocok dengan filter ini.
                 </EmptyState>
               ) : (
@@ -106,6 +107,13 @@ export default async function DeliveryMutationPage({ searchParams }: PageProps) 
                       <span className="block">{row.manifestNumber ?? '—'}</span>
                       <span className="block text-[12px] text-ink-muted">
                         PDS {row.pdsNumber ?? '—'}
+                      </span>
+                    </Td>
+                    <Td className="tabular whitespace-nowrap">
+                      <span className="block">{row.purchaseOrderNumber ?? '—'}</span>
+                      <span className="block text-[12px] text-ink-muted">
+                        {row.deliveryType ?? 'type —'}
+                        {row.sapGiStatus ? ` · GI ${row.sapGiStatus}` : ''}
                       </span>
                     </Td>
                     <Td>{row.customerName ?? '—'}</Td>

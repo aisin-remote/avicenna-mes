@@ -107,4 +107,16 @@ describe('perlu tindakan delivery', () => {
       'Good Issue ditolak SAP',
     );
   });
+
+  it('menandai data master yang belum siap sebelum operasi dimulai', () => {
+    expect(deliveryAttentionReason({ ...normal, invalidQtyPerBox: 1 })).toBe(
+      'Qty per box belum lengkap',
+    );
+    expect(deliveryAttentionReason({ ...normal, unmappedItems: 2 })).toBe(
+      'Part customer belum termapping',
+    );
+    expect(deliveryAttentionReason({ ...normal, missingSloc: true })).toBe(
+      'SLOC pengiriman belum lengkap',
+    );
+  });
 });

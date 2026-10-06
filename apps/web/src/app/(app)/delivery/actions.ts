@@ -35,22 +35,53 @@ export async function resolveDeliveryDocumentAction(
   }
 }
 
+export interface DeliveryReturnResult {
+  id: number;
+  documentNumber: string;
+  customerName: string | null;
+  deliveryDate: string;
+  status: 'RECEIVED';
+  receivedAt: string | Date | null;
+  alreadyReceived: boolean;
+}
+
+export async function receiveReturnedDeliveryAction(
+  code: string,
+): Promise<DeliveryReturnResult | { error: string }> {
+  try {
+    const result = await apiFetch<DeliveryReturnResult>('/loading/receive', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+    revalidatePath('/delivery');
+    revalidatePath('/trace');
+    revalidatePath(`/delivery/${result.id}`);
+    return result;
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+}
+
 /** Scan satu kanban — saat pulling maupun saat muat. */
 export async function scanKanbanAction(input: {
   deliveryId: number;
   phase: LoadingPhase;
   customerPart: string;
   internalPart?: string;
+  internalKanban?: string;
   serialNumber?: string;
   clientRef?: string;
-}): Promise<LoadingScanResult | { error: string }> {
+}): Promise<LoadingScanResult | { error: string; retryable: boolean }> {
   try {
     return await apiFetch<LoadingScanResult>('/loading/scan', {
       method: 'POST',
       body: JSON.stringify(input),
     });
   } catch (err) {
-    return { error: toMessage(err) };
+    return {
+      error: toMessage(err),
+      retryable: !(err instanceof ApiRequestError) || err.status >= 500,
+    };
   }
 }
 
@@ -64,11 +95,12 @@ export async function undoKanbanAction(
   deliveryId: number,
   lineId: number,
   phase: LoadingPhase,
+  reason: string,
 ): Promise<UndoResult | { error: string }> {
   try {
     return await apiFetch<UndoResult>(
       `/loading/${deliveryId}/lines/${lineId}/undo?phase=${phase}`,
-      { method: 'POST' },
+      { method: 'POST', body: JSON.stringify({ reason }) },
     );
   } catch (err) {
     return { error: toMessage(err) };

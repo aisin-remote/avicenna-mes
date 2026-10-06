@@ -14,7 +14,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { deliveryAttentionReason } from '@avicenna/domain';
-import { getLoading } from '@/lib/loading-api';
+import { getLoading, getLoadingHistory } from '@/lib/loading-api';
+import { DeliveryHistory } from '@/components/delivery/delivery-history';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Table, Th, Td, Tr } from '@/components/ui/table';
@@ -46,12 +47,19 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
   const totalPlanned = doc.lines.reduce((s, l) => s + l.plannedKanban, 0);
   const totalPicked = doc.lines.reduce((s, l) => s + l.pickedKanban, 0);
   const totalActual = doc.lines.reduce((s, l) => s + l.actualKanban, 0);
+  const history = await getLoadingHistory(numericId);
+  const unmappedItems = doc.lines.filter((line) => !line.customerPartId).length;
+  const invalidQtyPerBox = doc.lines.filter((line) => line.qtyPerKanban <= 0).length;
+  const missingSloc = !doc.locationId || !doc.stagingLocationId;
   const attentionReason = deliveryAttentionReason({
     status: doc.status,
     plannedKanban: totalPlanned,
     pickedKanban: totalPicked,
     actualKanban: totalActual,
     sapStatus: doc.sapStatus,
+    unmappedItems,
+    invalidQtyPerBox,
+    missingSloc,
   });
   const open = doc.status !== 'SHIPPED' && doc.status !== 'RECEIVED' && doc.status !== 'CANCELLED';
   // Tahap yang sedang berjalan menentukan tombol mana yang ditawarkan — dua
@@ -99,7 +107,8 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
                   </p>
                   {doc.sapStatus ? (
                     <p className="tabular mt-2 text-[12px] text-ink-muted">
-                      Status SAP: <strong>{doc.sapStatus}</strong>
+                      {doc.sapIsSimulation ? 'Status GI trial' : 'Status SAP'}:{' '}
+                      <strong>{doc.sapStatus}</strong>
                       {doc.sapDocNumber ? ` · dokumen ${doc.sapDocNumber}` : ''}
                     </p>
                   ) : null}
@@ -122,7 +131,7 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
             <CardHeader
               icon={Printer}
               title="Dokumen PPIC"
-              subtitle="Buka dokumen secara terpisah agar setiap print job bisa memakai printer berbeda."
+              subtitle="Preview internal; buka terpisah agar setiap print job bisa memakai printer berbeda."
             />
             <div className="grid gap-3 border-t border-line px-6 py-5 md:grid-cols-3">
               {[
@@ -188,6 +197,37 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
               <InfoRow icon={FileText} label="Nomor manifest">
                 {doc.manifestNumber ?? '—'}
               </InfoRow>
+              <InfoRow icon={FileText} label="Customer PO">
+                {doc.purchaseOrderNumber ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Delivery type">
+                {doc.deliveryType ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Sales area">
+                {[doc.salesOrganization, doc.distributionChannel, doc.division]
+                  .filter(Boolean)
+                  .join(' / ') || '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Status GI sumber SAP">
+                {doc.sapGiStatus ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Good Issue (MES)">
+                {doc.sapIsSimulation
+                  ? `TRIAL · ${doc.sapStatus}`
+                  : (doc.sapStatus ?? 'belum diantrekan')}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Referensi GI">
+                {doc.sapDocNumber ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Invoice / billing SAP">
+                {doc.invoiceNumber ?? '—'}
+              </InfoRow>
+              <InfoRow icon={Calendar} label="Tanggal aktual SAP">
+                {doc.sapActualDeliveryDate ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Status penerimaan SAP">
+                {doc.sapReceiveStatus ?? '—'}
+              </InfoRow>
               <InfoRow icon={MapPin} label="Dock">
                 {doc.dock ?? '—'}
               </InfoRow>
@@ -206,7 +246,23 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
               <InfoRow icon={Truck} label="Berangkat">
                 {doc.departedAt ? new Date(doc.departedAt).toLocaleString('id-ID') : 'belum'}
               </InfoRow>
+              <InfoRow icon={Calendar} label="Diterima customer (MES)">
+                {doc.arrivedAt ? new Date(doc.arrivedAt).toLocaleString('id-ID') : 'belum'}
+              </InfoRow>
+              <InfoRow icon={Calendar} label="Penerimaan sumber SAP">
+                {[doc.sapReceiveDate, doc.sapReceiveTime].filter(Boolean).join(' ') || '—'}
+              </InfoRow>
             </InfoRowPair>
+            <details className="border-t border-line px-6 py-4 text-[13px]">
+              <summary className="cursor-pointer font-semibold">Flag sumber SAP</summary>
+              <p className="mt-2 text-ink-muted">
+                QC: {doc.qcStatus ?? '—'} · Movement header: {doc.sapHeaderMovementStatus ?? '—'} ·
+                Movement item: {doc.sapLineMovementStatus ?? '—'}
+              </p>
+              <p className="mt-1 text-[12px] text-ink-muted">
+                Nilai sumber disimpan apa adanya; tidak mengubah status operasional MES.
+              </p>
+            </details>
           </Card>
         </Reveal>
 
@@ -238,6 +294,13 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
                       <Td strong>
                         {l.partNumber}
                         <div className="text-[13px] font-normal text-ink-muted">{l.partName}</div>
+                        <div className="tabular mt-0.5 text-[11px] font-normal text-ink-muted">
+                          Item SAP {l.sapItemNumber ?? '—'}
+                          {l.itemType ? ` · ${l.itemType}` : ''}
+                          {l.sapDeliveryQty > 0
+                            ? ` · qty sumber ${l.sapDeliveryQty.toLocaleString('id-ID')}`
+                            : ''}
+                        </div>
                       </Td>
                       <Td className="tabular">{l.customerPartNumber ?? '—'}</Td>
                       <Td align="right" className="tabular">
@@ -280,6 +343,9 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
             totalPicked={totalPicked}
             totalActual={totalActual}
           />
+        </Reveal>
+        <Reveal>
+          <DeliveryHistory history={history} />
         </Reveal>
       </div>
     </>

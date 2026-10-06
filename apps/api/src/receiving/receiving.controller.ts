@@ -15,13 +15,63 @@ import {
   receiptUpdateSchema,
   type ReceiptCreateInput,
   type ReceiptUpdateInput,
+  receivingOpenSchema,
+  receivingScanSchema,
+  receivingCloseSchema,
+  receivingCancelSchema,
 } from '@avicenna/contracts';
 import { ReceivingService } from './receiving.service';
+import { ReceivingSessionService } from './receiving-session.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { AdminOnly } from '../auth/admin.guard';
 
 @Controller('receiving')
 export class ReceivingController {
-  constructor(private readonly receiving: ReceivingService) {}
+  constructor(
+    private readonly receiving: ReceivingService,
+    private readonly sessions: ReceivingSessionService,
+  ) {}
+
+  @Post('open')
+  open(
+    @Body(new ZodValidationPipe(receivingOpenSchema)) body: { code: string; locationId: number },
+    @Req() req: Request,
+  ) {
+    return this.sessions.open(body, req.principal);
+  }
+
+  @Get(':id/session')
+  session(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+    return this.sessions.get(id, req.principal);
+  }
+
+  @Post(':id/scan')
+  scan(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ZodValidationPipe(receivingScanSchema)) body: { code: string; clientRef: string },
+    @Req() req: Request,
+  ) {
+    return this.sessions.scan(id, body, req.principal);
+  }
+
+  @Post(':id/close')
+  close(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ZodValidationPipe(receivingCloseSchema)) body: { reason?: string },
+    @Req() req: Request,
+  ) {
+    return this.sessions.close(id, body.reason, req.principal);
+  }
+
+  @Post(':id/cancel')
+  @AdminOnly()
+  cancel(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ZodValidationPipe(receivingCancelSchema)) body: { reason: string },
+    @Req() req: Request,
+  ) {
+    return this.sessions.cancel(id, body.reason, req.principal);
+  }
 
   /** Mencari part dari barcode yang discan di meja penerimaan. */
   @Get('resolve')
@@ -37,16 +87,28 @@ export class ReceivingController {
   }
 
   @Get()
-  list(@Query('page') page?: string, @Query('perPage') perPage?: string) {
+  list(
+    @Req() req: Request,
+    @Query('page') page?: string,
+    @Query('perPage') perPage?: string,
+    @Query('status') status?: string,
+  ) {
     return this.receiving.list({
       page: Math.max(1, Number(page) || 1),
       perPage: Math.min(100, Math.max(1, Number(perPage) || 25)),
+      status,
+      plantId:
+        req.principal?.kind === 'user' && req.principal.roleKind === 'ADMIN'
+          ? undefined
+          : (req.principal?.plantId ?? -1),
     });
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.receiving.findOne(id);
+  async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+    const receipt = await this.receiving.findOne(id);
+    if (receipt.aresOrderId) await this.sessions.get(id, req.principal);
+    return receipt;
   }
 
   /*

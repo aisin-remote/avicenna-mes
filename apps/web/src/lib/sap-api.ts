@@ -12,6 +12,8 @@ export interface SapSummary {
   skipped: number;
   /** Apakah pendorongan ke database jembatan sudah dinyalakan. */
   pengirimanAktif: boolean;
+  /** Trial manual hanya tersedia ketika push staging nyata mati. */
+  simulasiAktif: boolean;
 }
 
 export interface StagingStatus {
@@ -43,6 +45,7 @@ export interface SapOutboxRow {
   sourceTable: string;
   sourceId: number;
   status: string;
+  isSimulation: boolean;
   attempts: number;
   lastError: string | null;
   sapDocNumber: string | null;

@@ -70,6 +70,10 @@ export default async function LabelDnPage({ params }: { params: Promise<{ id: st
         }
       `}</style>
 
+      <p className="mb-3 border border-dashed border-black px-3 py-2 text-center text-[10px] font-bold uppercase tracking-[0.18em]">
+        Preview internal · format kanban menunggu validasi customer / SAP
+      </p>
+
       <header className="tanpa-cetak mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[22px] font-bold tracking-tight">Kanban · {doc.documentNumber}</h1>

@@ -4,6 +4,7 @@ import { eq, and, or, desc, count, inArray, like, sql, type Database } from '@av
 import {
   deliveries,
   deliveryLines,
+  deliverySyncs,
   customers,
   customerParts,
   parts,
@@ -15,6 +16,7 @@ import {
   mutations,
   scanEvents,
   sapOutbox,
+  users,
 } from '@avicenna/db';
 import {
   convertCustomerPartNumber,
@@ -76,6 +78,85 @@ export class LoadingService {
     return { code, matches };
   }
 
+  /** Menandai surat jalan yang kembali setelah barang diterima customer. */
+  async receiveReturnedDocument(rawCode: string, principal?: Principal) {
+    const code = rawCode.trim();
+    if (!code) throw new BadRequestException('Scan nomor surat jalan lebih dulu');
+    if (code.length > 128) throw new BadRequestException('Barcode surat jalan terlalu panjang');
+
+    const rows = await this.db
+      .select({
+        id: deliveries.id,
+        plantId: deliveries.plantId,
+        documentNumber: deliveries.documentNumber,
+        customerName: customers.name,
+        deliveryDate: deliveries.deliveryDate,
+        status: deliveries.status,
+        arrivedAt: deliveries.arrivedAt,
+      })
+      .from(deliveries)
+      .leftJoin(customers, eq(deliveries.customerId, customers.id))
+      .leftJoin(
+        sapOutbox,
+        and(
+          eq(sapOutbox.sourceTable, 'TT_DELIVERY'),
+          eq(sapOutbox.sourceId, deliveries.id),
+          eq(sapOutbox.docType, 'DELIVERY'),
+        ),
+      )
+      .where(or(eq(deliveries.documentNumber, code), eq(sapOutbox.sapDocNumber, code)))
+      .orderBy(desc(deliveries.deliveryDate), desc(deliveries.id))
+      .limit(1);
+
+    const doc = rows[0];
+    if (!doc) throw new NotFoundException(`Surat jalan "${code}" tidak ditemukan`);
+    if (doc.status === 'RECEIVED') {
+      return { ...doc, receivedAt: doc.arrivedAt, alreadyReceived: true };
+    }
+    if (doc.status !== 'SHIPPED') {
+      throw new BadRequestException(
+        'Surat jalan ini belum berstatus berangkat, jadi belum bisa ditandai diterima customer.',
+      );
+    }
+
+    const receivedAt = new Date();
+    try {
+      await this.db.transaction(async (tx) => {
+        await tx
+          .update(deliveries)
+          .set({ status: 'RECEIVED', arrivedAt: receivedAt })
+          .where(and(eq(deliveries.id, doc.id), eq(deliveries.status, 'SHIPPED')));
+        await tx.insert(scanEvents).values({
+          plantId: doc.plantId,
+          kind: 'DELIVERY',
+          rawCode: code,
+          qty: 0,
+          userId: principal?.kind === 'user' ? principal.sub : null,
+          scannedAt: receivedAt,
+          dedupeKey: `delivery-return:${doc.id}`,
+          meta: { deliveryId: doc.id, action: 'RECEIVE_RETURN' },
+        });
+      });
+    } catch (err) {
+      const e = err as { errno?: number; cause?: { errno?: number } };
+      if ((e?.errno ?? e?.cause?.errno) !== MYSQL_DUP_ENTRY) throw err;
+      const [current] = await this.db
+        .select({ arrivedAt: deliveries.arrivedAt })
+        .from(deliveries)
+        .where(eq(deliveries.id, doc.id))
+        .limit(1);
+      return {
+        ...doc,
+        status: 'RECEIVED' as const,
+        receivedAt: current?.arrivedAt ?? receivedAt,
+        alreadyReceived: true,
+      };
+    }
+
+    this.logger.log(`surat jalan ${doc.documentNumber} kembali dari customer`);
+    return { ...doc, status: 'RECEIVED' as const, receivedAt, alreadyReceived: false };
+  }
+
   /**
    * Satu kanban discan saat muat barang.
    *
@@ -88,6 +169,41 @@ export class LoadingService {
    * berbeda dari isi truk yang sebenarnya.
    */
   async scan(input: LoadingScanInput, principal?: Principal): Promise<LoadingScanResult> {
+    if (input.clientRef) {
+      const [event] = await this.db
+        .select({ meta: scanEvents.meta })
+        .from(scanEvents)
+        .where(
+          eq(scanEvents.dedupeKey, `load:${input.deliveryId}:${input.phase}:${input.clientRef}`),
+        )
+        .limit(1);
+      if (event) {
+        const meta = event.meta as { deliveryLineId: number; converted: string };
+        const [line] = await this.db
+          .select({ line: deliveryLines, partNumber: parts.partNumber })
+          .from(deliveryLines)
+          .leftJoin(parts, eq(parts.id, deliveryLines.partId))
+          .where(eq(deliveryLines.id, meta.deliveryLineId))
+          .limit(1);
+        if (line) {
+          const actual =
+            input.phase === 'PULLING' ? line.line.pickedKanban : line.line.actualKanban;
+          const target =
+            input.phase === 'PULLING' ? line.line.plannedKanban : line.line.pickedKanban;
+          return {
+            status: actual > target ? 'OVER' : 'ACCEPTED',
+            phase: input.phase,
+            message: `Sudah tercatat sebelumnya — tetap ${actual} dari ${target} kanban.`,
+            lineId: line.line.id,
+            partNumber: line.partNumber,
+            convertedPartNumber: meta.converted,
+            actualKanban: actual,
+            plannedKanban: target,
+            totals: await this.totals(input.deliveryId),
+          };
+        }
+      }
+    }
     const docRows = await this.db
       .select({
         id: deliveries.id,
@@ -199,7 +315,9 @@ export class LoadingService {
         pickedKanban: deliveryLines.pickedKanban,
         actualKanban: deliveryLines.actualKanban,
         qtyPerKanban: deliveryLines.qtyPerKanban,
-        customerPartNumber: customerParts.customerPartNumber,
+        customerPartNumber: sql<
+          string | null
+        >`COALESCE(${deliveryLines.customerPartNumberSource}, ${customerParts.customerPartNumber})`,
       })
       .from(deliveryLines)
       .leftJoin(parts, eq(deliveryLines.partId, parts.id))
@@ -208,10 +326,20 @@ export class LoadingService {
 
     // Cocokkan lewat penomoran customer dulu, lalu part internal — sebagian
     // barcode hanya memuat salah satunya.
-    const match =
-      candidates.find((c) => c.customerPartNumber === converted) ??
-      candidates.find((c) => c.partNumber === converted) ??
-      candidates.find((c) => c.customerPartNumber === customerPart) ??
+    const chooseLine = (predicate: (line: (typeof candidates)[number]) => boolean) => {
+      const matching = candidates.filter(predicate);
+      return (
+        matching.find((line) =>
+          phase === 'PULLING'
+            ? line.pickedKanban < line.plannedKanban
+            : line.actualKanban < line.pickedKanban,
+        ) ?? matching[0]
+      );
+    };
+    const foundMatch =
+      chooseLine((c) => c.customerPartNumber === converted) ??
+      chooseLine((c) => c.partNumber === converted) ??
+      chooseLine((c) => c.customerPartNumber === customerPart) ??
       /*
        * Nomor part internal APA ADANYA, tanpa konversi.
        *
@@ -223,24 +351,21 @@ export class LoadingService {
        * Ditaruh paling belakang: hanya dipakai bila seluruh pencocokan yang
        * lebih khas sudah gagal, jadi tidak bisa menyerobot padanan yang benar.
        */
-      candidates.find((c) => c.partNumber === customerPart) ??
-      (input.internalPart
-        ? candidates.find((c) => c.partNumber === input.internalPart)
-        : undefined);
+      chooseLine((c) => c.partNumber === customerPart);
 
-    if (!match) {
-      return {
-        status: 'REJECTED',
+    if (!foundMatch) {
+      return this.tolakScan(
+        input.deliveryId,
         phase,
-        message: `Part "${converted}" tidak ada dalam loading list ini. Periksa barcode atau dokumennya.`,
-        lineId: null,
-        partNumber: null,
-        convertedPartNumber: converted,
-        actualKanban: 0,
-        plannedKanban: 0,
-        totals: await this.totals(input.deliveryId),
-      };
+        converted,
+        `Part "${converted}" tidak ada dalam loading list ini. Periksa barcode atau dokumennya.`,
+        input,
+        principal,
+      );
     }
+    let match = foundMatch;
+    if (match.qtyPerKanban <= 0)
+      throw new BadRequestException('Qty per box belum lengkap. Lengkapi master sebelum scan.');
 
     /*
      * ── Pencocokan arah ketiga: kanban internal ───────────────────────────
@@ -253,6 +378,7 @@ export class LoadingService {
      * tetap lolos selama label customer-nya benar — dan barang yang keliru
      * berangkat dengan dokumen yang terlihat rapi.
      */
+    let internalSerial: string | undefined;
     if (phase === 'LOADING' && perluKanbanInternal(mode) && input.internalKanban) {
       let kb;
       try {
@@ -264,10 +390,13 @@ export class LoadingService {
             phase,
             converted,
             'Barcode kanban internal tidak terbaca. Scan ulang kartunya.',
+            input,
+            principal,
           );
         }
         throw err;
       }
+      internalSerial = kb.serialNumber;
       const kartuDenganSeriSama = await this.db
         .select({ id: kanbans.id, partId: kanbans.partId })
         .from(kanbans)
@@ -280,6 +409,8 @@ export class LoadingService {
           phase,
           converted,
           `Kartu kanban internal seri ${kb.serialNumber} tidak terdaftar. Laporkan ke leader.`,
+          input,
+          principal,
         );
       }
 
@@ -289,6 +420,8 @@ export class LoadingService {
           phase,
           converted,
           `Kanban internal ini milik part lain, bukan ${match.partNumber}. Periksa boxnya.`,
+          input,
+          principal,
         );
       }
 
@@ -307,9 +440,13 @@ export class LoadingService {
           phase,
           converted,
           `Kartu kanban seri ${kb.serialNumber} kosong — isinya belum pernah discan di lini finish good.`,
+          input,
+          principal,
         );
       }
     }
+
+    const scanSerial = internalSerial ?? customerSerial;
 
     /*
      * Tiap tahap menghitung kolomnya sendiri dan punya sasaran sendiri.
@@ -320,11 +457,94 @@ export class LoadingService {
      */
     const kolom = phase === 'PULLING' ? deliveryLines.pickedKanban : deliveryLines.actualKanban;
     const kolomQty = phase === 'PULLING' ? deliveryLines.pickedQty : deliveryLines.actualQty;
-    const sasaran = phase === 'PULLING' ? match.plannedKanban : match.pickedKanban;
+    let sasaran = phase === 'PULLING' ? match.plannedKanban : match.pickedKanban;
 
     let duplicate = false;
     const nextActual = await this.db
       .transaction(async (tx) => {
+        const [currentDoc] = await tx
+          .select({ status: deliveries.status })
+          .from(deliveries)
+          .where(eq(deliveries.id, input.deliveryId))
+          .for('update');
+        if (
+          !currentDoc ||
+          !(['DRAFT', 'PICKING', 'PICKED', 'LOADING'] as string[]).includes(currentDoc.status) ||
+          (phase === 'PULLING'
+            ? !['DRAFT', 'PICKING'].includes(currentDoc.status)
+            : !['PICKED', 'LOADING'].includes(currentDoc.status))
+        ) {
+          throw new BadRequestException(
+            'Tahap dokumen sudah berubah. Muat ulang halaman sebelum scan.',
+          );
+        }
+        const availableLines = await tx
+          .select()
+          .from(deliveryLines)
+          .where(
+            inArray(
+              deliveryLines.id,
+              candidates
+                .filter(
+                  (line) =>
+                    line.partId === match!.partId &&
+                    line.customerPartNumber === match!.customerPartNumber,
+                )
+                .map((line) => line.lineId),
+            ),
+          )
+          .orderBy(deliveryLines.id);
+        const available =
+          availableLines.find((line) =>
+            phase === 'PULLING'
+              ? line.pickedKanban < line.plannedKanban
+              : line.actualKanban < line.pickedKanban,
+          ) ?? availableLines[0];
+        if (available) match = { ...match!, lineId: available.id, ...available };
+        sasaran = phase === 'PULLING' ? match!.plannedKanban : match!.pickedKanban;
+        if (scanSerial) {
+          // ponytail: scan berseri diserialkan per part; tabel reservasi terpisah
+          // diperlukan hanya bila satu part diproses banyak scanner sekaligus.
+          await tx.execute(
+            sql`SELECT ${parts.id} FROM ${parts} WHERE ${parts.id} = ${match.partId} FOR UPDATE`,
+          );
+          const riwayat = await tx
+            .select({ meta: scanEvents.meta, dedupeKey: scanEvents.dedupeKey })
+            .from(scanEvents)
+            .innerJoin(
+              deliveries,
+              sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.deliveryId')) = ${deliveries.id}`,
+            )
+            .where(
+              and(
+                eq(scanEvents.kind, 'DELIVERY'),
+                eq(scanEvents.partId, match.partId),
+                or(
+                  eq(scanEvents.serialNumber, scanSerial),
+                  customerSerial
+                    ? sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.customerSerial')) = ${customerSerial}`
+                    : undefined,
+                  internalSerial
+                    ? sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.internalSerial')) = ${internalSerial}`
+                    : undefined,
+                ),
+                sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.phase')) = ${phase}`,
+                sql`${deliveries.status} NOT IN ('SHIPPED', 'RECEIVED', 'CANCELLED')`,
+              ),
+            );
+          const sameRequest =
+            input.clientRef &&
+            riwayat.some(
+              (event) => event.dedupeKey === `load:${input.deliveryId}:${phase}:${input.clientRef}`,
+            );
+          const saldoScan = riwayat.reduce((total, event) => {
+            const meta = event.meta as { action?: string } | null;
+            return total + (meta?.action === 'UNDO' ? -1 : meta?.action === 'REJECTED' ? 0 : 1);
+          }, 0);
+          if (saldoScan > 0 && !sameRequest) {
+            throw new BadRequestException(`Kanban seri ${scanSerial} sudah discan pada tahap ini.`);
+          }
+        }
         /*
          * Penambahan dilakukan di dalam SQL, bukan dengan membaca lalu menulis
          * kembali dari sisi aplikasi.
@@ -362,7 +582,7 @@ export class LoadingService {
           kind: 'DELIVERY',
           partId: match.partId,
           rawCode: input.customerPart,
-          serialNumber: customerSerial || null,
+          serialNumber: scanSerial || null,
           qty: match.qtyPerKanban,
           userId: principal?.kind === 'user' ? principal.sub : null,
           scannedAt: new Date(),
@@ -377,6 +597,8 @@ export class LoadingService {
             deliveryLineId: match.lineId,
             phase,
             converted,
+            customerSerial: customerSerial ?? null,
+            internalSerial: internalSerial ?? null,
           },
         });
 
@@ -410,9 +632,23 @@ export class LoadingService {
          * saat itulah muncul hitungan ganda yang sesungguhnya.
          */
         const e = err as { errno?: number; cause?: { errno?: number } };
-        if ((e?.errno ?? e?.cause?.errno) !== MYSQL_DUP_ENTRY) throw err;
+        if ((e?.errno ?? e?.cause?.errno) !== MYSQL_DUP_ENTRY) {
+          if (err instanceof BadRequestException)
+            await this.recordRejected(input, err.message, principal);
+          throw err;
+        }
 
         duplicate = true;
+        if (input.clientRef) {
+          const [event] = await this.db
+            .select({ meta: scanEvents.meta })
+            .from(scanEvents)
+            .where(eq(scanEvents.dedupeKey, `load:${input.deliveryId}:${phase}:${input.clientRef}`))
+            .limit(1);
+          const originalId = (event?.meta as { deliveryLineId?: number } | null)?.deliveryLineId;
+          const original = candidates.find((line) => line.lineId === originalId);
+          if (original) match = original;
+        }
         const rows = await this.db
           .select({ value: kolom })
           .from(deliveryLines)
@@ -420,6 +656,12 @@ export class LoadingService {
           .limit(1);
         return rows[0]?.value ?? (phase === 'PULLING' ? match.pickedKanban : match.actualKanban);
       });
+    const [latestLine] = await this.db
+      .select()
+      .from(deliveryLines)
+      .where(eq(deliveryLines.id, match.lineId));
+    if (latestLine)
+      sasaran = phase === 'PULLING' ? latestLine.plannedKanban : latestLine.pickedKanban;
 
     const over = nextActual > sasaran;
     const lebihDari = phase === 'PULLING' ? 'rencana' : 'yang diambil dari gudang';
@@ -448,7 +690,10 @@ export class LoadingService {
     phase: LoadingPhase,
     converted: string,
     message: string,
+    input?: LoadingScanInput,
+    principal?: Principal,
   ): Promise<LoadingScanResult> {
+    if (input) await this.recordRejected(input, message, principal);
     return {
       status: 'REJECTED',
       phase,
@@ -462,43 +707,137 @@ export class LoadingService {
     };
   }
 
-  async undoScan(deliveryId: number, lineId: number, phase: LoadingPhase = 'LOADING') {
-    const rows = await this.db
-      .select()
-      .from(deliveryLines)
-      .where(and(eq(deliveryLines.id, lineId), eq(deliveryLines.deliveryId, deliveryId)))
-      .limit(1);
-    const line = rows[0];
-    if (!line) throw new NotFoundException('Baris loading list tidak ditemukan');
+  private async recordRejected(input: LoadingScanInput, message: string, principal?: Principal) {
+    const [doc] = await this.db
+      .select({ plantId: deliveries.plantId })
+      .from(deliveries)
+      .where(eq(deliveries.id, input.deliveryId));
+    if (!doc) return;
+    await this.db.insert(scanEvents).values({
+      plantId: doc.plantId,
+      kind: 'DELIVERY',
+      qty: 0,
+      rawCode: input.customerPart,
+      userId: principal?.kind === 'user' ? principal.sub : null,
+      scannedAt: new Date(),
+      dedupeKey: `load-rejected:${randomUUID()}`,
+      meta: {
+        deliveryId: input.deliveryId,
+        phase: input.phase,
+        action: 'REJECTED',
+        reason: message,
+        internalKanban: input.internalKanban ?? null,
+      },
+    });
+  }
 
-    const sekarang = phase === 'PULLING' ? line.pickedKanban : line.actualKanban;
-    if (sekarang <= 0) {
-      throw new BadRequestException('Belum ada kanban yang discan pada baris ini');
-    }
-
-    /*
-     * Membatalkan pengambilan yang barangnya sudah terlanjur dimuat akan
-     * membuat jumlah muat melebihi jumlah ambil — keadaan yang mustahil di
-     * lapangan dan membuat saldo staging minus.
-     */
-    if (phase === 'PULLING' && sekarang - 1 < line.actualKanban) {
-      throw new BadRequestException(
-        `Tidak bisa dikurangi: ${line.actualKanban} kanban sudah dimuat ke truk. Batalkan muatnya lebih dulu.`,
-      );
-    }
-
-    const next = sekarang - 1;
-    await this.db
-      .update(deliveryLines)
-      .set(
+  async undoScan(
+    deliveryId: number,
+    lineId: number,
+    phase: LoadingPhase = 'LOADING',
+    principal?: Principal,
+    reason = '',
+  ) {
+    if (reason.trim().length < 3)
+      throw new BadRequestException('Alasan koreksi minimal 3 karakter');
+    const result = await this.db.transaction(async (tx) => {
+      const [lockedDoc] = await tx
+        .select({ status: deliveries.status })
+        .from(deliveries)
+        .where(eq(deliveries.id, deliveryId))
+        .for('update');
+      if (!lockedDoc) throw new NotFoundException('Loading list tidak ditemukan');
+      if (
         phase === 'PULLING'
-          ? { pickedKanban: next, pickedQty: next * line.qtyPerKanban }
-          : { actualKanban: next, actualQty: next * line.qtyPerKanban },
-      )
-      .where(eq(deliveryLines.id, lineId));
+          ? !['DRAFT', 'PICKING'].includes(lockedDoc.status)
+          : !['PICKED', 'LOADING'].includes(lockedDoc.status)
+      ) {
+        throw new BadRequestException('Tahap ini sudah ditutup; scan tidak dapat dibatalkan.');
+      }
+      const rows = await tx
+        .select({ line: deliveryLines, plantId: deliveries.plantId })
+        .from(deliveryLines)
+        .innerJoin(deliveries, eq(deliveryLines.deliveryId, deliveries.id))
+        .where(and(eq(deliveryLines.id, lineId), eq(deliveryLines.deliveryId, deliveryId)))
+        .limit(1);
+      const row = rows[0];
+      if (!row) throw new NotFoundException('Baris loading list tidak ditemukan');
+      const line = row.line;
 
-    // Jejak scan-nya TIDAK dihapus; yang batal ikut jadi bagian riwayat.
-    return { lineId, actualKanban: next, totals: await this.totals(deliveryId) };
+      const sekarang = phase === 'PULLING' ? line.pickedKanban : line.actualKanban;
+      if (sekarang <= 0) {
+        throw new BadRequestException('Belum ada kanban yang discan pada baris ini');
+      }
+
+      /*
+       * Membatalkan pengambilan yang barangnya sudah terlanjur dimuat akan
+       * membuat jumlah muat melebihi jumlah ambil — keadaan yang mustahil di
+       * lapangan dan membuat saldo staging minus.
+       */
+      if (phase === 'PULLING' && sekarang - 1 < line.actualKanban) {
+        throw new BadRequestException(
+          `Tidak bisa dikurangi: ${line.actualKanban} kanban sudah dimuat ke truk. Batalkan muatnya lebih dulu.`,
+        );
+      }
+
+      const next = sekarang - 1;
+      await tx.execute(
+        sql`SELECT ${parts.id} FROM ${parts} WHERE ${parts.id} = ${line.partId} FOR UPDATE`,
+      );
+      const auditRows = await tx
+        .select({ serialNumber: scanEvents.serialNumber, meta: scanEvents.meta })
+        .from(scanEvents)
+        .where(
+          and(
+            eq(scanEvents.kind, 'DELIVERY'),
+            sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.deliveryLineId')) = ${String(lineId)}`,
+            sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.phase')) = ${phase}`,
+          ),
+        )
+        .orderBy(scanEvents.id);
+      const activeScans: typeof auditRows = [];
+      for (const event of auditRows) {
+        const meta = event.meta as { action?: string } | null;
+        if (meta?.action === 'UNDO') activeScans.pop();
+        else activeScans.push(event);
+      }
+      const undoneScan = activeScans.at(-1);
+
+      await tx
+        .update(deliveryLines)
+        .set(
+          phase === 'PULLING'
+            ? { pickedKanban: next, pickedQty: next * line.qtyPerKanban }
+            : { actualKanban: next, actualQty: next * line.qtyPerKanban },
+        )
+        .where(eq(deliveryLines.id, lineId));
+      await tx.insert(scanEvents).values({
+        plantId: row.plantId,
+        kind: 'DELIVERY',
+        partId: line.partId,
+        rawCode: `UNDO:${phase}:${lineId}`,
+        serialNumber: undoneScan?.serialNumber ?? null,
+        qty: -line.qtyPerKanban,
+        userId: principal?.kind === 'user' ? principal.sub : null,
+        scannedAt: new Date(),
+        dedupeKey: `load-undo:${deliveryId}:${phase}:${lineId}:${randomUUID()}`,
+        meta: {
+          deliveryId,
+          deliveryLineId: lineId,
+          phase,
+          action: 'UNDO',
+          reason: reason.trim(),
+          customerSerial:
+            (undoneScan?.meta as { customerSerial?: string } | null)?.customerSerial ?? null,
+          internalSerial:
+            (undoneScan?.meta as { internalSerial?: string } | null)?.internalSerial ?? null,
+        },
+      });
+      return { lineId, actualKanban: next };
+    });
+
+    // Jejak scan tidak dihapus; koreksinya ditulis sebagai event baru.
+    return { ...result, totals: await this.totals(deliveryId) };
   }
 
   /**
@@ -560,6 +899,24 @@ export class LoadingService {
     const now = new Date();
 
     return this.db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(deliveries)
+        .where(eq(deliveries.id, id))
+        .for('update');
+      if (!locked || !['DRAFT', 'PICKING'].includes(locked.status))
+        throw new BadRequestException('Pulling sudah ditutup.');
+      const currentLines = await tx
+        .select()
+        .from(deliveryLines)
+        .where(eq(deliveryLines.deliveryId, id));
+      if (
+        currentLines.some(
+          (line) => line.pickedKanban !== lines.find((old) => old.id === line.id)?.pickedKanban,
+        )
+      ) {
+        throw new BadRequestException('Ada scan baru. Muat ulang sebelum menutup pulling.');
+      }
       for (const line of diambil) {
         const note = `Pulling ${line.pickedKanban} kanban untuk ${doc.documentNumber}`;
         const dasar = {
@@ -706,6 +1063,24 @@ export class LoadingService {
     const now = new Date();
 
     return this.db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(deliveries)
+        .where(eq(deliveries.id, id))
+        .for('update');
+      if (!locked || !['PICKED', 'LOADING'].includes(locked.status))
+        throw new BadRequestException('Dokumen sudah berangkat.');
+      const currentLines = await tx
+        .select()
+        .from(deliveryLines)
+        .where(eq(deliveryLines.deliveryId, id));
+      if (
+        currentLines.some(
+          (line) => line.actualKanban !== lines.find((old) => old.id === line.id)?.actualKanban,
+        )
+      ) {
+        throw new BadRequestException('Ada scan baru. Muat ulang sebelum menutup pengiriman.');
+      }
       for (const line of loaded) {
         const note = `Kirim ${line.actualKanban} kanban lewat ${doc.documentNumber}`;
         const base = {
@@ -816,15 +1191,23 @@ export class LoadingService {
           documentNumber: deliveries.documentNumber,
           manifestNumber: deliveries.manifestNumber,
           pdsNumber: deliveries.pdsNumber,
+          purchaseOrderNumber: deliveries.purchaseOrderNumber,
+          deliveryType: deliveries.deliveryType,
+          sapGiStatus: deliveries.sapGiStatus,
           customerName: customers.name,
           deliveryDate: deliveries.deliveryDate,
           cycle: deliveries.cycle,
           status: deliveries.status,
           truckStatus: deliveries.truckStatus,
+          locationId: deliveries.locationId,
+          stagingLocationId: deliveries.stagingLocationId,
           plannedKanban: sql<string>`COALESCE(SUM(${deliveryLines.plannedKanban}), 0)`,
           pickedKanban: sql<string>`COALESCE(SUM(${deliveryLines.pickedKanban}), 0)`,
           actualKanban: sql<string>`COALESCE(SUM(${deliveryLines.actualKanban}), 0)`,
+          unmappedItems: sql<string>`COALESCE(SUM(CASE WHEN ${deliveryLines.id} IS NOT NULL AND ${deliveryLines.customerPartId} IS NULL THEN 1 ELSE 0 END), 0)`,
+          invalidQtyPerBox: sql<string>`COALESCE(SUM(CASE WHEN ${deliveryLines.id} IS NOT NULL AND ${deliveryLines.qtyPerKanban} <= 0 THEN 1 ELSE 0 END), 0)`,
           sapStatus: sapOutbox.status,
+          sapIsSimulation: sapOutbox.isSimulation,
           sapDocNumber: sapOutbox.sapDocNumber,
           sapError: sapOutbox.lastError,
         })
@@ -845,12 +1228,18 @@ export class LoadingService {
           deliveries.documentNumber,
           deliveries.manifestNumber,
           deliveries.pdsNumber,
+          deliveries.purchaseOrderNumber,
+          deliveries.deliveryType,
+          deliveries.sapGiStatus,
           customers.name,
           deliveries.deliveryDate,
           deliveries.cycle,
           deliveries.status,
           deliveries.truckStatus,
+          deliveries.locationId,
+          deliveries.stagingLocationId,
           sapOutbox.status,
+          sapOutbox.isSimulation,
           sapOutbox.sapDocNumber,
           sapOutbox.lastError,
         )
@@ -863,8 +1252,19 @@ export class LoadingService {
         plannedKanban: Number(row.plannedKanban),
         pickedKanban: Number(row.pickedKanban),
         actualKanban: Number(row.actualKanban),
+        unmappedItems: Number(row.unmappedItems),
+        invalidQtyPerBox: Number(row.invalidQtyPerBox),
+        missingSloc: !row.locationId || !row.stagingLocationId,
       };
-      return { ...summary, attentionReason: deliveryAttentionReason(summary) };
+      const {
+        locationId: _locationId,
+        stagingLocationId: _stagingLocationId,
+        ...publicSummary
+      } = summary;
+      return {
+        ...publicSummary,
+        attentionReason: deliveryAttentionReason(publicSummary),
+      };
     };
 
     if (params.attention) {
@@ -913,6 +1313,64 @@ export class LoadingService {
     };
   }
 
+  async syncStatus(date: string) {
+    const [row] = await this.db
+      .select()
+      .from(deliverySyncs)
+      .where(eq(deliverySyncs.operationalDate, date))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async history(id: number) {
+    const [doc] = await this.db
+      .select({ id: deliveries.id })
+      .from(deliveries)
+      .where(eq(deliveries.id, id));
+    if (!doc) throw new NotFoundException('Loading list tidak ditemukan');
+    const [scans, movements] = await Promise.all([
+      this.db
+        .select({
+          id: scanEvents.id,
+          at: scanEvents.scannedAt,
+          rawCode: scanEvents.rawCode,
+          serialNumber: scanEvents.serialNumber,
+          qty: scanEvents.qty,
+          meta: scanEvents.meta,
+          user: users.name,
+        })
+        .from(scanEvents)
+        .leftJoin(users, eq(users.id, scanEvents.userId))
+        .where(
+          and(
+            eq(scanEvents.kind, 'DELIVERY'),
+            sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.deliveryId')) = ${String(id)}`,
+          ),
+        )
+        .orderBy(desc(scanEvents.id))
+        .limit(500),
+      this.db
+        .select({
+          id: mutations.id,
+          at: mutations.occurredAt,
+          type: mutations.type,
+          partNumber: parts.partNumber,
+          qty: mutations.qty,
+          note: mutations.note,
+          user: users.name,
+          location: locations.code,
+        })
+        .from(mutations)
+        .leftJoin(users, eq(users.id, mutations.userId))
+        .leftJoin(parts, eq(parts.id, mutations.partId))
+        .leftJoin(locations, eq(locations.id, mutations.locationId))
+        .where(and(eq(mutations.sourceTable, 'TT_DELIVERY'), eq(mutations.sourceId, id)))
+        .orderBy(desc(mutations.id))
+        .limit(500),
+    ]);
+    return { scans, movements };
+  }
+
   async findOne(id: number) {
     const rows = await this.db
       .select({
@@ -920,6 +1378,20 @@ export class LoadingService {
         documentNumber: deliveries.documentNumber,
         manifestNumber: deliveries.manifestNumber,
         pdsNumber: deliveries.pdsNumber,
+        purchaseOrderNumber: deliveries.purchaseOrderNumber,
+        salesOrganization: deliveries.salesOrganization,
+        distributionChannel: deliveries.distributionChannel,
+        division: deliveries.division,
+        deliveryType: deliveries.deliveryType,
+        sapGiStatus: deliveries.sapGiStatus,
+        invoiceNumber: deliveries.invoiceNumber,
+        qcStatus: deliveries.qcStatus,
+        sapActualDeliveryDate: deliveries.sapActualDeliveryDate,
+        sapHeaderMovementStatus: deliveries.sapHeaderMovementStatus,
+        sapLineMovementStatus: deliveries.sapLineMovementStatus,
+        sapReceiveStatus: deliveries.sapReceiveStatus,
+        sapReceiveDate: deliveries.sapReceiveDate,
+        sapReceiveTime: deliveries.sapReceiveTime,
         plantId: deliveries.plantId,
         customerId: deliveries.customerId,
         customerName: customers.name,
@@ -941,7 +1413,9 @@ export class LoadingService {
         truckNumber: deliveries.truckNumber,
         driverName: deliveries.driverName,
         departedAt: deliveries.departedAt,
+        arrivedAt: deliveries.arrivedAt,
         sapStatus: sapOutbox.status,
+        sapIsSimulation: sapOutbox.isSimulation,
         sapDocNumber: sapOutbox.sapDocNumber,
         sapError: sapOutbox.lastError,
       })
@@ -974,7 +1448,13 @@ export class LoadingService {
         partNumber: parts.partNumber,
         partName: parts.name,
         uom: parts.uom,
-        customerPartNumber: customerParts.customerPartNumber,
+        customerPartNumber: sql<
+          string | null
+        >`COALESCE(${deliveryLines.customerPartNumberSource}, ${customerParts.customerPartNumber})`,
+        sapItemNumber: deliveryLines.sapItemNumber,
+        customerPartId: deliveryLines.customerPartId,
+        sapDeliveryQty: deliveryLines.sapDeliveryQty,
+        itemType: deliveryLines.itemType,
         plannedKanban: deliveryLines.plannedKanban,
         pickedKanban: deliveryLines.pickedKanban,
         actualKanban: deliveryLines.actualKanban,
@@ -1046,6 +1526,9 @@ export class LoadingService {
    */
   private async shortagesOf(need: Array<{ partId: number; qty: number }>, locationId?: number) {
     if (need.length === 0) return [];
+    const perPart = new Map<number, number>();
+    for (const line of need) perPart.set(line.partId, (perPart.get(line.partId) ?? 0) + line.qty);
+    need = Array.from(perPart, ([partId, qty]) => ({ partId, qty }));
     const partIds = need.map((n) => n.partId);
 
     const balances = await this.db

@@ -42,16 +42,20 @@ export function listLoadingMutations(
 
 export interface LoadingLineDetail {
   id: number;
+  sapItemNumber: string | null;
   partId: number;
   partNumber: string | null;
   partName: string | null;
   uom: string | null;
   customerPartNumber: string | null;
+  customerPartId: number | null;
   plannedKanban: number;
   pickedKanban: number;
   actualKanban: number;
   qtyPerKanban: number;
   plannedQty: number;
+  sapDeliveryQty: number;
+  itemType: string | null;
   pickedQty: number;
   actualQty: number;
 }
@@ -61,6 +65,20 @@ export interface LoadingDetail {
   documentNumber: string;
   manifestNumber: string | null;
   pdsNumber: string | null;
+  purchaseOrderNumber: string | null;
+  salesOrganization: string | null;
+  distributionChannel: string | null;
+  division: string | null;
+  deliveryType: string | null;
+  sapGiStatus: string | null;
+  invoiceNumber: string | null;
+  qcStatus: string | null;
+  sapActualDeliveryDate: string | null;
+  sapHeaderMovementStatus: string | null;
+  sapLineMovementStatus: string | null;
+  sapReceiveStatus: string | null;
+  sapReceiveDate: string | null;
+  sapReceiveTime: string | null;
   plantId: number;
   customerId: number;
   customerName: string | null;
@@ -81,7 +99,9 @@ export interface LoadingDetail {
   truckNumber: string | null;
   driverName: string | null;
   departedAt: string | null;
+  arrivedAt: string | null;
   sapStatus: string | null;
+  sapIsSimulation: boolean | null;
   sapDocNumber: string | null;
   sapError: string | null;
   lines: LoadingLineDetail[];
@@ -89,4 +109,40 @@ export interface LoadingDetail {
 
 export function getLoading(id: number): Promise<LoadingDetail> {
   return apiFetch<LoadingDetail>(`/loading/${id}`);
+}
+
+export interface DeliverySyncStatus {
+  syncedAt: string;
+  result: { dibaca: number; baru: number; diperbarui: number; dilewati: number; catatan: string[] };
+}
+export async function getDeliverySyncStatus(date: string): Promise<DeliverySyncStatus | null> {
+  const { data } = await apiFetch<{ data: DeliverySyncStatus | null }>(
+    `/loading/sync-status?date=${date}`,
+  );
+  return data;
+}
+
+export interface LoadingHistory {
+  scans: Array<{
+    id: number;
+    at: string;
+    rawCode: string;
+    serialNumber: string | null;
+    qty: number;
+    user: string | null;
+    meta: { action?: string; phase?: string; reason?: string; deliveryLineId?: number } | null;
+  }>;
+  movements: Array<{
+    id: number;
+    at: string;
+    type: string;
+    qty: string;
+    note: string | null;
+    user: string | null;
+    partNumber: string | null;
+    location: string | null;
+  }>;
+}
+export function getLoadingHistory(id: number): Promise<LoadingHistory> {
+  return apiFetch(`/loading/${id}/history`);
 }

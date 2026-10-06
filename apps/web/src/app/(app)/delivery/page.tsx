@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { AlertTriangle, ClipboardList, Truck } from 'lucide-react';
-import { listLoadings } from '@/lib/loading-api';
+import { listLoadings, getDeliverySyncStatus } from '@/lib/loading-api';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
@@ -20,7 +20,9 @@ export default async function DeliveryListPage({
   const attentionOnly = sp.view === 'attention';
   const { data, meta } = await listLoadings(page, 25, date, attentionOnly ? 'only' : 'all');
   const allTotal = meta.allTotal ?? meta.total;
-  const attentionTotal = meta.attention ?? 0;
+  const sync = await getDeliverySyncStatus(meta.operationalDate);
+  const importIssues = sync?.result.dilewati ?? 0;
+  const attentionTotal = (meta.attention ?? 0) + importIssues;
   const start = new Date(`${meta.operationalDate}T06:00:00`);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
@@ -61,6 +63,27 @@ export default async function DeliveryListPage({
       />
 
       <Reveal>
+        <details
+          open={attentionOnly && importIssues > 0}
+          className="mb-4 rounded-card border border-line bg-card p-4 text-[13px]"
+        >
+          <summary className="cursor-pointer font-semibold">
+            {sync
+              ? `Sinkronisasi terakhir: ${new Date(sync.syncedAt).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}`
+              : 'Belum ada sinkronisasi SAP untuk tanggal ini'}
+            {sync?.result.dilewati ? ` · ${sync.result.dilewati} dokumen perlu diperiksa` : ''}
+          </summary>
+          <p className="mt-2 text-ink-muted">
+            {sync
+              ? `${sync.result.dibaca} dibaca · ${sync.result.baru} baru · ${sync.result.diperbarui} diperbarui · ${sync.result.dilewati} dilewati`
+              : 'Hasil impor akan ditampilkan setelah koneksi staging tersedia.'}
+          </p>
+          {sync?.result.catatan.map((note, index) => (
+            <p key={index} className="mt-1 text-warn">
+              {note}
+            </p>
+          ))}
+        </details>
         <nav className="mb-5 grid gap-3 sm:grid-cols-2" aria-label="Filter pengiriman">
           <Link
             href={filterHref(meta.operationalDate, false)}
@@ -101,6 +124,11 @@ export default async function DeliveryListPage({
             >
               {attentionTotal}
             </p>
+            {importIssues > 0 ? (
+              <p className="mt-1 text-[12px] text-ink-muted">
+                {meta.attention ?? 0} delivery · {importIssues} gagal impor
+              </p>
+            ) : null}
           </Link>
         </nav>
       </Reveal>

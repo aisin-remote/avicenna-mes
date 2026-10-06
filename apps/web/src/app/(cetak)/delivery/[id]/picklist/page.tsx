@@ -39,6 +39,10 @@ export default async function PicklistPage({ params }: { params: Promise<{ id: s
         }
       `}</style>
 
+      <p className="mb-3 border border-dashed border-black px-3 py-2 text-center text-[10px] font-bold uppercase tracking-[0.18em]">
+        Preview internal · bukan surat jalan / DO resmi SAP
+      </p>
+
       <header className="tanpa-cetak mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-[22px] font-bold tracking-tight">
@@ -113,7 +117,12 @@ export default async function PicklistPage({ params }: { params: Promise<{ id: s
             {doc.lines.map((line, index) => (
               <tr key={line.id} className="baris border-b border-black last:border-b-0">
                 <td className="border-r border-black p-2 text-center">{index + 1}</td>
-                <td className="border-r border-black p-2 font-bold">{line.partNumber ?? '—'}</td>
+                <td className="border-r border-black p-2 font-bold">
+                  {line.partNumber ?? '—'}
+                  <span className="block text-[8px] font-normal">
+                    Item {line.sapItemNumber ?? '—'}
+                  </span>
+                </td>
                 <td className="border-r border-black p-2">{line.customerPartNumber ?? '—'}</td>
                 <td className="border-r border-black p-2">{line.partName ?? '—'}</td>
                 <td className="border-r border-black p-2 text-right tabular-nums">

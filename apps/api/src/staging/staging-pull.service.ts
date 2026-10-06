@@ -9,11 +9,19 @@ import {
   locations,
   deliveries,
   deliveryLines,
+  deliverySyncs,
 } from '@avicenna/db';
 import { DELIVERY_DAY_START_HOUR, productionDayWindow } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 import { StagingDbService } from './staging-db.service';
-import { DELIVERY, SUMBER_MASTER, bersih, type SumberMaster } from './staging-tables';
+import {
+  DELIVERY,
+  SUMBER_MASTER,
+  bersih,
+  tanggalIsoAtauNull,
+  jamIsoAtauNull,
+  type SumberMaster,
+} from './staging-tables';
 
 export interface HasilTarik {
   entitas: string;
@@ -36,12 +44,28 @@ type BarisPengirimanStaging = {
   pdsNumber: unknown;
   cycle: unknown;
   deliveryDate: unknown;
+  actualDeliveryDate: unknown;
+  purchaseOrderNumber: unknown;
+  salesOrganization: unknown;
+  distributionChannel: unknown;
+  division: unknown;
+  deliveryType: unknown;
+  sapGiStatus: unknown;
+  invoiceNumber: unknown;
+  qcStatus: unknown;
+  sapHeaderMovementStatus: unknown;
+  sapLineMovementStatus: unknown;
+  sapReceiveStatus: unknown;
+  sapReceiveDate: unknown;
+  sapReceiveTime: unknown;
   headerDeleted: unknown;
+  deliveryItem: unknown;
   partNumber: unknown;
   customerPartNumber: unknown;
   plannedQty: unknown;
   deliveryQty: unknown;
   qtyPerBox: unknown;
+  itemType: unknown;
   lineDeleted: unknown;
 };
 
@@ -51,16 +75,10 @@ const angkaBulat = (value: unknown): number => {
 };
 
 const ditandaiHapus = (value: unknown): boolean =>
-  ['1', 'Y', 'YES', 'X', 'D', 'DELETE', 'DELETED'].includes(
-    (bersih(value) ?? '').toUpperCase(),
-  );
+  ['1', 'Y', 'YES', 'X', 'D', 'DELETE', 'DELETED'].includes((bersih(value) ?? '').toUpperCase());
 
-const tanggalIso = (value: unknown, fallback: string): string => {
-  const compact = (bersih(value) ?? '').replaceAll('-', '');
-  return /^\d{8}$/.test(compact)
-    ? `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}`
-    : fallback;
-};
+const tanggalIso = (value: unknown, fallback: string): string =>
+  tanggalIsoAtauNull(value) ?? fallback;
 
 /**
  * Menarik master data dari database jembatan.
@@ -125,8 +143,13 @@ export class StagingPullService {
         const pesan = err instanceof Error ? err.message : String(err);
         this.logger.error(`tarik master ${sumber.entitas} gagal: ${pesan}`);
         hasil.push({
-          entitas: sumber.entitas, dibaca: 0, baru: 0, diperbarui: 0,
-          dinonaktifkan: 0, dilewati: 0, catatan: [pesan],
+          entitas: sumber.entitas,
+          dibaca: 0,
+          baru: 0,
+          diperbarui: 0,
+          dinonaktifkan: 0,
+          dilewati: 0,
+          catatan: [pesan],
         });
       }
     }
@@ -171,12 +194,28 @@ export class StagingPullService {
         h.[${H.pdsNo}] AS [pdsNumber],
         h.[${H.cycle}] AS [cycle],
         h.[${H.tanggalKirim}] AS [deliveryDate],
+        h.[${H.tanggalKirimAktual}] AS [actualDeliveryDate],
+        h.[${H.poNo}] AS [purchaseOrderNumber],
+        h.[${H.salesOrg}] AS [salesOrganization],
+        h.[${H.distributionChannel}] AS [distributionChannel],
+        h.[${H.division}] AS [division],
+        h.[${H.deliveryType}] AS [deliveryType],
+        h.[${H.giFlag}] AS [sapGiStatus],
+        h.[${H.invoiceNo}] AS [invoiceNumber],
+        h.[${H.qcStatus}] AS [qcStatus],
+        h.[${H.smHeaderFlag}] AS [sapHeaderMovementStatus],
+        h.[${H.smLineFlag}] AS [sapLineMovementStatus],
+        h.[${H.flagTerima}] AS [sapReceiveStatus],
+        h.[${H.tanggalTerima}] AS [sapReceiveDate],
+        h.[${H.jamTerima}] AS [sapReceiveTime],
         h.[${H.hapus}] AS [headerDeleted],
+        l.[${L.delItem}] AS [deliveryItem],
         l.[${L.partNo}] AS [partNumber],
         l.[${L.custPartNo}] AS [customerPartNumber],
         l.[${L.qtyRencana}] AS [plannedQty],
         l.[${L.qtyKirim}] AS [deliveryQty],
         l.[${L.qtyPerBox}] AS [qtyPerBox],
+        l.[${L.itemType}] AS [itemType],
         l.[${L.hapus}] AS [lineDeleted]
       FROM [${DELIVERY.kepala}] h
       LEFT JOIN [${DELIVERY.baris}] l ON l.[${L.delNo}] = h.[${H.delNo}]
@@ -209,9 +248,7 @@ export class StagingPullService {
           .where(eq(deliveries.documentNumber, documentNumber));
         const cancellable = existing.filter(
           (row) =>
-            row.status !== 'SHIPPED' &&
-            row.status !== 'RECEIVED' &&
-            row.status !== 'CANCELLED',
+            row.status !== 'SHIPPED' && row.status !== 'RECEIVED' && row.status !== 'CANCELLED',
         );
         if (!uji) {
           for (const row of cancellable) {
@@ -232,6 +269,34 @@ export class StagingPullService {
       if (!customerCode || sourceLines.length === 0) {
         hasil.dilewati++;
         catat(`${documentNumber}: customer atau item kosong`);
+        continue;
+      }
+
+      if (
+        sourceLines.some((row) =>
+          [row.plannedQty, row.deliveryQty, row.qtyPerBox].some(
+            (qty) =>
+              bersih(qty) !== null && (!Number.isSafeInteger(Number(qty)) || Number(qty) < 0),
+          ),
+        )
+      ) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: qty sumber tidak valid atau negatif`);
+        continue;
+      }
+
+      const sourceItemNumbers = sourceLines.map((line) => bersih(line.deliveryItem));
+      if (
+        sourceItemNumbers.some((item) => !item) ||
+        new Set(sourceItemNumbers).size !== sourceItemNumbers.length
+      ) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: nomor item SAP kosong atau duplikat`);
+        continue;
+      }
+      if (!tanggalIsoAtauNull(header.deliveryDate)) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: tanggal pengiriman tidak valid`);
         continue;
       }
 
@@ -290,24 +355,19 @@ export class StagingPullService {
       const selectedParts = partNumbers.map(
         (partNumber) => perPart.get(partNumber)!.find((part) => part.plantId === plantId)!,
       );
+      const selectedPartByNumber = new Map(selectedParts.map((part) => [part.partNumber, part]));
       const partIds = selectedParts.map((part) => part.id);
       const mappings = await this.db
         .select()
         .from(customerParts)
         .where(
-          and(
-            eq(customerParts.customerId, customer.id),
-            inArray(customerParts.partId, partIds),
-          ),
+          and(eq(customerParts.customerId, customer.id), inArray(customerParts.partId, partIds)),
         );
       const siteLocations = await this.db
         .select()
         .from(locations)
         .where(
-          and(
-            eq(locations.plantId, plantId),
-            inArray(locations.kind, ['FINISH_GOOD', 'STAGING']),
-          ),
+          and(eq(locations.plantId, plantId), inArray(locations.kind, ['FINISH_GOOD', 'STAGING'])),
         );
       const sourceLocationId =
         siteLocations.find((location) => location.code === 'PP02')?.id ??
@@ -324,10 +384,26 @@ export class StagingPullService {
       }
 
       await this.db.transaction(async (tx) => {
+        if (existing)
+          await tx.select().from(deliveries).where(eq(deliveries.id, existing.id)).for('update');
         const headerValues = {
           customerId: customer.id,
           manifestNumber: bersih(header.manifestNumber),
           pdsNumber: bersih(header.pdsNumber),
+          purchaseOrderNumber: bersih(header.purchaseOrderNumber),
+          salesOrganization: bersih(header.salesOrganization),
+          distributionChannel: bersih(header.distributionChannel),
+          division: bersih(header.division),
+          deliveryType: bersih(header.deliveryType),
+          sapGiStatus: bersih(header.sapGiStatus),
+          invoiceNumber: bersih(header.invoiceNumber),
+          qcStatus: bersih(header.qcStatus),
+          sapActualDeliveryDate: tanggalIsoAtauNull(header.actualDeliveryDate),
+          sapHeaderMovementStatus: bersih(header.sapHeaderMovementStatus),
+          sapLineMovementStatus: bersih(header.sapLineMovementStatus),
+          sapReceiveStatus: bersih(header.sapReceiveStatus),
+          sapReceiveDate: tanggalIsoAtauNull(header.sapReceiveDate),
+          sapReceiveTime: jamIsoAtauNull(header.sapReceiveTime),
           deliveryDate: tanggalIso(header.deliveryDate, operationalDate),
           cycle: Math.max(1, angkaBulat(header.cycle)),
           dock: bersih(header.destination),
@@ -345,9 +421,7 @@ export class StagingPullService {
             documentNumber,
             ...headerValues,
           });
-          deliveryId = Number(
-            (inserted as unknown as Array<{ insertId: number }>)[0]?.insertId,
-          );
+          deliveryId = Number((inserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
           hasil.baru++;
         }
 
@@ -355,50 +429,96 @@ export class StagingPullService {
           .select()
           .from(deliveryLines)
           .where(eq(deliveryLines.deliveryId, deliveryId));
-        const sourcePartIds = new Set<number>();
-        for (const part of selectedParts) {
-          const matchingRows = sourceLines.filter(
-            (row) => bersih(row.partNumber) === part.partNumber,
-          );
-          const plannedQty = matchingRows.reduce(
-            (total, row) => {
-              const planned = angkaBulat(row.plannedQty);
-              return total + (planned > 0 ? planned : angkaBulat(row.deliveryQty));
-            },
-            0,
-          );
-          const qtyPerKanban =
-            matchingRows.map((row) => angkaBulat(row.qtyPerBox)).find((qty) => qty > 0) ??
-            part.qtyPerKanban ??
-            0;
-          const customerPartNumber = matchingRows
-            .map((row) => bersih(row.customerPartNumber))
-            .find(Boolean);
+        const matchedExistingIds = new Set<number>();
+        for (const sourceLine of sourceLines) {
+          const partNumber = bersih(sourceLine.partNumber);
+          const part = partNumber ? selectedPartByNumber.get(partNumber) : undefined;
+          if (!part) continue;
+          const sourceItemNumber = bersih(sourceLine.deliveryItem);
+          const sourceDeliveryQty = angkaBulat(sourceLine.deliveryQty);
+          const plannedFromSource = angkaBulat(sourceLine.plannedQty);
+          const plannedQty = plannedFromSource > 0 ? plannedFromSource : sourceDeliveryQty;
+          const qtyPerKanban = angkaBulat(sourceLine.qtyPerBox) || part.qtyPerKanban || 0;
+          const customerPartNumber = bersih(sourceLine.customerPartNumber);
           const mapping =
             mappings.find(
               (item) =>
                 item.partId === part.id &&
                 customerPartNumber &&
                 item.customerPartNumber === customerPartNumber,
-            ) ?? mappings.find((item) => item.partId === part.id);
+            ) ??
+            (!customerPartNumber ? mappings.find((item) => item.partId === part.id) : undefined);
           const values = {
             customerPartId: mapping?.id ?? null,
+            customerPartNumberSource: customerPartNumber,
+            sapItemNumber: sourceItemNumber,
+            sapDeliveryQty: sourceDeliveryQty,
+            itemType: bersih(sourceLine.itemType),
             plannedQty,
             qtyPerKanban,
             plannedKanban: qtyPerKanban > 0 ? Math.ceil(plannedQty / qtyPerKanban) : 0,
           };
-          const current = existingLines.find((line) => line.partId === part.id);
+          const current = sourceItemNumber
+            ? (existingLines.find((line) => line.sapItemNumber === sourceItemNumber) ??
+              existingLines.find(
+                (line) =>
+                  line.sapItemNumber === null &&
+                  line.partId === part.id &&
+                  !matchedExistingIds.has(line.id),
+              ))
+            : existingLines.find(
+                (line) =>
+                  line.partId === part.id &&
+                  line.sapItemNumber === null &&
+                  !matchedExistingIds.has(line.id),
+              );
           if (current) {
-            await tx.update(deliveryLines).set(values).where(eq(deliveryLines.id, current.id));
+            if (
+              (current.pickedKanban > 0 || current.actualKanban > 0) &&
+              (current.qtyPerKanban !== qtyPerKanban ||
+                current.partId !== part.id ||
+                (current.customerPartNumberSource &&
+                  current.customerPartNumberSource !== customerPartNumber))
+            ) {
+              catat(
+                `${documentNumber}: identitas/kemasan item ${sourceItemNumber} berubah setelah discan; data lama dipertahankan`,
+              );
+              matchedExistingIds.add(current.id);
+              continue;
+            }
+            if (
+              current.partId !== part.id &&
+              (current.pickedKanban > 0 || current.actualKanban > 0)
+            ) {
+              catat(`${documentNumber}: item ${sourceItemNumber} berubah part setelah discan`);
+              matchedExistingIds.add(current.id);
+              continue;
+            }
+            await tx
+              .update(deliveryLines)
+              .set(
+                ['SHIPPED', 'RECEIVED'].includes(existing?.status ?? '')
+                  ? { sapDeliveryQty: sourceDeliveryQty, itemType: values.itemType }
+                  : { ...values, partId: part.id },
+              )
+              .where(eq(deliveryLines.id, current.id));
+            matchedExistingIds.add(current.id);
           } else {
+            if (['SHIPPED', 'RECEIVED'].includes(existing?.status ?? '')) {
+              catat(`${documentNumber}: item baru pada dokumen selesai belum ditambahkan`);
+              continue;
+            }
             await tx.insert(deliveryLines).values({ deliveryId, partId: part.id, ...values });
           }
-          sourcePartIds.add(part.id);
         }
 
         for (const oldLine of existingLines) {
-          if (sourcePartIds.has(oldLine.partId)) continue;
-          if (oldLine.pickedKanban === 0 && oldLine.actualKanban === 0) {
+          if (matchedExistingIds.has(oldLine.id)) continue;
+          if (
+            oldLine.pickedKanban === 0 &&
+            oldLine.actualKanban === 0 &&
+            !['SHIPPED', 'RECEIVED'].includes(existing?.status ?? '')
+          ) {
             await tx.delete(deliveryLines).where(eq(deliveryLines.id, oldLine.id));
           } else {
             catat(`${documentNumber}: item yang sudah discan tidak dihapus saat sumber berubah`);
@@ -411,6 +531,13 @@ export class StagingPullService {
       `tarik pengiriman ${operationalDate}${uji ? ' (uji coba)' : ''}: ` +
         `${hasil.dibaca} dokumen, ${hasil.baru} baru, ${hasil.diperbarui} diperbarui`,
     );
+    if (!uji) {
+      const syncedAt = new Date();
+      await this.db
+        .insert(deliverySyncs)
+        .values({ operationalDate, syncedAt, result: hasil })
+        .onDuplicateKeyUpdate({ set: { syncedAt, result: hasil } });
+    }
     return hasil;
   }
 
@@ -418,7 +545,9 @@ export class StagingPullService {
     const catatan: string[] = [];
 
     // Ekspresi SELECT dibangun dari pemetaan, dengan alias = nama field kita.
-    const pilih = Object.entries(sumber.kolom).map(([field, ekspresi]) => `${ekspresi} AS [${field}]`);
+    const pilih = Object.entries(sumber.kolom).map(
+      ([field, ekspresi]) => `${ekspresi} AS [${field}]`,
+    );
     pilih.push(`${sumber.kunci} AS [__kunci]`);
     if (sumber.flagHapus) pilih.push(`${sumber.flagHapus} AS [__hapus]`);
 
@@ -430,8 +559,13 @@ export class StagingPullService {
     );
 
     const hasil: HasilTarik = {
-      entitas: sumber.entitas, dibaca: rows.length, baru: 0, diperbarui: 0,
-      dinonaktifkan: 0, dilewati: 0, catatan,
+      entitas: sumber.entitas,
+      dibaca: rows.length,
+      baru: 0,
+      diperbarui: 0,
+      dinonaktifkan: 0,
+      dilewati: 0,
+      catatan,
     };
 
     if (rows.length === 0) {
@@ -441,7 +575,10 @@ export class StagingPullService {
 
     for (const row of rows) {
       const kunci = bersih(row.__kunci);
-      if (!kunci) { hasil.dilewati++; continue; }
+      if (!kunci) {
+        hasil.dilewati++;
+        continue;
+      }
 
       /*
        * Nilai char(n) di staging dipadatkan spasi. Tanpa trim, "AV-001    "
@@ -523,7 +660,10 @@ export class StagingPullService {
     if (terhapus) {
       if (!ada.isActive) return 'tetap';
       if (uji) return 'nonaktif';
-      await this.db.update(tabel).set({ isActive: false } as never).where(eq(kolomKunci, kunci));
+      await this.db
+        .update(tabel)
+        .set({ isActive: false } as never)
+        .where(eq(kolomKunci, kunci));
       return 'nonaktif';
     }
 
@@ -531,7 +671,10 @@ export class StagingPullService {
     if (!ada.isActive) berubah.isActive = true;
     if (Object.keys(berubah).length === 0) return 'tetap';
     if (uji) return 'ubah';
-    await this.db.update(tabel).set(berubah as never).where(eq(kolomKunci, kunci));
+    await this.db
+      .update(tabel)
+      .set(berubah as never)
+      .where(eq(kolomKunci, kunci));
     return 'ubah';
   }
 
@@ -555,14 +698,19 @@ export class StagingPullService {
     if (!kodePabrik) return 'tetap';
 
     const [pabrik] = await this.db
-      .select({ id: plants.id }).from(plants).where(eq(plants.code, kodePabrik)).limit(1);
+      .select({ id: plants.id })
+      .from(plants)
+      .where(eq(plants.code, kodePabrik))
+      .limit(1);
     // Pabrik yang belum dikenal dilewati. Membuatnya otomatis berarti satu salah
     // ketik di staging melahirkan pabrik baru yang tidak ada di dunia nyata.
     if (!pabrik) return 'tetap';
 
     const [ada] = await this.db
-      .select().from(parts)
-      .where(and(eq(parts.plantId, pabrik.id), eq(parts.partNumber, kunci))).limit(1);
+      .select()
+      .from(parts)
+      .where(and(eq(parts.plantId, pabrik.id), eq(parts.partNumber, kunci)))
+      .limit(1);
 
     if (!ada) {
       if (terhapus) return 'tetap';
@@ -589,7 +737,10 @@ export class StagingPullService {
     if (!ada.isActive) berubah.isActive = true;
     if (Object.keys(berubah).length === 0) return 'tetap';
     if (uji) return 'ubah';
-    await this.db.update(parts).set(berubah as never).where(eq(parts.id, ada.id));
+    await this.db
+      .update(parts)
+      .set(berubah as never)
+      .where(eq(parts.id, ada.id));
     return 'ubah';
   }
 
@@ -610,33 +761,43 @@ export class StagingPullService {
     if (!partNumber || !customerCode || !customerPartNumber) return 'tetap';
 
     const [cust] = await this.db
-      .select({ id: customers.id }).from(customers).where(eq(customers.code, customerCode)).limit(1);
+      .select({ id: customers.id })
+      .from(customers)
+      .where(eq(customers.code, customerCode))
+      .limit(1);
     if (!cust) return 'tetap';
 
     // Satu nomor part bisa ada di beberapa pabrik; pemetaan customer berlaku
     // untuk semuanya, jadi setiap baris part yang cocok ikut dipetakan.
     const daftarPart = await this.db
-      .select({ id: parts.id }).from(parts).where(eq(parts.partNumber, partNumber));
+      .select({ id: parts.id })
+      .from(parts)
+      .where(eq(parts.partNumber, partNumber));
     if (daftarPart.length === 0) return 'tetap';
 
     let berubah = false;
     for (const p of daftarPart) {
       const [ada] = await this.db
-        .select().from(customerParts)
+        .select()
+        .from(customerParts)
         .where(and(eq(customerParts.partId, p.id), eq(customerParts.customerId, cust.id)))
         .limit(1);
 
       if (!ada) {
         if (!uji) {
           await this.db.insert(customerParts).values({
-            partId: p.id, customerId: cust.id, customerPartNumber,
+            partId: p.id,
+            customerId: cust.id,
+            customerPartNumber,
           } as never);
         }
         berubah = true;
       } else if (ada.customerPartNumber !== customerPartNumber) {
         if (!uji) {
-          await this.db.update(customerParts)
-            .set({ customerPartNumber }).where(eq(customerParts.id, ada.id));
+          await this.db
+            .update(customerParts)
+            .set({ customerPartNumber })
+            .where(eq(customerParts.id, ada.id));
         }
         berubah = true;
       }

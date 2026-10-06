@@ -21,6 +21,7 @@ import {
   Hash,
   Boxes,
   Scissors,
+  ClipboardCheck,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -53,6 +54,7 @@ const ICONS: Record<string, LucideIcon> = {
   Hash,
   Boxes,
   Scissors,
+  ClipboardCheck,
 };
 
 /** Mengembalikan ikon Database sebagai cadangan agar UI tidak pernah kosong. */
