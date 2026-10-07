@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { eq, and, sql, desc, count, inArray, type Database } from '@avicenna/db';
 import {
   sapOutbox,
+  deliveries,
+  receipts,
   mutations,
   parts,
   locations,
@@ -149,6 +151,28 @@ export class SapOutboxService {
 
     if (baris.length === 0) return hasil;
 
+    const [delivery] =
+      sourceTable === 'TT_DELIVERY'
+        ? await this.db
+            .select({ documentNumber: deliveries.documentNumber })
+            .from(deliveries)
+            .where(eq(deliveries.id, sourceId))
+            .limit(1)
+        : [];
+    // Prefiks ini hanya dibuat seed/check lokal: seluruh mutasi fixture tetap trial.
+    const isSimulation = delivery?.documentNumber.startsWith('LL-TRIAL-') ?? false;
+    const [receiving] =
+      sourceTable === 'TT_PURCHASE_RECEIPT_H'
+        ? await this.db
+            .select({ aresOrderId: receipts.aresOrderId, status: receipts.status })
+            .from(receipts)
+            .where(eq(receipts.id, sourceId))
+            .limit(1)
+        : [];
+    const receivingHold = receiving?.aresOrderId
+      ? 'pendorong untuk receiving belum disepakati: kontrak GR/PO/item perlu dikonfirmasi'
+      : null;
+
     const [scan] =
       sourceTable === 'TT_HISTORY_SCAN'
         ? await this.db
@@ -207,6 +231,7 @@ export class SapOutboxService {
         sourceTable,
         sourceId,
         docType,
+        isSimulation,
         // Jenis dokumen ikut ke dalam kunci: satu dokumen asal bisa punya dua.
         idempotencyKey: `${sourceTable}:${sourceId}:${docType}`,
         occurredAt: anggota[0]!.occurredAt,
@@ -358,8 +383,10 @@ export class SapOutboxService {
           }
         }
       }
-      const lengkap = siap && kurangSloc.length === 0 && !kurangKonteks && !menungguProduksi;
+      const lengkap =
+        siap && kurangSloc.length === 0 && !kurangKonteks && !menungguProduksi && !receivingHold;
       const alasanTahan = [
+        receivingHold,
         siap ? null : `movement type belum diputuskan untuk: ${belum.join(', ')}`,
         kurangSloc.length > 0 ? kurangSloc.join('; ') : null,
         kurangKonteks ? 'work center dari line scan kosong' : null,
@@ -374,8 +401,18 @@ export class SapOutboxService {
         // Dokumen yang movement type-nya belum diputuskan DITAHAN, bukan
         // dibuang dan bukan pula dikirim dengan tebakan. Begitu angkanya turun
         // dari tim SAP, statusnya tinggal dikembalikan ke PENDING.
-        status: lengkap ? 'PENDING' : 'HELD',
-        lastError: lengkap ? null : alasanTahan,
+        status:
+          receiving?.aresOrderId && receiving.status === 'CANCELLED'
+            ? 'SKIPPED'
+            : lengkap
+              ? 'PENDING'
+              : 'HELD',
+        lastError:
+          receiving?.aresOrderId && receiving.status === 'CANCELLED'
+            ? 'Receiving dibatalkan'
+            : lengkap
+              ? null
+              : alasanTahan,
         payload: {
           docType,
           movementType,
@@ -393,7 +430,8 @@ export class SapOutboxService {
       });
 
       if (!baru) continue;
-      if (lengkap) hasil.pending++;
+      if (receiving?.aresOrderId && receiving.status === 'CANCELLED') hasil.skipped++;
+      else if (lengkap) hasil.pending++;
       else hasil.held++;
     }
 
@@ -413,6 +451,7 @@ export class SapOutboxService {
     sourceTable: string;
     sourceId: number;
     docType: string;
+    isSimulation: boolean;
     movementType: string | null;
     idempotencyKey: string;
     status: 'PENDING' | 'HELD' | 'SKIPPED';
@@ -540,6 +579,7 @@ export class SapOutboxService {
           sourceTable: sapOutbox.sourceTable,
           sourceId: sapOutbox.sourceId,
           status: sapOutbox.status,
+          isSimulation: sapOutbox.isSimulation,
           attempts: sapOutbox.attempts,
           lastError: sapOutbox.lastError,
           sapDocNumber: sapOutbox.sapDocNumber,
@@ -574,7 +614,50 @@ export class SapOutboxService {
     await this.db
       .update(sapOutbox)
       .set({ status: 'PENDING', lastError: null })
-      .where(and(inArray(sapOutbox.id, ids), eq(sapOutbox.status, 'FAILED')));
+      .where(
+        and(
+          inArray(sapOutbox.id, ids),
+          eq(sapOutbox.isSimulation, false),
+          eq(sapOutbox.status, 'FAILED'),
+        ),
+      );
     return { diulang: ids.length };
+  }
+
+  /** Menutup satu Good Issue secara manual hanya untuk trial tanpa koneksi SAP. */
+  async simulateDelivery(
+    id: number,
+    outcome: 'CONFIRMED' | 'REJECTED' | 'PENDING',
+  ): Promise<{ id: number; status: string; sapDocNumber: string | null }> {
+    const [row] = await this.db
+      .select({
+        id: sapOutbox.id,
+        docType: sapOutbox.docType,
+        status: sapOutbox.status,
+        isSimulation: sapOutbox.isSimulation,
+      })
+      .from(sapOutbox)
+      .where(eq(sapOutbox.id, id))
+      .limit(1);
+    if (!row || row.docType !== 'DELIVERY') {
+      throw new BadRequestException('Good Issue delivery tidak ditemukan');
+    }
+    if (outcome === 'PENDING' ? !row.isSimulation : row.status !== 'PENDING') {
+      throw new BadRequestException(`Status ${row.status} tidak bisa disimulasikan`);
+    }
+
+    const confirmed = outcome === 'CONFIRMED';
+    const sapDocNumber = confirmed ? `SIM-${String(id).padStart(8, '0')}` : null;
+    await this.db
+      .update(sapOutbox)
+      .set({
+        status: outcome,
+        isSimulation: true,
+        sapDocNumber,
+        confirmedAt: confirmed ? new Date() : null,
+        lastError: outcome === 'REJECTED' ? 'Simulasi: Good Issue ditolak SAP' : null,
+      })
+      .where(and(eq(sapOutbox.id, id), eq(sapOutbox.status, row.status)));
+    return { id, status: outcome, sapDocNumber };
   }
 }

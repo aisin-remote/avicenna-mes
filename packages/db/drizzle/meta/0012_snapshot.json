@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "cc12e9fa-fc92-4b0b-8168-89490f5ad37a",
+  "id": "a1328eb9-cf6f-44cf-8795-bd2305daf32f",
   "prevId": "9f3ede7d-e025-4cc0-a3ac-7eeb1915060b",
   "tables": {
     "TM_DEVICE": {
@@ -1631,11 +1631,11 @@
         },
         "CHR_SCAN_MODE": {
           "name": "CHR_SCAN_MODE",
-          "type": "enum('PART_SAJA','PART_KANBAN','KANBAN_BOX','PART_TANPA_KANBAN','PART_PINDAH_KARTU','PER_PIECE','PER_KANBAN')",
+          "type": "enum('PER_PIECE','PER_KANBAN')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'PART_SAJA'"
+          "default": "'PER_PIECE'"
         },
         "INT_INPUT_LOCATION_ID": {
           "name": "INT_INPUT_LOCATION_ID",
@@ -2479,6 +2479,159 @@
       "compositePrimaryKeys": {
         "TM_KANBAN_INT_ID": {
           "name": "TM_KANBAN_INT_ID",
+          "columns": [
+            "INT_ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TM_KANBAN_CROP_PROFILE": {
+      "name": "TM_KANBAN_CROP_PROFILE",
+      "columns": {
+        "INT_ID": {
+          "name": "INT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "INT_CUSTOMER_ID": {
+          "name": "INT_CUSTOMER_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "INT_WIDTH_TENTHS": {
+          "name": "INT_WIDTH_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 900
+        },
+        "INT_HEIGHT_TENTHS": {
+          "name": "INT_HEIGHT_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 620
+        },
+        "INT_OFFSET_X_TENTHS": {
+          "name": "INT_OFFSET_X_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 80
+        },
+        "INT_OFFSET_Y_TENTHS": {
+          "name": "INT_OFFSET_Y_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 80
+        },
+        "INT_GAP_X_TENTHS": {
+          "name": "INT_GAP_X_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 40
+        },
+        "INT_GAP_Y_TENTHS": {
+          "name": "INT_GAP_Y_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 40
+        },
+        "INT_COLUMNS": {
+          "name": "INT_COLUMNS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 2
+        },
+        "INT_ROWS": {
+          "name": "INT_ROWS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 4
+        },
+        "INT_UPDATED_BY_ID": {
+          "name": "INT_UPDATED_BY_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "DTM_CREATED_AT": {
+          "name": "DTM_CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "DTM_UPDATED_AT": {
+          "name": "DTM_UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TM_KANBAN_CROP_PROFILE_CUSTOMER_UNIQUE": {
+          "name": "TM_KANBAN_CROP_PROFILE_CUSTOMER_UNIQUE",
+          "columns": [
+            "INT_CUSTOMER_ID"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "TM_KANBAN_CROP_PROFILE_INT_CUSTOMER_ID_TM_CUST_INT_ID_fk": {
+          "name": "TM_KANBAN_CROP_PROFILE_INT_CUSTOMER_ID_TM_CUST_INT_ID_fk",
+          "tableFrom": "TM_KANBAN_CROP_PROFILE",
+          "tableTo": "TM_CUST",
+          "columnsFrom": [
+            "INT_CUSTOMER_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "TM_KANBAN_CROP_PROFILE_INT_UPDATED_BY_ID_TM_USER_INT_ID_fk": {
+          "name": "TM_KANBAN_CROP_PROFILE_INT_UPDATED_BY_ID_TM_USER_INT_ID_fk",
+          "tableFrom": "TM_KANBAN_CROP_PROFILE",
+          "tableTo": "TM_USER",
+          "columnsFrom": [
+            "INT_UPDATED_BY_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TM_KANBAN_CROP_PROFILE_INT_ID": {
+          "name": "TM_KANBAN_CROP_PROFILE_INT_ID",
           "columns": [
             "INT_ID"
           ]

@@ -1,7 +1,6 @@
 import {
   MENU_ITEMS,
   MENU_GROUPS,
-  MENU_GROUP_COLLAPSIBLE,
   type MenuRow,
   type MenuGroup,
 } from '@avicenna/contracts';
@@ -34,7 +33,7 @@ export interface NavGroup {
 export function susunNav(menus: readonly MenuRow[]): NavGroup[] {
   return MENU_GROUPS.map((title) => ({
     title,
-    collapsible: MENU_GROUP_COLLAPSIBLE[title],
+    collapsible: true,
     items: menus
       .filter((m) => m.group === title)
       .sort((a, b) => a.sortOrder - b.sortOrder)

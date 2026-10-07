@@ -3,11 +3,10 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { Truck, Ban, AlertTriangle, PackageOpen } from 'lucide-react';
+import { Truck, AlertTriangle, PackageOpen } from 'lucide-react';
 import {
   shipLoadingAction,
   setTruckStatusAction,
-  cancelLoadingAction,
   completePickingAction,
   type ShipResult,
 } from '@/app/(app)/delivery/actions';
@@ -44,7 +43,7 @@ export function LoadingActions({
   totalPicked: number;
   totalActual: number;
 }) {
-  const [confirming, setConfirming] = useState<'pick' | 'ship' | 'cancel' | null>(null);
+  const [confirming, setConfirming] = useState<'pick' | 'ship' | null>(null);
   const toast = useToast();
   const [shortages, setShortages] = useState<ShipResult['shortages']>([]);
   const [pending, startTransition] = useTransition();
@@ -69,15 +68,9 @@ export function LoadingActions({
     const res = await shipLoadingAction(id);
     if ('error' in res) return toast.galat(res.error);
     setShortages(res.shortages);
-    toast.ok(`${res.documentNumber} dinyatakan berangkat — ${res.shippedLines} baris keluar stok.`);
-    startTransition(() => router.refresh());
-  }
-
-  async function cancel() {
-    setConfirming(null);
-    const res = await cancelLoadingAction(id);
-    if ('error' in res) return toast.galat(res.error);
-    toast.ok('Loading list dibatalkan.');
+    toast.ok(
+      `${res.documentNumber} selesai — ${res.shippedLines} baris keluar stok dan Good Issue 601 diantrikan.`,
+    );
     startTransition(() => router.refresh());
   }
 
@@ -138,7 +131,6 @@ export function LoadingActions({
         </section>
       ) : null}
 
-
       {!closed ? (
         <div className="flex flex-wrap items-center gap-3">
           {tahapPulling ? (
@@ -159,18 +151,9 @@ export function LoadingActions({
               className="inline-flex h-12 items-center gap-2 rounded-full bg-accent px-7 text-[15px] font-semibold text-white transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Truck className="size-[18px]" strokeWidth={2.2} aria-hidden />
-              Nyatakan berangkat
+              Selesaikan &amp; trigger GI
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setConfirming('cancel')}
-            disabled={pending}
-            className="inline-flex h-12 items-center gap-2 rounded-full border border-line px-6 text-[15px] font-semibold text-ink-muted transition-colors hover:border-ng/40 hover:text-ng disabled:opacity-50"
-          >
-            <Ban className="size-[18px]" strokeWidth={1.9} aria-hidden />
-            Batalkan
-          </button>
           {tahapPulling && totalPicked === 0 ? (
             <span className="text-[13px] text-ink-muted">
               Belum ada kanban yang diambil — scan barangnya di layar pulling dulu.
@@ -203,36 +186,25 @@ export function LoadingActions({
               </>
             ) : confirming === 'ship' ? (
               <>
-                <p className="text-[15px] font-bold">Nyatakan berangkat?</p>
+                <p className="text-[15px] font-bold">
+                  Selesaikan loading &amp; trigger Good Issue?
+                </p>
                 {/* Angka aktual ditegaskan di sini: yang keluar stok adalah yang
                     benar-benar discan, bukan rencananya. */}
                 <p className="mt-1 text-[14px] text-ink-soft">
                   Stok staging akan berkurang sesuai jumlah yang benar-benar dimuat —{' '}
-                  <span className="tabular font-semibold text-ink">{totalActual} kanban</span> dari
-                  {' '}{totalPicked} yang diambil. Setelah ini dokumen tidak bisa diubah lagi;
-                  koreksi harus dicatat sebagai penyesuaian stok.
+                  <span className="tabular font-semibold text-ink">{totalActual} kanban</span> dari{' '}
+                  {totalPicked} yang diambil. Movement 601 akan masuk antrean integrasi SAP. Setelah
+                  ini dokumen tidak bisa diubah lagi; koreksi harus dicatat sebagai penyesuaian
+                  stok.
                 </p>
               </>
-            ) : (
-              <>
-                <p className="text-[15px] font-bold">Batalkan loading list?</p>
-                <p className="mt-1 text-[14px] text-ink-soft">
-                  Dokumen ditandai dibatalkan dan tidak bisa discan lagi. Stok tidak berubah.
-                </p>
-              </>
-            )}
+            ) : null}
             <div className="mt-4 flex gap-3">
               <button
                 type="button"
-                onClick={() =>
-                  void (confirming === 'pick' ? pick() : confirming === 'ship' ? ship() : cancel())
-                }
-                className={cn(
-                  'inline-flex h-11 items-center rounded-full px-6 text-[14px] font-semibold text-white transition-colors',
-                  confirming === 'cancel'
-                    ? 'bg-ng hover:opacity-90'
-                    : 'bg-accent hover:bg-accent-soft',
-                )}
+                onClick={() => void (confirming === 'pick' ? pick() : ship())}
+                className="inline-flex h-11 items-center rounded-full bg-accent px-6 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
               >
                 Ya, lanjutkan
               </button>

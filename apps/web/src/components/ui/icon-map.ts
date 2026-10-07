@@ -26,6 +26,8 @@ import {
   MonitorDot,
   Filter,
   CalendarClock,
+  Scissors,
+  ClipboardCheck,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -63,6 +65,8 @@ const ICONS: Record<string, LucideIcon> = {
   MonitorDot,
   Filter,
   CalendarClock,
+  Scissors,
+  ClipboardCheck,
 };
 
 /** Mengembalikan ikon Database sebagai cadangan agar UI tidak pernah kosong. */

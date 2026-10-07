@@ -19,15 +19,19 @@ const POLA_TRANSAKSI = '* * * * *';
  */
 const POLA_MASTER = '*/15 * * * *';
 
+/** Rencana pengiriman bisa berubah selama hari berjalan. */
+const POLA_PENGIRIMAN = '*/5 * * * *';
+
 /**
  * Menjalankan percakapan dengan database jembatan secara berkala.
  *
- * Empat langkah, sengaja dipisah menjadi empat job:
+ * Lima langkah, sengaja dipisah menjadi job tersendiri:
  *
  *   kumpulkan  mutasi -> dokumen di outbox        (MySQL saja)
  *   dorong     outbox -> staging                  (butuh MS SQL)
  *   balasan    flag di staging -> tutup dokumen   (butuh MS SQL)
  *   tarik      master di staging -> master kita   (butuh MS SQL)
+ *   pengiriman loading list hari aktif -> MES     (butuh MS SQL)
  *
  * Yang pertama hanya menyentuh MySQL dan selalu bisa jalan; tiga sisanya
  * bergantung pada MS SQL yang bisa saja mati. Menyatukannya berarti gangguan
@@ -70,6 +74,8 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
           case JOBS.PULL_SAP_MASTER:
             // Sungguhan, bukan uji coba — saklarnya sendiri yang menjaga.
             return this.pull.tarikSemua(false);
+          case JOBS.PULL_SAP_DELIVERIES:
+            return this.pull.tarikPengiriman(new Date(), false);
           default:
             return undefined;
         }
@@ -100,11 +106,17 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
      */
     if (this.pull.aktif) {
       await this.queue.addRepeating(QUEUES.SYNC, JOBS.PULL_SAP_MASTER, {}, POLA_MASTER);
+      await this.queue.addRepeating(
+        QUEUES.SYNC,
+        JOBS.PULL_SAP_DELIVERIES,
+        {},
+        POLA_PENGIRIMAN,
+      );
     }
 
     const bagian: string[] = ['pengumpul outbox SAP berjalan tiap menit'];
     if (!this.push.aktif) bagian.push('dorong ke staging belum dinyalakan');
-    if (!this.pull.aktif) bagian.push('tarik master belum dinyalakan');
+    if (!this.pull.aktif) bagian.push('tarik master/pengiriman belum dinyalakan');
     this.logger.log(bagian.join(' — '));
   }
 

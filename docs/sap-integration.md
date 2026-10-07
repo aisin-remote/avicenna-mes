@@ -1,7 +1,7 @@
 # Integrasi SAP dan Model SLOC
 
 Keputusan di halaman ini diambil setelah membandingkan sistem ini dengan
-*Inventory Flow & Mapping Integration Table* milik MIS Dept PT. Aisin Indonesia
+_Inventory Flow & Mapping Integration Table_ milik MIS Dept PT. Aisin Indonesia
 (aplikasi pihak ketiga yang akan digantikan).
 
 ## Tiga keputusan
@@ -45,10 +45,16 @@ Konsekuensi yang menentukan rancangan:
   keduanya sama berarti dokumen yang ditolak SAP menghilang dari pandangan, dan
   selisihnya baru ketahuan saat tutup buku.
 - Perlu **dua saklar terpisah**. `STAGING_PUSH_ENABLED` dan
-  `STAGING_PULL_ENABLED` berdiri sendiri, karena begitu tarik master aktif, apa
-  pun yang diketik orang di layar master Avicenna akan tertimpa isi staging pada
-  putaran berikutnya — itu keputusan tersendiri, bukan efek samping dari
-  menyambungkan koneksi.
+  `STAGING_PULL_ENABLED` berdiri sendiri. Tarik menyinkronkan master serta
+  loading list hari aktif dari staging; status pulling/loading dan hasil scan
+  tetap dimiliki MES.
+
+### Pengiriman berasal dari staging
+
+`TT_DELIVERY` dan `TT_DELIVERY_ITEM` adalah sumber kepala dan rencana item.
+AVICENNA tidak menyediakan pembuatan atau pembatalan loading list manual.
+Worker menyegarkan periode operasional aktif setiap lima menit; satu hari
+pengiriman berlangsung pukul 06:00 sampai 06:00 hari berikutnya.
 
 ### 3. Model SLOC diadopsi seluruhnya
 
@@ -94,23 +100,23 @@ Supplier → [WH00] → [WP01] → [PP02] → [PP04] → Customer
          1        2         3        4       5,6
 ```
 
-| SLOC | Isi | Langkah masuk | Langkah keluar |
-|------|-----|---------------|----------------|
-| WH00 | Komponen & raw material | 1 Good Receipt | 2 Good Movement |
-| WP01 | Work in process | 2 Good Movement | 3 Production (backflush) |
-| PP02 | Finish good | 3 Production | 4 Pulling |
-| PP04 | Staging & shipping | 4 Pulling | 6 Loading to truck |
+| SLOC | Isi                     | Langkah masuk   | Langkah keluar           |
+| ---- | ----------------------- | --------------- | ------------------------ |
+| WH00 | Komponen & raw material | 1 Good Receipt  | 2 Good Movement          |
+| WP01 | Work in process         | 2 Good Movement | 3 Production (backflush) |
+| PP02 | Finish good             | 3 Production    | 4 Pulling                |
+| PP04 | Staging & shipping      | 4 Pulling       | 6 Loading to truck       |
 
 ## Jarak ke diagram, per langkah
 
-| # | Langkah | Keadaan |
-|---|---------|---------|
-| 1 | Good Receipt | Ada. Belum ada PO untuk dicocokkan. |
-| 2 | Good Movement | Ada (`transfers`). |
-| 3 | Production Result | **Ada dan ber-SLOC.** WP01 (−) lewat backflush, PP02 (+) lewat scan. |
-| 4 | Pulling / Shopping | **Ada dan ber-SLOC.** PP02 (−) → PP04 (+) saat pulling ditutup. |
-| 5 | Delivery Preparation | Dikerjakan lewat SAP GUI — di luar cakupan sistem ini. |
-| 6 | Loading to Truck | Ada sebagai loading list; stok keluar dari PP04. RFID gate belum. |
+| #   | Langkah              | Keadaan                                                              |
+| --- | -------------------- | -------------------------------------------------------------------- |
+| 1   | Good Receipt         | Ada. Belum ada PO untuk dicocokkan.                                  |
+| 2   | Good Movement        | Ada (`transfers`).                                                   |
+| 3   | Production Result    | **Ada dan ber-SLOC.** WP01 (−) lewat backflush, PP02 (+) lewat scan. |
+| 4   | Pulling / Shopping   | **Ada dan ber-SLOC.** PP02 (−) → PP04 (+) saat pulling ditutup.      |
+| 5   | Delivery Preparation | Dikerjakan lewat SAP GUI — di luar cakupan sistem ini.               |
+| 6   | Loading to Truck     | Ada sebagai loading list; stok keluar dari PP04. RFID gate belum.    |
 
 ## Yang sengaja berbeda dari diagram
 
@@ -124,7 +130,7 @@ alasan sistem ini dibangun; SAP tidak menyimpan jejak itu.
 
 ## Penamaan tabel dan kolom
 
-Tabel memakai awalan **TM_** (master) dan **TT_** (transaksi), kolomnya HURUF
+Tabel memakai awalan **TM\_** (master) dan **TT\_** (transaksi), kolomnya HURUF
 BESAR — mengikuti konvensi yang sudah dipakai di lingkungan PT. Aisin, supaya
 skema ini bisa dibaca orang MIS tanpa kamus penerjemah.
 
@@ -136,23 +142,23 @@ menyentuh satu baris pun kode query.
 Nama dari diagram MIS dipakai APA ADANYA bila tabel kita memang benda yang
 sama. Sisanya memakai awalan yang sama dengan aturan mereka.
 
-| Diagram | Di sini |
-|---------|---------|
-| TM_PARTS | `TM_PARTS` |
-| TM_CUST | `TM_CUST` |
-| TM_VENDOR | `TM_VENDOR` |
-| TM_SHIPPING_PARTS | `TM_SHIPPING_PARTS` |
-| TM_KANBAN | `TM_KANBAN` + `TT_KANBAN_EVENT` |
-| TT_PURCHASE_RECEIPT_H / _L | `TT_PURCHASE_RECEIPT_H` / `_L` |
-| TT_GOODS_MOVEMENT_H / _L | `TT_GOODS_MOVEMENT_H` / `_L` |
-| TT_DELIVERY / TT_DELIVERY_ITEM | `TT_DELIVERY` / `TT_DELIVERY_ITEM` |
-| TT_HISTORY_IN_LINE_SCAN | `TT_HISTORY_SCAN` (kind = PRODUCTION) |
-| TT_HISTORY_SCAN_KANBAN_SD | `TT_HISTORY_SCAN` (kind = DELIVERY) |
-| TT_PRODUCTION_RESULT | `TT_HISTORY_SCAN` + `TT_STOCK_MUTATION` |
-| TM_VENDOR_PARTS | *belum ada* |
-| TT_PO_HEADER / TT_PO_LINE | *belum ada* |
-| TT_ELINA_H / _L | *belum ada* |
-| TT_SETUP_CHUTE, TT_DATA_TESTER, TT_ONE_WAY_KANBAN | *belum ada* |
+| Diagram                                           | Di sini                                 |
+| ------------------------------------------------- | --------------------------------------- |
+| TM_PARTS                                          | `TM_PARTS`                              |
+| TM_CUST                                           | `TM_CUST`                               |
+| TM_VENDOR                                         | `TM_VENDOR`                             |
+| TM_SHIPPING_PARTS                                 | `TM_SHIPPING_PARTS`                     |
+| TM_KANBAN                                         | `TM_KANBAN` + `TT_KANBAN_EVENT`         |
+| TT_PURCHASE_RECEIPT_H / \_L                       | `TT_PURCHASE_RECEIPT_H` / `_L`          |
+| TT_GOODS_MOVEMENT_H / \_L                         | `TT_GOODS_MOVEMENT_H` / `_L`            |
+| TT_DELIVERY / TT_DELIVERY_ITEM                    | `TT_DELIVERY` / `TT_DELIVERY_ITEM`      |
+| TT_HISTORY_IN_LINE_SCAN                           | `TT_HISTORY_SCAN` (kind = PRODUCTION)   |
+| TT_HISTORY_SCAN_KANBAN_SD                         | `TT_HISTORY_SCAN` (kind = DELIVERY)     |
+| TT_PRODUCTION_RESULT                              | `TT_HISTORY_SCAN` + `TT_STOCK_MUTATION` |
+| TM_VENDOR_PARTS                                   | _belum ada_                             |
+| TT_PO_HEADER / TT_PO_LINE                         | _belum ada_                             |
+| TT_ELINA_H / \_L                                  | _belum ada_                             |
+| TT_SETUP_CHUTE, TT_DATA_TESTER, TT_ONE_WAY_KANBAN | _belum ada_                             |
 
 Tabel yang tidak punya padanan di diagram memakai awalan yang sama:
 `TM_PLANT`, `TM_LINE`, `TM_LOCATION`, `TM_NG`, `TM_BOM`, `TM_SCRAP_RULE`,
@@ -240,15 +246,15 @@ produksi dikirim ketika job konsumsi komponen masih tertunda.
 
 ### Tujuh status, dan SENT bukan garis akhir
 
-| Status | Arti |
-|--------|------|
-| PENDING | belum didorong ke staging |
-| SENT | sudah di staging, **menunggu** diproses SAP |
+| Status    | Arti                                                     |
+| --------- | -------------------------------------------------------- |
+| PENDING   | belum didorong ke staging                                |
+| SENT      | sudah di staging, **menunggu** diproses SAP              |
 | CONFIRMED | SAP memproses dan berhasil — flag di staging bernilai OK |
-| REJECTED | SAP menolak — flag bernilai gagal, perlu dilihat orang |
-| FAILED | gagal teknis saat mendorong, akan dicoba lagi |
-| HELD | movement type-nya belum diputuskan — sengaja ditahan |
-| SKIPPED | memang tidak perlu dikirim |
+| REJECTED  | SAP menolak — flag bernilai gagal, perlu dilihat orang   |
+| FAILED    | gagal teknis saat mendorong, akan dicoba lagi            |
+| HELD      | movement type-nya belum diputuskan — sengaja ditahan     |
+| SKIPPED   | memang tidak perlu dikirim                               |
 
 `SENT` sengaja bukan status akhir. Yang menentukan dokumen selesai adalah flag
 yang ditulis balik oleh SAP, bukan keberhasilan kita menulis barisnya.
@@ -295,7 +301,7 @@ dokumen di SAP, dan koreksinya harus dikerjakan manual oleh orang finance.
 Perpindahan antar SLOC adalah SATU dokumen SAP yang memuat sisi keluar dan
 sisi masuk sekaligus. Mengirim keduanya berarti stok berpindah dua kali.
 
-### Koneksi staging terpisah dari MSSQL_*
+### Koneksi staging terpisah dari MSSQL\_\*
 
 `MSSQL_*` yang sudah ada menunjuk J922 dengan user `guest_ro`: baca-saja, untuk
 MENARIK data mesin. Staging adalah sebaliknya — database lain, user yang boleh
@@ -374,6 +380,12 @@ belum dipastikan, sebagian scan produksi tidak akan pernah sampai ke SAP.
   Salah movement type berarti salah akun GL: barangnya pindah dengan benar di
   gudang, tetapi jurnalnya masuk ke tempat yang keliru, dan itu baru ketahuan
   saat tutup buku.
+- **Kontrak Good Issue dan penerbitan DO.** Selesai loading saat ini membuat
+  `DELIVERY_OUT` dan mengantrekannya sebagai dokumen `DELIVERY`/movement 601.
+  Endpoint atau tabel staging yang benar untuk posting GI, flag suksesnya,
+  serta nomor DO yang diterbitkan SAP belum dikonfirmasi. Nomor DO tidak boleh
+  dibuat sendiri oleh MES; ia harus disimpan dari balasan SAP setelah kontrak
+  integrasinya disepakati.
 - **Nama tabel dan kolom di staging.** Strukturnya sudah ada di sisi tim SAP;
   yang tertulis di `staging-tables.ts` masih dugaan. Jalankan
   `pnpm staging:introspect` untuk membacanya langsung dari sumbernya. Sisi
@@ -403,13 +415,13 @@ Dibaca dari `aisinbisa_sap_stagging` pada 16 September 2026 lewat
 Staging memakai nama tabel yang SAMA dengan kita, jadi dorongan dilakukan per
 jenis dokumen ke pasangan kepala + barisnya sendiri:
 
-| Jenis dokumen | Tabel di staging | Status |
-|---|---|---|
-| Perpindahan SLOC | `TT_GOODS_MOVEMENT_H` / `_L` | **sudah dipetakan** |
-| Penerimaan | `TT_PURCHASE_RECEIPT_H` / `_L` | belum |
-| Pengiriman | `TT_DELIVERY` / `TT_DELIVERY_ITEM` | belum |
-| Produksi | `TT_PRODUCTION_RESULT` | **sudah dipetakan**, menunggu validasi semantik SAP |
-| Saldo per SLOC | `TT_PARTS_SLOC` | belum diputuskan |
+| Jenis dokumen    | Tabel di staging                   | Status                                              |
+| ---------------- | ---------------------------------- | --------------------------------------------------- |
+| Perpindahan SLOC | `TT_GOODS_MOVEMENT_H` / `_L`       | **sudah dipetakan**                                 |
+| Penerimaan       | `TT_PURCHASE_RECEIPT_H` / `_L`     | belum                                               |
+| Pengiriman       | `TT_DELIVERY` / `TT_DELIVERY_ITEM` | belum                                               |
+| Produksi         | `TT_PRODUCTION_RESULT`             | **sudah dipetakan**, menunggu validasi semantik SAP |
+| Saldo per SLOC   | `TT_PARTS_SLOC`                    | belum diputuskan                                    |
 
 Dokumen yang jenisnya belum dipetakan **DITAHAN**, bukan didorong ke tabel
 perpindahan yang kebetulan ada. Penerimaan barang yang mendarat di
@@ -453,13 +465,13 @@ dibiarkan terjadi diam-diam di sisi SQL Server.
 Seluruh kolom kita mengikuti konvensi staging: **prefiks tipe + nama kolom
 kapital**. 436 kolom di-rename pada 16 September 2026.
 
-| Prefiks | Untuk |
-|---|---|
-| `CHR_` | varchar, char, text, enum, json |
-| `INT_` | int, bigint, smallint, foreign key, primary key |
-| `FLT_` | decimal, float, double |
-| `DTM_` | timestamp, datetime, date, time |
-| `FLG_` | boolean |
+| Prefiks | Untuk                                           |
+| ------- | ----------------------------------------------- |
+| `CHR_`  | varchar, char, text, enum, json                 |
+| `INT_`  | int, bigint, smallint, foreign key, primary key |
+| `FLT_`  | decimal, float, double                          |
+| `DTM_`  | timestamp, datetime, date, time                 |
+| `FLG_`  | boolean                                         |
 
 `DTM_` dan `FLG_` adalah tambahan kita: staging tidak punya tipe tanggal maupun
 boolean sungguhan (keduanya `char`), jadi tidak ada prefiks yang bisa ditiru.
@@ -468,16 +480,16 @@ prefiksnya sering salah.
 
 Badan namanya mengikuti staging bila kolomnya benar-benar berisi hal yang sama:
 
-| Avicenna | Staging |
-|---|---|
-| `TM_PARTS.CHR_PART_NO` | `CHR_PART_NO` |
-| `TM_PARTS.CHR_PART_NAME` | `CHR_PART_NAME` |
-| `TM_PARTS.CHR_PART_UOM` | `CHR_PART_UOM` |
-| `TM_CUST.CHR_CUST_NO` | `CHR_CUST_NO` |
-| `TM_VENDOR.CHR_SUPPLIER_ID` | `CHR_SUPPLIER_ID` |
-| `TT_DELIVERY.CHR_DEL_NO` | `CHR_DEL_NO` |
-| `TT_DELIVERY_ITEM.INT_ACTUAL_DEL` | `INT_ACTUAL_DEL` |
-| `TT_LOT.CHR_BATCH_NO` | `CHR_BATCH_NO` |
+| Avicenna                          | Staging           |
+| --------------------------------- | ----------------- |
+| `TM_PARTS.CHR_PART_NO`            | `CHR_PART_NO`     |
+| `TM_PARTS.CHR_PART_NAME`          | `CHR_PART_NAME`   |
+| `TM_PARTS.CHR_PART_UOM`           | `CHR_PART_UOM`    |
+| `TM_CUST.CHR_CUST_NO`             | `CHR_CUST_NO`     |
+| `TM_VENDOR.CHR_SUPPLIER_ID`       | `CHR_SUPPLIER_ID` |
+| `TT_DELIVERY.CHR_DEL_NO`          | `CHR_DEL_NO`      |
+| `TT_DELIVERY_ITEM.INT_ACTUAL_DEL` | `INT_ACTUAL_DEL`  |
+| `TT_LOT.CHR_BATCH_NO`             | `CHR_BATCH_NO`    |
 
 Yang **tidak** disamakan adalah foreign key dan surrogate id. Staging tidak
 punya id sama sekali — ia menyimpan kunci alami (`CHR_PART_NO char(18)`) di
@@ -505,12 +517,12 @@ produksi dijalankan.
 Empat entitas dipetakan, dijalankan **berurutan** karena customer dan part harus
 ada sebelum pemetaan nomor part customer bisa dicocokkan:
 
-| Entitas | Sumber di staging | Kunci |
-|---|---|---|
-| CUSTOMER | `TM_CUST` | `CHR_CUST_NO` |
-| VENDOR | `TM_VENDOR` | `CHR_SUPPLIER_ID` |
-| PART | `TM_PROCESS_PARTS` ⨝ `TM_PARTS` | `CHR_PLANT` + `CHR_PART_NO` |
-| CUSTOMER_PART | `TM_SHIPPING_PARTS` | `CHR_PART_NO` + `CHR_CUS_NO` |
+| Entitas       | Sumber di staging               | Kunci                        |
+| ------------- | ------------------------------- | ---------------------------- |
+| CUSTOMER      | `TM_CUST`                       | `CHR_CUST_NO`                |
+| VENDOR        | `TM_VENDOR`                     | `CHR_SUPPLIER_ID`            |
+| PART          | `TM_PROCESS_PARTS` ⨝ `TM_PARTS` | `CHR_PLANT` + `CHR_PART_NO`  |
+| CUSTOMER_PART | `TM_SHIPPING_PARTS`             | `CHR_PART_NO` + `CHR_CUS_NO` |
 
 ```bash
 # uji coba — tidak menulis apa pun, hanya melaporkan yang AKAN berubah

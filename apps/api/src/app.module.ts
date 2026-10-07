@@ -15,6 +15,7 @@ import { ReceivingModule } from './receiving/receiving.module';
 import { TraceModule } from './trace/trace.module';
 import { TransferModule } from './transfer/transfer.module';
 import { LoadingModule } from './loading/loading.module';
+import { KanbanCropModule } from './kanban-crop/kanban-crop.module';
 import { SapModule } from './sap/sap.module';
 import { StagingModule } from './staging/staging.module';
 import { RoutingModule } from './routing/routing.module';
@@ -43,6 +44,7 @@ import { loadEnv } from './config/env';
     TraceModule,
     TransferModule,
     LoadingModule,
+    KanbanCropModule,
     SapModule,
     StagingModule,
     RoutingModule,

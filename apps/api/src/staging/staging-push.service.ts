@@ -145,7 +145,13 @@ export class StagingPushService {
     const antre = await this.db
       .select()
       .from(sapOutbox)
-      .where(and(eq(sapOutbox.status, 'PENDING'), lt(sapOutbox.attempts, MAX_ATTEMPTS)))
+      .where(
+        and(
+          eq(sapOutbox.status, 'PENDING'),
+          eq(sapOutbox.isSimulation, false),
+          lt(sapOutbox.attempts, MAX_ATTEMPTS),
+        ),
+      )
       .orderBy(asc(sapOutbox.occurredAt))
       .limit(BATCH_DORONG);
 
@@ -486,7 +492,7 @@ export class StagingPushService {
     const menunggu = await this.db
       .select()
       .from(sapOutbox)
-      .where(eq(sapOutbox.status, 'SENT'))
+      .where(and(eq(sapOutbox.status, 'SENT'), eq(sapOutbox.isSimulation, false)))
       .orderBy(asc(sapOutbox.sentAt))
       .limit(BATCH_BALASAN);
 
@@ -620,9 +626,7 @@ export class StagingPushService {
   }
 
   /** Membaca kolom flag untuk sekumpulan nomor dokumen, dikelompokkan per dokumen. */
-  private async bacaFlag(
-    nomorDokumen: number[],
-  ): Promise<
+  private async bacaFlag(nomorDokumen: number[]): Promise<
     Map<
       number,
       {
@@ -702,7 +706,13 @@ export class StagingPushService {
     await this.db
       .update(sapOutbox)
       .set({ status: 'PENDING', attempts: 0, lastError: null, sentAt: null, confirmedAt: null })
-      .where(and(inArray(sapOutbox.id, ids), inArray(sapOutbox.status, ['REJECTED', 'FAILED'])));
+      .where(
+        and(
+          inArray(sapOutbox.id, ids),
+          eq(sapOutbox.isSimulation, false),
+          inArray(sapOutbox.status, ['REJECTED', 'FAILED']),
+        ),
+      );
     return { diulang: ids.length };
   }
 }

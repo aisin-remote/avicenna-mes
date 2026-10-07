@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "a199cc7e-6ac8-4d7c-bb47-0f86930507ed",
-  "prevId": "b6d9d14e-bd14-40aa-8317-c1ae24fc75eb",
+  "id": "6725ec28-b6d5-4507-9400-1b4a7dea1de3",
+  "prevId": "cadaa796-cde0-4399-972d-2101a8b08a19",
   "tables": {
     "TM_DEVICE": {
       "name": "TM_DEVICE",
@@ -1631,11 +1631,11 @@
         },
         "CHR_SCAN_MODE": {
           "name": "CHR_SCAN_MODE",
-          "type": "enum('PART_SAJA','PART_KANBAN','KANBAN_BOX','PART_TANPA_KANBAN','PART_PINDAH_KARTU','PER_PIECE','PER_KANBAN')",
+          "type": "enum('PER_PIECE','PER_KANBAN')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'PART_SAJA'"
+          "default": "'PER_PIECE'"
         },
         "INT_INPUT_LOCATION_ID": {
           "name": "INT_INPUT_LOCATION_ID",
@@ -2479,6 +2479,173 @@
       "compositePrimaryKeys": {
         "TM_KANBAN_INT_ID": {
           "name": "TM_KANBAN_INT_ID",
+          "columns": [
+            "INT_ID"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "TM_KANBAN_CROP_PROFILE": {
+      "name": "TM_KANBAN_CROP_PROFILE",
+      "columns": {
+        "INT_ID": {
+          "name": "INT_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "INT_CUSTOMER_ID": {
+          "name": "INT_CUSTOMER_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "INT_WIDTH_TENTHS": {
+          "name": "INT_WIDTH_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 900
+        },
+        "INT_HEIGHT_TENTHS": {
+          "name": "INT_HEIGHT_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 620
+        },
+        "INT_OFFSET_X_TENTHS": {
+          "name": "INT_OFFSET_X_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 80
+        },
+        "INT_OFFSET_Y_TENTHS": {
+          "name": "INT_OFFSET_Y_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 80
+        },
+        "INT_GAP_X_TENTHS": {
+          "name": "INT_GAP_X_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 40
+        },
+        "INT_GAP_Y_TENTHS": {
+          "name": "INT_GAP_Y_TENTHS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 40
+        },
+        "INT_COLUMNS": {
+          "name": "INT_COLUMNS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 2
+        },
+        "INT_ROWS": {
+          "name": "INT_ROWS",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 4
+        },
+        "JSON_HORIZONTAL_LINES": {
+          "name": "JSON_HORIZONTAL_LINES",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "JSON_VERTICAL_LINES": {
+          "name": "JSON_VERTICAL_LINES",
+          "type": "json",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "INT_UPDATED_BY_ID": {
+          "name": "INT_UPDATED_BY_ID",
+          "type": "bigint unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "DTM_CREATED_AT": {
+          "name": "DTM_CREATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "DTM_UPDATED_AT": {
+          "name": "DTM_UPDATED_AT",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "TM_KANBAN_CROP_PROFILE_CUSTOMER_UNIQUE": {
+          "name": "TM_KANBAN_CROP_PROFILE_CUSTOMER_UNIQUE",
+          "columns": [
+            "INT_CUSTOMER_ID"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "TM_KANBAN_CROP_PROFILE_INT_CUSTOMER_ID_TM_CUST_INT_ID_fk": {
+          "name": "TM_KANBAN_CROP_PROFILE_INT_CUSTOMER_ID_TM_CUST_INT_ID_fk",
+          "tableFrom": "TM_KANBAN_CROP_PROFILE",
+          "tableTo": "TM_CUST",
+          "columnsFrom": [
+            "INT_CUSTOMER_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "TM_KANBAN_CROP_PROFILE_INT_UPDATED_BY_ID_TM_USER_INT_ID_fk": {
+          "name": "TM_KANBAN_CROP_PROFILE_INT_UPDATED_BY_ID_TM_USER_INT_ID_fk",
+          "tableFrom": "TM_KANBAN_CROP_PROFILE",
+          "tableTo": "TM_USER",
+          "columnsFrom": [
+            "INT_UPDATED_BY_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "TM_KANBAN_CROP_PROFILE_INT_ID": {
+          "name": "TM_KANBAN_CROP_PROFILE_INT_ID",
           "columns": [
             "INT_ID"
           ]
@@ -4288,6 +4455,104 @@
           "notNull": false,
           "autoincrement": false
         },
+        "CHR_PO_NO": {
+          "name": "CHR_PO_NO",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_SORG": {
+          "name": "CHR_SORG",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_DIS_CHANNEL": {
+          "name": "CHR_DIS_CHANNEL",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_DIVISION": {
+          "name": "CHR_DIVISION",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_DEL_TYPE": {
+          "name": "CHR_DEL_TYPE",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_GI_DEL": {
+          "name": "CHR_GI_DEL",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_INV_NO": {
+          "name": "CHR_INV_NO",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_QC_STATUS": {
+          "name": "CHR_QC_STATUS",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "DTM_DEL_DATE_ACT": {
+          "name": "DTM_DEL_DATE_ACT",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_SM_H_FLAG": {
+          "name": "CHR_SM_H_FLAG",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_SM_L_FLAG": {
+          "name": "CHR_SM_L_FLAG",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "CHR_FLAG_RECEIVE": {
+          "name": "CHR_FLAG_RECEIVE",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "DTM_DATE_RECEIVE": {
+          "name": "DTM_DATE_RECEIVE",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "DTM_TIME_RECEIVE": {
+          "name": "DTM_TIME_RECEIVE",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "DTM_DEL_DATE": {
           "name": "DTM_DEL_DATE",
           "type": "date",
@@ -4547,6 +4812,28 @@
           "notNull": false,
           "autoincrement": false
         },
+        "CHR_DEL_ITEM": {
+          "name": "CHR_DEL_ITEM",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "INT_DEL_QTY": {
+          "name": "INT_DEL_QTY",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "CHR_ITEM_TYPE": {
+          "name": "CHR_ITEM_TYPE",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "INT_PLANNED_KANBAN": {
           "name": "INT_PLANNED_KANBAN",
           "type": "int",
@@ -4621,13 +4908,21 @@
         }
       },
       "indexes": {
-        "TT_DELIVERY_ITEM_UNIQUE": {
-          "name": "TT_DELIVERY_ITEM_UNIQUE",
+        "TT_DELIVERY_ITEM_SOURCE_UNIQUE": {
+          "name": "TT_DELIVERY_ITEM_SOURCE_UNIQUE",
+          "columns": [
+            "INT_DELIVERY_ID",
+            "CHR_DEL_ITEM"
+          ],
+          "isUnique": true
+        },
+        "TT_DELIVERY_ITEM_DELIVERY_PART_IDX": {
+          "name": "TT_DELIVERY_ITEM_DELIVERY_PART_IDX",
           "columns": [
             "INT_DELIVERY_ID",
             "INT_PART_ID"
           ],
-          "isUnique": true
+          "isUnique": false
         },
         "TT_DELIVERY_ITEM_PART_IDX": {
           "name": "TT_DELIVERY_ITEM_PART_IDX",
@@ -4814,570 +5109,6 @@
       "compositePrimaryKeys": {
         "TT_MACHINE_EVENT_INT_ID": {
           "name": "TT_MACHINE_EVENT_INT_ID",
-          "columns": [
-            "INT_ID"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
-    "TT_LINE_STOP": {
-      "name": "TT_LINE_STOP",
-      "columns": {
-        "INT_ID": {
-          "name": "INT_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "INT_PLANT_ID": {
-          "name": "INT_PLANT_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "INT_LINE_ID": {
-          "name": "INT_LINE_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "INT_PART_ID": {
-          "name": "INT_PART_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "INT_STOP_REASON_ID": {
-          "name": "INT_STOP_REASON_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "DTM_PRODUCTION_DATE": {
-          "name": "DTM_PRODUCTION_DATE",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "DTM_STARTED_AT": {
-          "name": "DTM_STARTED_AT",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "DTM_ENDED_AT": {
-          "name": "DTM_ENDED_AT",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "CHR_CLOSED_BY": {
-          "name": "CHR_CLOSED_BY",
-          "type": "enum('TOMBOL','SCAN','SISTEM')",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "CHR_NPK": {
-          "name": "CHR_NPK",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "INT_USER_ID": {
-          "name": "INT_USER_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "CHR_NOTE": {
-          "name": "CHR_NOTE",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "DTM_CREATED_AT": {
-          "name": "DTM_CREATED_AT",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "DTM_UPDATED_AT": {
-          "name": "DTM_UPDATED_AT",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "TT_LINE_STOP_LINE_TIME_IDX": {
-          "name": "TT_LINE_STOP_LINE_TIME_IDX",
-          "columns": [
-            "INT_LINE_ID",
-            "DTM_STARTED_AT"
-          ],
-          "isUnique": false
-        },
-        "TT_LINE_STOP_DATE_IDX": {
-          "name": "TT_LINE_STOP_DATE_IDX",
-          "columns": [
-            "DTM_PRODUCTION_DATE",
-            "INT_LINE_ID"
-          ],
-          "isUnique": false
-        },
-        "TT_LINE_STOP_OPEN_IDX": {
-          "name": "TT_LINE_STOP_OPEN_IDX",
-          "columns": [
-            "INT_LINE_ID",
-            "DTM_ENDED_AT"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "TT_LINE_STOP_INT_PLANT_ID_TM_PLANT_INT_ID_fk": {
-          "name": "TT_LINE_STOP_INT_PLANT_ID_TM_PLANT_INT_ID_fk",
-          "tableFrom": "TT_LINE_STOP",
-          "tableTo": "TM_PLANT",
-          "columnsFrom": [
-            "INT_PLANT_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "TT_LINE_STOP_INT_LINE_ID_TM_LINE_INT_ID_fk": {
-          "name": "TT_LINE_STOP_INT_LINE_ID_TM_LINE_INT_ID_fk",
-          "tableFrom": "TT_LINE_STOP",
-          "tableTo": "TM_LINE",
-          "columnsFrom": [
-            "INT_LINE_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "TT_LINE_STOP_INT_PART_ID_TM_PARTS_INT_ID_fk": {
-          "name": "TT_LINE_STOP_INT_PART_ID_TM_PARTS_INT_ID_fk",
-          "tableFrom": "TT_LINE_STOP",
-          "tableTo": "TM_PARTS",
-          "columnsFrom": [
-            "INT_PART_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "TT_LINE_STOP_INT_STOP_REASON_ID_TM_STOP_REASON_INT_ID_fk": {
-          "name": "TT_LINE_STOP_INT_STOP_REASON_ID_TM_STOP_REASON_INT_ID_fk",
-          "tableFrom": "TT_LINE_STOP",
-          "tableTo": "TM_STOP_REASON",
-          "columnsFrom": [
-            "INT_STOP_REASON_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "TT_LINE_STOP_INT_USER_ID_TM_USER_INT_ID_fk": {
-          "name": "TT_LINE_STOP_INT_USER_ID_TM_USER_INT_ID_fk",
-          "tableFrom": "TT_LINE_STOP",
-          "tableTo": "TM_USER",
-          "columnsFrom": [
-            "INT_USER_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "TT_LINE_STOP_INT_ID": {
-          "name": "TT_LINE_STOP_INT_ID",
-          "columns": [
-            "INT_ID"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
-    "TM_STOP_REASON": {
-      "name": "TM_STOP_REASON",
-      "columns": {
-        "INT_ID": {
-          "name": "INT_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "INT_PLANT_ID": {
-          "name": "INT_PLANT_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "INT_LINE_ID": {
-          "name": "INT_LINE_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "CHR_CODE": {
-          "name": "CHR_CODE",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "CHR_NAME": {
-          "name": "CHR_NAME",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "CHR_CATEGORY": {
-          "name": "CHR_CATEGORY",
-          "type": "enum('PROBLEM','SETUP','QC','CHANGEOVER','MATERIAL','LAINNYA')",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'PROBLEM'"
-        },
-        "FLG_IS_PLANNED": {
-          "name": "FLG_IS_PLANNED",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "INT_SORT_ORDER": {
-          "name": "INT_SORT_ORDER",
-          "type": "int",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "FLG_IS_ACTIVE": {
-          "name": "FLG_IS_ACTIVE",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
-        "DTM_CREATED_AT": {
-          "name": "DTM_CREATED_AT",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "DTM_UPDATED_AT": {
-          "name": "DTM_UPDATED_AT",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "TM_STOP_REASON_PLANT_CODE_UNIQUE": {
-          "name": "TM_STOP_REASON_PLANT_CODE_UNIQUE",
-          "columns": [
-            "INT_PLANT_ID",
-            "CHR_CODE"
-          ],
-          "isUnique": true
-        },
-        "TM_STOP_REASON_LINE_IDX": {
-          "name": "TM_STOP_REASON_LINE_IDX",
-          "columns": [
-            "INT_LINE_ID",
-            "FLG_IS_ACTIVE"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "TM_STOP_REASON_INT_PLANT_ID_TM_PLANT_INT_ID_fk": {
-          "name": "TM_STOP_REASON_INT_PLANT_ID_TM_PLANT_INT_ID_fk",
-          "tableFrom": "TM_STOP_REASON",
-          "tableTo": "TM_PLANT",
-          "columnsFrom": [
-            "INT_PLANT_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "TM_STOP_REASON_INT_LINE_ID_TM_LINE_INT_ID_fk": {
-          "name": "TM_STOP_REASON_INT_LINE_ID_TM_LINE_INT_ID_fk",
-          "tableFrom": "TM_STOP_REASON",
-          "tableTo": "TM_LINE",
-          "columnsFrom": [
-            "INT_LINE_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "TM_STOP_REASON_INT_ID": {
-          "name": "TM_STOP_REASON_INT_ID",
-          "columns": [
-            "INT_ID"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
-    "TM_WORK_BREAK": {
-      "name": "TM_WORK_BREAK",
-      "columns": {
-        "INT_ID": {
-          "name": "INT_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "INT_WORK_TIME_ID": {
-          "name": "INT_WORK_TIME_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "CHR_NAME": {
-          "name": "CHR_NAME",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "DTM_START_TIME": {
-          "name": "DTM_START_TIME",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "DTM_END_TIME": {
-          "name": "DTM_END_TIME",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "FLG_IS_ACTIVE": {
-          "name": "FLG_IS_ACTIVE",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
-        "DTM_CREATED_AT": {
-          "name": "DTM_CREATED_AT",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "DTM_UPDATED_AT": {
-          "name": "DTM_UPDATED_AT",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "TM_WORK_BREAK_SHIFT_IDX": {
-          "name": "TM_WORK_BREAK_SHIFT_IDX",
-          "columns": [
-            "INT_WORK_TIME_ID"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "TM_WORK_BREAK_INT_WORK_TIME_ID_TM_WORK_TIME_INT_ID_fk": {
-          "name": "TM_WORK_BREAK_INT_WORK_TIME_ID_TM_WORK_TIME_INT_ID_fk",
-          "tableFrom": "TM_WORK_BREAK",
-          "tableTo": "TM_WORK_TIME",
-          "columnsFrom": [
-            "INT_WORK_TIME_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "TM_WORK_BREAK_INT_ID": {
-          "name": "TM_WORK_BREAK_INT_ID",
-          "columns": [
-            "INT_ID"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraint": {}
-    },
-    "TM_WORK_TIME": {
-      "name": "TM_WORK_TIME",
-      "columns": {
-        "INT_ID": {
-          "name": "INT_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "INT_PLANT_ID": {
-          "name": "INT_PLANT_ID",
-          "type": "bigint unsigned",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "CHR_CODE": {
-          "name": "CHR_CODE",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "CHR_NAME": {
-          "name": "CHR_NAME",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "DTM_START_TIME": {
-          "name": "DTM_START_TIME",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "DTM_END_TIME": {
-          "name": "DTM_END_TIME",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "FLG_STARTS_PRODUCTION_DAY": {
-          "name": "FLG_STARTS_PRODUCTION_DAY",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "FLG_IS_ACTIVE": {
-          "name": "FLG_IS_ACTIVE",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
-        "DTM_CREATED_AT": {
-          "name": "DTM_CREATED_AT",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "DTM_UPDATED_AT": {
-          "name": "DTM_UPDATED_AT",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "TM_WORK_TIME_PLANT_CODE_UNIQUE": {
-          "name": "TM_WORK_TIME_PLANT_CODE_UNIQUE",
-          "columns": [
-            "INT_PLANT_ID",
-            "CHR_CODE"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "TM_WORK_TIME_INT_PLANT_ID_TM_PLANT_INT_ID_fk": {
-          "name": "TM_WORK_TIME_INT_PLANT_ID_TM_PLANT_INT_ID_fk",
-          "tableFrom": "TM_WORK_TIME",
-          "tableTo": "TM_PLANT",
-          "columnsFrom": [
-            "INT_PLANT_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "TM_WORK_TIME_INT_ID": {
-          "name": "TM_WORK_TIME_INT_ID",
           "columns": [
             "INT_ID"
           ]
@@ -7595,13 +7326,6 @@
         "CHR_SAP_DOC_NUMBER": {
           "name": "CHR_SAP_DOC_NUMBER",
           "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "INT_STAGING_NUMBER": {
-          "name": "INT_STAGING_NUMBER",
-          "type": "bigint",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

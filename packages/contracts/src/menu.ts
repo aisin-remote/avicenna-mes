@@ -63,21 +63,131 @@ export interface MenuDef {
 }
 
 const MENU_TETAP: MenuDef[] = [
-  { key: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', group: 'Produksi', sortOrder: 10 },
-  { key: 'scan', label: 'Stasiun Scan', href: '/scan', icon: 'ScanLine', group: 'Produksi', sortOrder: 20 },
-  { key: 'monitor', label: 'Monitor Line', href: '/monitor', icon: 'Activity', group: 'Produksi', sortOrder: 30 },
-  { key: 'ng-outline', label: 'Input NG Outline', href: '/ng', icon: 'TriangleAlert', group: 'Produksi', sortOrder: 40 },
+  {
+    key: 'dashboard',
+    label: 'Dashboard',
+    href: '/dashboard',
+    icon: 'LayoutDashboard',
+    group: 'Produksi',
+    sortOrder: 10,
+  },
+  {
+    key: 'scan',
+    label: 'Stasiun Scan',
+    href: '/scan',
+    icon: 'ScanLine',
+    group: 'Produksi',
+    sortOrder: 20,
+  },
+  {
+    key: 'monitor',
+    label: 'Monitor Line',
+    href: '/monitor',
+    icon: 'Activity',
+    group: 'Produksi',
+    sortOrder: 30,
+  },
+  {
+    key: 'ng-outline',
+    label: 'Input NG Outline',
+    href: '/ng',
+    icon: 'TriangleAlert',
+    group: 'Produksi',
+    sortOrder: 40,
+  },
 
-  { key: 'receiving', label: 'Penerimaan Barang', href: '/receiving', icon: 'Truck', group: 'Logistik', sortOrder: 10 },
-  { key: 'transfer', label: 'Transfer Antar Line', href: '/transfer', icon: 'MoveRight', group: 'Logistik', sortOrder: 20 },
-  { key: 'stock', label: 'Monitoring Stok', href: '/stock', icon: 'Boxes', group: 'Logistik', sortOrder: 30 },
-  { key: 'delivery', label: 'Pengiriman', href: '/delivery', icon: 'PackageCheck', group: 'Logistik', sortOrder: 40 },
-  { key: 'trace', label: 'Telusur Silsilah', href: '/trace', icon: 'GitBranch', group: 'Logistik', sortOrder: 50 },
+  {
+    key: 'receiving',
+    label: 'Receiving',
+    href: '/receiving',
+    icon: 'Truck',
+    group: 'Logistik',
+    sortOrder: 10,
+  },
+  {
+    key: 'transfer',
+    label: 'Transfer Antar Line',
+    href: '/transfer',
+    icon: 'MoveRight',
+    group: 'Logistik',
+    sortOrder: 20,
+  },
+  {
+    key: 'stock',
+    label: 'Stock',
+    href: '/stock',
+    icon: 'Boxes',
+    group: 'Logistik',
+    sortOrder: 30,
+  },
+  {
+    key: 'delivery',
+    label: 'Delivery',
+    href: '/delivery',
+    icon: 'PackageCheck',
+    group: 'Logistik',
+    sortOrder: 40,
+  },
+  {
+    key: 'delivery.scan',
+    label: 'Scan',
+    href: '/delivery-scan',
+    icon: 'ScanLine',
+    group: 'Logistik',
+    sortOrder: 50,
+  },
+  {
+    key: 'trace',
+    label: 'Mutation Delivery',
+    href: '/trace',
+    icon: 'GitBranch',
+    group: 'Logistik',
+    sortOrder: 70,
+  },
+  {
+    key: 'kanban.crop',
+    label: 'Kanban',
+    href: '/kanban',
+    icon: 'Scissors',
+    group: 'Logistik',
+    sortOrder: 80,
+  },
+  {
+    key: 'delivery.return',
+    label: 'Scan Surat Jalan',
+    href: '/delivery-return',
+    icon: 'ClipboardCheck',
+    group: 'Logistik',
+    sortOrder: 60,
+  },
 
-  { key: 'sap', label: 'Integrasi SAP', href: '/sap', icon: 'Share2', group: 'Integrasi', sortOrder: 10 },
+  {
+    key: 'sap',
+    label: 'Integrasi SAP',
+    href: '/sap',
+    icon: 'Share2',
+    group: 'Integrasi',
+    sortOrder: 10,
+  },
 
-  { key: 'admin.users', label: 'Pengguna', href: '/admin/users', icon: 'Users', group: 'Administrasi', sortOrder: 10, adminOnly: true },
-  { key: 'admin.roles', label: 'Role & Hak Menu', href: '/admin/roles', icon: 'ShieldCheck', group: 'Administrasi', sortOrder: 20, adminOnly: true },
+  {
+    key: 'admin.users',
+    label: 'Pengguna',
+    href: '/admin/users',
+    icon: 'Users',
+    group: 'Administrasi',
+    sortOrder: 10,
+    adminOnly: true,
+  },
+  {
+    key: 'admin.roles',
+    label: 'Role & Hak Menu',
+    href: '/admin/roles',
+    icon: 'ShieldCheck',
+    group: 'Administrasi',
+    sortOrder: 20,
+    adminOnly: true,
+  },
 ];
 
 /*
@@ -136,14 +246,11 @@ const MENU_KHUSUS: MenuDef[] = [
   },
 ];
 
-export const MENU_ITEMS: readonly MenuDef[] = [
-  ...MENU_TETAP,
-  ...MENU_KHUSUS,
-  ...MENU_MASTER,
-].sort((a, b) =>
-  a.group === b.group
-    ? a.sortOrder - b.sortOrder
-    : MENU_GROUPS.indexOf(a.group) - MENU_GROUPS.indexOf(b.group),
+export const MENU_ITEMS: readonly MenuDef[] = [...MENU_TETAP, ...MENU_KHUSUS, ...MENU_MASTER].sort(
+  (a, b) =>
+    a.group === b.group
+      ? a.sortOrder - b.sortOrder
+      : MENU_GROUPS.indexOf(a.group) - MENU_GROUPS.indexOf(b.group),
 );
 
 const PETA_MENU = new Map(MENU_ITEMS.map((m) => [m.key, m]));

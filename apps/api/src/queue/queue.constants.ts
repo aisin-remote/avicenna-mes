@@ -19,5 +19,7 @@ export const JOBS = {
   ACK_SAP_STAGING: 'ack-sap-staging',
   /** Menarik master data dari database jembatan. */
   PULL_SAP_MASTER: 'pull-sap-master',
+  /** Menarik loading list hari aktif (06:00-06:00) dari database jembatan. */
+  PULL_SAP_DELIVERIES: 'pull-sap-deliveries',
   SEND_NOTIFICATION: 'send-notification',
 } as const;

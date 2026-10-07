@@ -1,7 +1,21 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Truck, ScanLine, MapPin, FileText, User, Calendar, PackageOpen, Tags } from 'lucide-react';
-import { getLoading } from '@/lib/loading-api';
+import {
+  Truck,
+  ScanLine,
+  MapPin,
+  FileText,
+  User,
+  Calendar,
+  PackageOpen,
+  Tags,
+  Printer,
+  ListChecks,
+  AlertTriangle,
+} from 'lucide-react';
+import { deliveryAttentionReason } from '@avicenna/domain';
+import { getLoading, getLoadingHistory } from '@/lib/loading-api';
+import { DeliveryHistory } from '@/components/delivery/delivery-history';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Table, Th, Td, Tr } from '@/components/ui/table';
@@ -18,11 +32,7 @@ function sloc(code: string | null, name: string | null, peran: string): string {
   return name ? `${code} — ${name}` : code;
 }
 
-export default async function LoadingDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function LoadingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const numericId = Number(id);
   if (!Number.isInteger(numericId)) notFound();
@@ -37,6 +47,20 @@ export default async function LoadingDetailPage({
   const totalPlanned = doc.lines.reduce((s, l) => s + l.plannedKanban, 0);
   const totalPicked = doc.lines.reduce((s, l) => s + l.pickedKanban, 0);
   const totalActual = doc.lines.reduce((s, l) => s + l.actualKanban, 0);
+  const history = await getLoadingHistory(numericId);
+  const unmappedItems = doc.lines.filter((line) => !line.customerPartId).length;
+  const invalidQtyPerBox = doc.lines.filter((line) => line.qtyPerKanban <= 0).length;
+  const missingSloc = !doc.locationId || !doc.stagingLocationId;
+  const attentionReason = deliveryAttentionReason({
+    status: doc.status,
+    plannedKanban: totalPlanned,
+    pickedKanban: totalPicked,
+    actualKanban: totalActual,
+    sapStatus: doc.sapStatus,
+    unmappedItems,
+    invalidQtyPerBox,
+    missingSloc,
+  });
   const open = doc.status !== 'SHIPPED' && doc.status !== 'RECEIVED' && doc.status !== 'CANCELLED';
   // Tahap yang sedang berjalan menentukan tombol mana yang ditawarkan — dua
   // tombol scan sekaligus hanya membuat orang menebak mana yang benar.
@@ -47,24 +71,14 @@ export default async function LoadingDetailPage({
       <PageHeader
         crumbs={[{ label: 'Pengiriman', href: '/delivery' }, { label: doc.documentNumber }]}
         title={doc.documentNumber}
-        description={`${doc.customerName ?? '—'} · rit ${doc.cycle}`}
+        description={`${doc.customerName ?? '—'} · rit ${doc.cycle} · sumber SAP/staging`}
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <StatusChip status={doc.status} />
             <TruckChip status={doc.truckStatus} />
-            {/* Label DN: satu per box, discan di lini FG sebagai kartu customer
-                (direct pulling). Tetap boleh dicetak setelah berangkat — untuk
-                arsip — tapi bukan tombol utama. */}
-            <Link
-              href={`/delivery/${doc.id}/label`}
-              className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-5 text-[14px] font-semibold text-ink-soft transition-colors hover:bg-surface hover:text-ink"
-            >
-              <Tags className="size-[18px]" strokeWidth={2} aria-hidden />
-              Cetak label DN
-            </Link>
             {open ? (
               <Link
-                href={tahapPulling ? `/picking/${doc.id}` : `/loading/${doc.id}`}
+                href={tahapPulling ? `/picking/${doc.id}` : '/delivery-scan'}
                 className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
               >
                 {tahapPulling ? (
@@ -80,6 +94,91 @@ export default async function LoadingDetailPage({
       />
 
       <div className="space-y-5">
+        {attentionReason ? (
+          <Reveal>
+            <section className="rounded-card border border-ng/35 bg-ng/8 p-5">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 size-6 shrink-0 text-ng" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-[16px] font-bold text-ng">{attentionReason}</h2>
+                  <p className="mt-1 text-[13px] text-ink-soft">
+                    {doc.sapError ??
+                      `Rencana ${totalPlanned}, diambil ${totalPicked}, dan dimuat ${totalActual} kanban.`}
+                  </p>
+                  {doc.sapStatus ? (
+                    <p className="tabular mt-2 text-[12px] text-ink-muted">
+                      {doc.sapIsSimulation ? 'Status GI trial' : 'Status SAP'}:{' '}
+                      <strong>{doc.sapStatus}</strong>
+                      {doc.sapDocNumber ? ` · dokumen ${doc.sapDocNumber}` : ''}
+                    </p>
+                  ) : null}
+                </div>
+                {['FAILED', 'REJECTED', 'HELD'].includes(doc.sapStatus ?? '') ? (
+                  <Link
+                    href={`/sap?status=${doc.sapStatus}`}
+                    className="shrink-0 rounded-full border border-ng/30 px-4 py-2 text-[13px] font-semibold text-ng hover:border-ng"
+                  >
+                    Buka antrean SAP
+                  </Link>
+                ) : null}
+              </div>
+            </section>
+          </Reveal>
+        ) : null}
+
+        <Reveal>
+          <Card>
+            <CardHeader
+              icon={Printer}
+              title="Dokumen PPIC"
+              subtitle="Preview internal; buka terpisah agar setiap print job bisa memakai printer berbeda."
+            />
+            <div className="grid gap-3 border-t border-line px-6 py-5 md:grid-cols-3">
+              {[
+                {
+                  href: `/delivery/${doc.id}/manifest`,
+                  icon: FileText,
+                  title: 'Manifest',
+                  description: doc.manifestNumber ?? 'Nomor mengikuti data staging',
+                },
+                {
+                  href: `/delivery/${doc.id}/picklist`,
+                  icon: ListChecks,
+                  title: 'Picklist / Loading List',
+                  description: `${doc.lines.length} part · ${totalPlanned} kanban`,
+                },
+                {
+                  href: `/delivery/${doc.id}/label`,
+                  icon: Tags,
+                  title: 'Kanban',
+                  description: `${totalPlanned} label per box`,
+                },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.title}
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group flex min-w-0 items-center gap-4 rounded-2xl border border-line bg-surface/60 p-4 transition-all hover:-translate-y-0.5 hover:border-line-strong hover:bg-card hover:shadow-lift"
+                  >
+                    <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-card text-ink shadow-sm ring-1 ring-line transition-colors group-hover:bg-ink group-hover:text-white">
+                      <Icon className="size-5" strokeWidth={2} aria-hidden />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[15px] font-bold text-ink">{item.title}</span>
+                      <span className="mt-1 block truncate text-[13px] text-ink-muted">
+                        {item.description}
+                      </span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </Card>
+        </Reveal>
+
         <Reveal>
           <Card>
             <CardHeader icon={FileText} title="Keterangan dokumen" />
@@ -94,6 +193,40 @@ export default async function LoadingDetailPage({
               </InfoRow>
               <InfoRow icon={FileText} label="Nomor PDS">
                 {doc.pdsNumber ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Nomor manifest">
+                {doc.manifestNumber ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Customer PO">
+                {doc.purchaseOrderNumber ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Delivery type">
+                {doc.deliveryType ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Sales area">
+                {[doc.salesOrganization, doc.distributionChannel, doc.division]
+                  .filter(Boolean)
+                  .join(' / ') || '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Status GI sumber SAP">
+                {doc.sapGiStatus ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Good Issue (MES)">
+                {doc.sapIsSimulation
+                  ? `TRIAL · ${doc.sapStatus}`
+                  : (doc.sapStatus ?? 'belum diantrekan')}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Referensi GI">
+                {doc.sapDocNumber ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Invoice / billing SAP">
+                {doc.invoiceNumber ?? '—'}
+              </InfoRow>
+              <InfoRow icon={Calendar} label="Tanggal aktual SAP">
+                {doc.sapActualDeliveryDate ?? '—'}
+              </InfoRow>
+              <InfoRow icon={FileText} label="Status penerimaan SAP">
+                {doc.sapReceiveStatus ?? '—'}
               </InfoRow>
               <InfoRow icon={MapPin} label="Dock">
                 {doc.dock ?? '—'}
@@ -113,7 +246,23 @@ export default async function LoadingDetailPage({
               <InfoRow icon={Truck} label="Berangkat">
                 {doc.departedAt ? new Date(doc.departedAt).toLocaleString('id-ID') : 'belum'}
               </InfoRow>
+              <InfoRow icon={Calendar} label="Diterima customer (MES)">
+                {doc.arrivedAt ? new Date(doc.arrivedAt).toLocaleString('id-ID') : 'belum'}
+              </InfoRow>
+              <InfoRow icon={Calendar} label="Penerimaan sumber SAP">
+                {[doc.sapReceiveDate, doc.sapReceiveTime].filter(Boolean).join(' ') || '—'}
+              </InfoRow>
             </InfoRowPair>
+            <details className="border-t border-line px-6 py-4 text-[13px]">
+              <summary className="cursor-pointer font-semibold">Flag sumber SAP</summary>
+              <p className="mt-2 text-ink-muted">
+                QC: {doc.qcStatus ?? '—'} · Movement header: {doc.sapHeaderMovementStatus ?? '—'} ·
+                Movement item: {doc.sapLineMovementStatus ?? '—'}
+              </p>
+              <p className="mt-1 text-[12px] text-ink-muted">
+                Nilai sumber disimpan apa adanya; tidak mengubah status operasional MES.
+              </p>
+            </details>
           </Card>
         </Reveal>
 
@@ -145,6 +294,13 @@ export default async function LoadingDetailPage({
                       <Td strong>
                         {l.partNumber}
                         <div className="text-[13px] font-normal text-ink-muted">{l.partName}</div>
+                        <div className="tabular mt-0.5 text-[11px] font-normal text-ink-muted">
+                          Item SAP {l.sapItemNumber ?? '—'}
+                          {l.itemType ? ` · ${l.itemType}` : ''}
+                          {l.sapDeliveryQty > 0
+                            ? ` · qty sumber ${l.sapDeliveryQty.toLocaleString('id-ID')}`
+                            : ''}
+                        </div>
                       </Td>
                       <Td className="tabular">{l.customerPartNumber ?? '—'}</Td>
                       <Td align="right" className="tabular">
@@ -187,6 +343,9 @@ export default async function LoadingDetailPage({
             totalPicked={totalPicked}
             totalActual={totalActual}
           />
+        </Reveal>
+        <Reveal>
+          <DeliveryHistory history={history} />
         </Reveal>
       </div>
     </>

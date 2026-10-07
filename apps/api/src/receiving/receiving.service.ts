@@ -1,7 +1,13 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { eq, and, or, desc, count, gte, lte, sql, type Database } from '@avicenna/db';
 import { receipts, receiptLines, lots, mutations, parts, suppliers, plants } from '@avicenna/db';
-import { buildReceiptNumber, buildLotNumber, needsLot, productionDateKey } from '@avicenna/domain';
+import {
+  buildReceiptNumber,
+  buildLotNumber,
+  needsLot,
+  productionDateKey,
+  displayAresOrder,
+} from '@avicenna/domain';
 import type { ReceiptCreateInput, ReceiptUpdateInput, ResolvedPart } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
 import type { Principal } from '../auth/auth.types';
@@ -145,10 +151,7 @@ export class ReceivingService {
     // Ambil seluruh part sekaligus, bukan satu per satu di dalam transaksi —
     // transaksi sebaiknya sesingkat mungkin agar tidak lama mengunci baris.
     const partIds = [...new Set(input.lines.map((l) => l.partId))];
-    const partRows = await this.db
-      .select()
-      .from(parts)
-      .where(inIds(parts.id, partIds));
+    const partRows = await this.db.select().from(parts).where(inIds(parts.id, partIds));
     const partById = new Map(partRows.map((p) => [p.id, p]));
 
     for (const line of input.lines) {
@@ -182,9 +185,7 @@ export class ReceivingService {
         receivedById: principal?.kind === 'user' ? principal.sub : null,
         note: input.note ?? null,
       });
-      const receiptId = Number(
-        (inserted as unknown as Array<{ insertId: number }>)[0]?.insertId,
-      );
+      const receiptId = Number((inserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
 
       let lotSeq = 0;
 
@@ -296,13 +297,13 @@ export class ReceivingService {
    *   baris ditambah    -> lot baru bila perlu + mutasi RECEIVING_IN
    */
   async update(id: number, input: ReceiptUpdateInput, principal?: Principal) {
-    const existing = await this.db
-      .select()
-      .from(receipts)
-      .where(eq(receipts.id, id))
-      .limit(1);
+    const existing = await this.db.select().from(receipts).where(eq(receipts.id, id)).limit(1);
     const receipt = existing[0];
     if (!receipt) throw new NotFoundException(`Penerimaan ${id} tidak ditemukan`);
+    if (receipt.aresOrderId)
+      throw new BadRequestException(
+        'Penerimaan hasil scan tidak diubah manual. Gunakan pembatalan sesi dengan alasan.',
+      );
     if (receipt.status === 'CANCELLED') {
       throw new BadRequestException('Penerimaan yang sudah dibatalkan tidak bisa diubah');
     }
@@ -481,8 +482,14 @@ export class ReceivingService {
     return rows[0]?.value ?? 0;
   }
 
-  async list(params: { page: number; perPage: number }) {
+  async list(params: { page: number; perPage: number; status?: string; plantId?: number }) {
     const offset = (params.page - 1) * params.perPage;
+    const where = and(
+      params.plantId === undefined ? undefined : eq(receipts.plantId, params.plantId),
+      ['DRAFT', 'RECEIVED', 'CANCELLED'].includes(params.status ?? '')
+        ? eq(receipts.status, params.status as 'DRAFT' | 'RECEIVED' | 'CANCELLED')
+        : undefined,
+    );
 
     const [rows, totalRows] = await Promise.all([
       this.db
@@ -493,6 +500,9 @@ export class ReceivingService {
           supplierName: suppliers.name,
           receivedAt: receipts.receivedAt,
           status: receipts.status,
+          sourceSnapshot: receipts.sourceSnapshot,
+          closedAt: receipts.closedAt,
+          boxScanned: sql<number>`(SELECT COUNT(*) FROM TT_HISTORY_SCAN s WHERE s.CHR_DEDUPE_KEY LIKE CONCAT('ares-rcv:', ${receipts.id}, ':%') AND JSON_UNQUOTE(JSON_EXTRACT(s.CHR_META, '$.result'))='OK')`,
           // Nama tabel ditulis langsung karena subquery berkorelasi belum bisa
           // dibentuk lewat pembangun query Drizzle. Ikut berubah bila tabelnya
           // diganti nama — tidak ada yang mengingatkan, jadi dicatat di sini.
@@ -501,15 +511,23 @@ export class ReceivingService {
         })
         .from(receipts)
         .leftJoin(suppliers, eq(receipts.supplierId, suppliers.id))
+        .where(where)
         .orderBy(desc(receipts.receivedAt))
         .limit(params.perPage)
         .offset(offset),
-      this.db.select({ value: count() }).from(receipts),
+      this.db.select({ value: count() }).from(receipts).where(where),
     ]);
 
     const total = totalRows[0]?.value ?? 0;
     return {
-      data: rows,
+      data: rows.map(({ sourceSnapshot, ...row }) => ({
+        ...row,
+        aresOrderNumber: sourceSnapshot
+          ? displayAresOrder(sourceSnapshot.orderNumber, sourceSnapshot.revision)
+          : null,
+        revision: sourceSnapshot?.revision ?? null,
+        boxOrdered: sourceSnapshot?.lines.reduce((sum, line) => sum + line.boxOrdered, 0) ?? null,
+      })),
       meta: {
         page: params.page,
         perPage: params.perPage,
@@ -529,6 +547,7 @@ export class ReceivingService {
         receivedAt: receipts.receivedAt,
         status: receipts.status,
         note: receipts.note,
+        aresOrderId: receipts.aresOrderId,
       })
       .from(receipts)
       .leftJoin(suppliers, eq(receipts.supplierId, suppliers.id))
@@ -565,12 +584,18 @@ export class ReceivingService {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function inTexts(column: any, values: string[]) {
   if (values.length === 0) return sql`1 = 0`;
-  return sql`${column} IN (${sql.join(values.map((v) => sql`${v}`), sql`, `)})`;
+  return sql`${column} IN (${sql.join(
+    values.map((v) => sql`${v}`),
+    sql`, `,
+  )})`;
 }
 
 /** Pembungkus kecil agar pemanggilan IN tetap terbaca di atas. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function inIds(column: any, values: number[]) {
   if (values.length === 0) return sql`1 = 0`;
-  return sql`${column} IN (${sql.join(values.map((v) => sql`${v}`), sql`, `)})`;
+  return sql`${column} IN (${sql.join(
+    values.map((v) => sql`${v}`),
+    sql`, `,
+  )})`;
 }

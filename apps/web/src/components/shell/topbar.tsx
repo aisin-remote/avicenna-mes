@@ -2,16 +2,19 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, ChevronDown, Bell, Settings, Menu, X } from 'lucide-react';
+import { ChevronDown, Settings, Menu, X } from 'lucide-react';
 import { IconButton } from '../ui/icon-button';
-import { LABEL_JABATAN, type PenggunaShell } from './pengguna';
+import type { PenggunaShell } from './pengguna';
+import type { NavGroup } from './nav-config';
+import { GlobalSearch } from './global-search';
+import { NotificationMenu } from './notification-menu';
 import { durations, easeSoft } from '../motion/transitions';
 
 /**
  * Bilah atas: pencarian, aksi utama, notifikasi, dan identitas pengguna.
  *
- * Kolom pencarian melebar halus saat difokuskan — isyarat kecil bahwa fokus
- * sudah pindah ke sana, tanpa perlu garis tebal yang mengotori tampilan.
+ * Pencarian membuka command palette lintas menu dan data; lonceng menampilkan
+ * ringkasan tindakan operasional dari data AVICENNA.
  *
  * Di layar sempit isinya menyusut menurut urutan kepentingan: pencarian lebih
  * dulu, lalu notifikasi dan pengaturan. Menu pengguna tidak pernah ikut
@@ -20,18 +23,19 @@ import { durations, easeSoft } from '../motion/transitions';
  */
 export function Topbar({
   pengguna,
+  groups,
   navOpen = false,
   onToggleNav,
   onOpenSettings,
 }: {
   /** Identitas yang sedang masuk — dibaca server dari database, bukan dari token. */
   pengguna: PenggunaShell;
+  groups: NavGroup[];
   /** Keadaan panel navigasi — hanya berpengaruh di bawah lg. */
   navOpen?: boolean;
   onToggleNav?: () => void;
   onOpenSettings?: () => void;
 }) {
-  const [focused, setFocused] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   return (
@@ -54,39 +58,14 @@ export function Topbar({
         </button>
       ) : null}
 
-      {/* Pencarian disembunyikan di layar sempit: dipersempit terus ia menyusut
-          jadi lingkaran tanpa guna, dan mendesak menu pengguna sampai keluar
-          layar — padahal di situlah satu-satunya tombol Keluar. */}
-      <motion.div
-        // Nilai awal harus berupa angka. Tanpa ini nilai terhitungnya "none",
-        // dan Motion tidak bisa menganimasikan dari sesuatu yang bukan ukuran —
-        // peringatannya muncul di konsol setiap kali halaman dibuka.
-        initial={{ maxWidth: 460 }}
-        animate={{ maxWidth: focused ? 560 : 460 }}
-        transition={{ duration: durations.base, ease: easeSoft }}
-        className="relative hidden w-full md:block"
-      >
-        <Search
-          className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-ink-muted"
-          strokeWidth={1.8}
-          aria-hidden
-        />
-        <input
-          type="search"
-          placeholder="Cari part, line, atau nomor seri"
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          aria-label="Pencarian"
-          className="h-11 w-full rounded-full border border-line bg-surface pl-11 pr-4 text-[14px] outline-none transition-colors duration-200 placeholder:text-ink-muted focus:border-line-strong focus:bg-card"
-        />
-      </motion.div>
+      <GlobalSearch groups={groups} />
 
       <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
         {/* Notifikasi menyingkir lebih dulu di layar sempit; pengaturan ikut,
             karena keduanya tidak mendesak dan yang harus selalu terjangkau
             adalah menu pengguna. */}
         <div className="hidden items-center gap-3 sm:flex">
-          <IconButton icon={Bell} label="Notifikasi" badge />
+          <NotificationMenu accountKey={pengguna.npk} />
           <IconButton icon={Settings} label="Pengaturan tampilan" onClick={onOpenSettings} />
         </div>
 
@@ -100,23 +79,13 @@ export function Topbar({
             transition={{ duration: durations.fast, ease: easeSoft }}
             aria-expanded={userMenuOpen}
             aria-haspopup="menu"
-            className="flex shrink-0 items-center gap-3 rounded-full py-1.5 pl-1.5 pr-1.5 outline-none transition-colors duration-200 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ink/20 sm:pr-3"
+            className="flex shrink-0 items-center gap-2.5 rounded-full py-1.5 pl-1.5 pr-1.5 outline-none transition-colors duration-200 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ink/20 sm:pr-3"
           >
             <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-[14px] font-bold text-white">
               {initials(pengguna.nama)}
             </span>
-            <span className="hidden min-w-0 text-left leading-tight sm:block">
-              <span className="flex items-baseline gap-2">
-                <span className="truncate text-[14px] font-bold">{pengguna.nama}</span>
-                {/* NPK ikut di baris nama: di lantai produksi orang dikenali
-                    dari NPK, dan nama yang mirip lebih sering daripada yang
-                    dikira. */}
-                <span className="tabular shrink-0 text-[12px] text-ink-muted">{pengguna.npk}</span>
-              </span>
-              <span className="block truncate text-[12px] text-ink-muted">
-                {pengguna.role ?? 'tanpa role'}
-                {pengguna.pabrik ? ` · ${pengguna.pabrik}` : ''}
-              </span>
+            <span className="hidden max-w-40 truncate text-[14px] font-bold sm:block">
+              {pengguna.nama}
             </span>
             <motion.span
               animate={{ rotate: userMenuOpen ? 180 : 0 }}
@@ -143,29 +112,15 @@ export function Topbar({
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -6, scale: 0.98 }}
                   transition={{ duration: durations.base, ease: easeSoft }}
-                  className="absolute right-0 z-20 mt-2 w-56 origin-top-right rounded-2xl border border-line bg-card p-2 shadow-lift"
+                  className="absolute right-0 z-20 mt-2 w-52 origin-top-right rounded-2xl border border-line bg-card p-2 shadow-lift"
                 >
-                  <div className="px-3 py-2">
+                  <div className="px-3 py-2.5">
                     <div className="text-[14px] font-bold">{pengguna.nama}</div>
-                    <div className="tabular text-[12px] text-ink-muted">NPK {pengguna.npk}</div>
+                    <div className="tabular mt-0.5 text-[12px] text-ink-muted">
+                      {pengguna.npk}
+                      {pengguna.pabrik ? ` · ${pengguna.pabrik}` : ''}
+                    </div>
                   </div>
-                  <div className="my-1 h-px bg-line" />
-                  {/* Rincian lengkap ada di sini, bukan di bilahnya.
-                      Bilah atas dibaca sekilas; yang perlu dibaca teliti —
-                      lingkup proses, pabrik — hanya dicari saat ada yang
-                      dipertanyakan. */}
-                  <dl className="space-y-1.5 px-3 py-2 text-[12px]">
-                    <Rincian label="Role" nilai={pengguna.role} />
-                    <Rincian
-                      label="Jabatan"
-                      nilai={pengguna.jabatan ? LABEL_JABATAN[pengguna.jabatan] : null}
-                    />
-                    <Rincian
-                      label="Lingkup"
-                      nilai={pengguna.lingkupProses ?? 'Seluruh proses'}
-                    />
-                    <Rincian label="Pabrik" nilai={pengguna.pabrik} />
-                  </dl>
                   <div className="my-1 h-px bg-line" />
                   {/* Di layar sempit ikon pengaturan di bilah atas disembunyikan,
                       jadi ini satu-satunya jalan ke sana. */}
@@ -196,22 +151,6 @@ export function Topbar({
         </div>
       </div>
     </header>
-  );
-}
-
-/**
- * Satu baris label/nilai di menu pengguna.
- *
- * Nilai kosong ditulis "—", bukan barisnya dihilangkan: baris yang hilang
- * membuat orang mengira datanya belum dimuat, sedangkan "—" menyatakan bahwa
- * memang belum diisi.
- */
-function Rincian({ label, nilai }: { label: string; nilai: string | null }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="shrink-0 text-ink-muted">{label}</dt>
-      <dd className="truncate font-semibold">{nilai ?? '—'}</dd>
-    </div>
   );
 }
 

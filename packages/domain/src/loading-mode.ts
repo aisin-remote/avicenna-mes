@@ -6,7 +6,7 @@
  * Pembedanya DUA hal sekaligus: apakah customer memakai kanban sendiri, dan
  * kebiasaan pabrik tempat muatnya.
  *
- *   TIGA_ARAH        loading list + kanban internal + kanban customer
+ *   TIGA_ARAH        loading list + kanban customer + kanban internal
  *                    Customer biasa. Kanban internal menempel sejak lini FG,
  *                    kanban customer baru dipasangkan di sini — pencocokan tiga
  *                    arah itulah yang membuktikan ketiganya barang yang sama.
@@ -61,7 +61,7 @@ export function adaScanPerBox(mode: ModeLoading): boolean {
 }
 
 export const MODE_LOADING_LABELS: Record<ModeLoading, string> = {
-  TIGA_ARAH: 'Loading list + kanban internal + kanban customer',
+  TIGA_ARAH: 'Loading list + kanban customer + kanban internal',
   KANBAN_CUSTOMER: 'Loading list + kanban customer',
   TANPA_SCAN: 'Tanpa scan per box',
 };
@@ -73,7 +73,38 @@ export const MODE_LOADING_LABELS: Record<ModeLoading, string> = {
  * tahu apa yang harus dipegang berikutnya, bukan istilah modenya.
  */
 export const MODE_LOADING_INSTRUKSI: Record<ModeLoading, string> = {
-  TIGA_ARAH: 'Scan kanban internal, lalu kanban customer.',
+  TIGA_ARAH: 'Scan kanban customer, lalu kanban internal.',
   KANBAN_CUSTOMER: 'Scan kanban customer.',
   TANPA_SCAN: 'Tidak perlu scan. Cocokkan jumlahnya, lalu tandai berangkat.',
 };
+
+/** Kondisi pengiriman yang tidak selesai sendiri dan perlu ditangani petugas. */
+export function deliveryAttentionReason(row: {
+  status: string;
+  plannedKanban: number;
+  pickedKanban: number;
+  actualKanban: number;
+  sapStatus?: string | null;
+  unmappedItems?: number;
+  invalidQtyPerBox?: number;
+  missingSloc?: boolean;
+}): string | null {
+  if (row.sapStatus === 'REJECTED') return 'Good Issue ditolak SAP';
+  if (row.sapStatus === 'FAILED') return 'Good Issue gagal dikirim';
+  if (row.sapStatus === 'HELD') return 'Good Issue tertahan';
+  if ((row.invalidQtyPerBox ?? 0) > 0) return 'Qty per box belum lengkap';
+  if ((row.unmappedItems ?? 0) > 0) return 'Part customer belum termapping';
+  if (row.missingSloc) return 'SLOC pengiriman belum lengkap';
+  if (row.pickedKanban > row.plannedKanban) return 'Pulling melebihi rencana';
+  if (row.actualKanban > row.pickedKanban) return 'Loading melebihi hasil pulling';
+  if (
+    ['PICKED', 'LOADING', 'SHIPPED', 'RECEIVED'].includes(row.status) &&
+    row.pickedKanban < row.plannedKanban
+  ) {
+    return 'Pulling selesai dengan kekurangan';
+  }
+  if (['SHIPPED', 'RECEIVED'].includes(row.status) && row.actualKanban < row.pickedKanban) {
+    return 'Pengiriman berangkat dengan kekurangan';
+  }
+  return null;
+}

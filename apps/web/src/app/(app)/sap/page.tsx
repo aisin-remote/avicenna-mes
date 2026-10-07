@@ -16,6 +16,7 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
 import { Reveal } from '@/components/motion/reveal';
 import { OutboxActions } from '@/components/sap/outbox-actions';
+import { SimulationActions } from '@/components/sap/simulation-actions';
 import { cn } from '@/components/ui/cn';
 
 export const dynamic = 'force-dynamic';
@@ -34,6 +35,12 @@ const STATUS_LABEL: Record<string, string> = {
   FAILED: 'Gagal didorong',
   HELD: 'Ditahan',
   SKIPPED: 'Tidak dikirim',
+};
+
+const TRIAL_LABEL: Record<string, string> = {
+  PENDING: 'Antrean trial',
+  CONFIRMED: 'Simulasi diterima',
+  REJECTED: 'Simulasi ditolak',
 };
 
 const STATUS_TONE: Record<string, string> = {
@@ -76,7 +83,8 @@ export default async function SapPage({
         Izin kirim hasil produksi dan transfer SLOC diatur per langkah part pada{' '}
         <Link href="/master/part-processes" className="font-semibold text-accent underline">
           Master Rute Proses
-        </Link>. Pengaturan ini menentukan dokumen yang masuk antrean di bawah.
+        </Link>
+        . Pengaturan ini menentukan dokumen yang masuk antrean di bawah.
       </div>
 
       {/* Keadaan saklar pengiriman ditaruh paling atas: tanpa ini, antrean yang
@@ -99,6 +107,13 @@ export default async function SapPage({
             Dokumen tetap dikumpulkan dan menunggu — tidak ada yang hilang. Begitu saklarnya
             dinyalakan, seluruh tunggakan terdorong apa adanya.
           </span>
+        </p>
+      ) : null}
+
+      {ringkas.simulasiAktif ? (
+        <p className="mb-5 rounded-card border border-accent/35 bg-accent/8 px-4 py-3 text-[14px] text-accent">
+          Mode trial SAP aktif. Tombol centang/silang pada Good Issue hanya mengubah antrean lokal;
+          tidak ada data yang dikirim ke staging. Ringkasan juga mencakup dokumen bertanda TRIAL.
         </p>
       ) : null}
 
@@ -145,7 +160,7 @@ export default async function SapPage({
       </Reveal>
 
       <div className="mb-5">
-        <OutboxActions idGagal={idGagal} />
+        <OutboxActions idGagal={idGagal} tarikAktif={cfg.tarikAktif} />
       </div>
 
       <Reveal>
@@ -156,7 +171,16 @@ export default async function SapPage({
             subtitle={`${meta.total} dokumen`}
             actions={
               <div className="flex flex-wrap gap-1.5">
-                {['ALL', 'PENDING', 'SENT', 'CONFIRMED', 'REJECTED', 'HELD', 'FAILED', 'SKIPPED'].map((s) => (
+                {[
+                  'ALL',
+                  'PENDING',
+                  'SENT',
+                  'CONFIRMED',
+                  'REJECTED',
+                  'HELD',
+                  'FAILED',
+                  'SKIPPED',
+                ].map((s) => (
                   <Link
                     key={s}
                     href={s === 'ALL' ? '/sap' : `/sap?status=${s}`}
@@ -216,12 +240,22 @@ export default async function SapPage({
                           STATUS_TONE[d.status] ?? 'border-line',
                         )}
                       >
-                        {STATUS_LABEL[d.status] ?? d.status}
+                        {(d.isSimulation ? TRIAL_LABEL[d.status] : STATUS_LABEL[d.status]) ??
+                          STATUS_LABEL[d.status] ??
+                          d.status}
                       </span>
                       {d.attempts > 0 ? (
                         <span className="tabular ml-2 text-[12px] text-ink-muted">
                           {d.attempts}×
                         </span>
+                      ) : null}
+                      {ringkas.simulasiAktif &&
+                      d.docType === 'DELIVERY' &&
+                      (d.status === 'PENDING' || d.isSimulation) ? (
+                        <SimulationActions id={d.id} reset={d.status !== 'PENDING'} />
+                      ) : null}
+                      {d.isSimulation ? (
+                        <span className="ml-2 text-[11px] font-bold text-warn">TRIAL</span>
                       ) : null}
                     </Td>
                     <Td className="max-w-[340px] text-[13px] text-ink-muted">

@@ -8,7 +8,7 @@ import { TombolCetak } from '@/components/cetak/tombol-cetak';
 export const dynamic = 'force-dynamic';
 
 /**
- * Label DN — satu label per box, dicetak dari loading list kita sendiri.
+ * Kanban — satu label per box, dicetak dari loading list kita sendiri.
  *
  * Di sistem lama label ini datang dari modul pulling bella lewat API. Sekarang
  * loading list dibuat di sini, jadi labelnya pun dari sini: isinya disusun
@@ -19,11 +19,7 @@ export const dynamic = 'force-dynamic';
  * tetap dicetak ulang bila diminta — label sobek itu biasa — dan tidak apa-apa:
  * label yang sama tidak bisa terhitung dua kali di server.
  */
-export default async function LabelDnPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function LabelDnPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const numericId = Number(id);
   if (!Number.isInteger(numericId)) notFound();
@@ -34,6 +30,9 @@ export default async function LabelDnPage({
   } catch {
     notFound();
   }
+
+  const labelWidth = 90;
+  const labelHeight = 62;
 
   const customerCode = doc.customerCode ?? 'CUST';
   const tanggal = new Date(`${doc.deliveryDate}T00:00:00`).toLocaleDateString('id-ID', {
@@ -71,9 +70,13 @@ export default async function LabelDnPage({
         }
       `}</style>
 
+      <p className="mb-3 border border-dashed border-black px-3 py-2 text-center text-[10px] font-bold uppercase tracking-[0.18em]">
+        Preview internal · format kanban menunggu validasi customer / SAP
+      </p>
+
       <header className="tanpa-cetak mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight">Label DN · {doc.documentNumber}</h1>
+          <h1 className="text-[22px] font-bold tracking-tight">Kanban · {doc.documentNumber}</h1>
           <p className="text-[14px] text-neutral-600">
             {label.length} label · {doc.customerName ?? '—'} · kirim {tanggal} rit {doc.cycle}
           </p>
@@ -102,7 +105,11 @@ export default async function LabelDnPage({
         {label.map(({ line, seq, teks, svg }) => (
           <article
             key={teks}
-            className="label flex h-[62mm] gap-3 rounded-md border border-black p-3"
+            className="label flex gap-3 overflow-hidden rounded-md border border-black p-3"
+            style={{
+              width: `${labelWidth}mm`,
+              height: `${labelHeight}mm`,
+            }}
           >
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="flex items-baseline justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">

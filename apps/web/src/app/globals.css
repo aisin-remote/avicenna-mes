@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@source '../**/*.{js,ts,jsx,tsx,mdx}';
 
 /*
  * Sistem desain Avicenna MES.
@@ -155,6 +156,19 @@
 }
 
 @layer utilities {
+  /* Setara browser zoom 90% untuk halaman kerja desktop. Layar station dan
+     dokumen cetak tidak memakai pembungkus ini agar ukuran sentuh/cetak tetap. */
+  @media screen and (min-width: 768px) {
+    .app-scale-90 {
+      zoom: 0.9;
+    }
+
+    /* Kompensasi tinggi yang ikut menyusut karena zoom agar shell tetap penuh. */
+    .app-scale-90 > * {
+      min-height: calc(100dvh / 0.9);
+    }
+  }
+
   /* Scrollbar tipis; scrollbar tebal bawaan merusak kesan kartu yang bersih. */
   .scroll-slim {
     scrollbar-width: thin;
@@ -171,6 +185,67 @@
   .scroll-slim::-webkit-scrollbar-track {
     background: transparent;
   }
+
+  .scroll-hover::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scroll-hover::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  .scroll-hover::-webkit-scrollbar-track,
+  .scroll-hover::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  .scroll-hover {
+    --sb-thumb: transparent;
+    transition: --sb-thumb 240ms var(--ease-out-soft);
+  }
+  .scroll-hover:hover,
+  :hover > .scroll-hover {
+    --sb-thumb: var(--color-line-strong);
+  }
+  .scroll-hover::-webkit-scrollbar-thumb {
+    background: var(--sb-thumb);
+    border-radius: 999px;
+  }
+  @supports not selector(::-webkit-scrollbar) {
+    .scroll-hover {
+      scrollbar-width: thin;
+      scrollbar-color: var(--sb-thumb) transparent;
+    }
+  }
+}
+
+@keyframes sidebar-icon-nudge {
+  0%,
+  100% {
+    transform: none;
+  }
+  35% {
+    transform: translateY(-2px) rotate(-8deg);
+  }
+  70% {
+    transform: translateY(-1px) rotate(4deg);
+  }
+}
+
+[data-nav-link]:focus-visible .sidebar-nav-icon {
+  animation: sidebar-icon-nudge 380ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-nav-link]:hover .sidebar-nav-icon {
+    animation: sidebar-icon-nudge 380ms ease-out;
+  }
+}
+
+@property --sb-thumb {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
 }
 
 /*
@@ -237,6 +312,27 @@
   }
 }
 
+@keyframes login-intro-layer {
+  0%,
+  83% {
+    opacity: 1;
+    visibility: visible;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@keyframes tulis-goresan {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 @layer utilities {
   .a-rise {
     animation: avi-rise 0.38s var(--ease-out-soft) backwards;
@@ -244,6 +340,48 @@
 
   .a-fade {
     animation: avi-fade 0.26s var(--ease-out-soft) backwards;
+  }
+
+  .login-intro {
+    animation: login-intro-layer 2.4s ease forwards;
+  }
+
+  .tulis-nama path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: tulis-goresan 0.36s var(--ease-out-soft) forwards;
+  }
+  .tulis-nama path:nth-child(1) {
+    animation-delay: 60ms;
+  }
+  .tulis-nama path:nth-child(2) {
+    animation-delay: 150ms;
+  }
+  .tulis-nama path:nth-child(3) {
+    animation-delay: 240ms;
+  }
+  .tulis-nama path:nth-child(4) {
+    animation-delay: 330ms;
+  }
+  .tulis-nama path:nth-child(5) {
+    animation-delay: 420ms;
+  }
+  .tulis-nama path:nth-child(6) {
+    animation-delay: 510ms;
+  }
+  .tulis-nama path:nth-child(7) {
+    animation-delay: 600ms;
+  }
+  .tulis-nama path:nth-child(8) {
+    animation-delay: 690ms;
+  }
+
+  .login-intro-tagline {
+    animation: avi-fade 0.34s var(--ease-out-soft) 1.12s backwards;
+  }
+
+  .login-card-enter {
+    animation: avi-rise 0.42s var(--ease-out-soft) 2.18s backwards;
   }
 
   /*
@@ -255,16 +393,40 @@
   .a-stagger > * {
     animation: avi-rise 0.38s var(--ease-out-soft) backwards;
   }
-  .a-stagger > *:nth-child(1) { animation-delay: 0ms; }
-  .a-stagger > *:nth-child(2) { animation-delay: 45ms; }
-  .a-stagger > *:nth-child(3) { animation-delay: 90ms; }
-  .a-stagger > *:nth-child(4) { animation-delay: 135ms; }
-  .a-stagger > *:nth-child(5) { animation-delay: 180ms; }
-  .a-stagger > *:nth-child(6) { animation-delay: 225ms; }
-  .a-stagger > *:nth-child(7) { animation-delay: 270ms; }
-  .a-stagger > *:nth-child(8) { animation-delay: 315ms; }
-  .a-stagger > *:nth-child(9) { animation-delay: 360ms; }
-  .a-stagger > *:nth-child(10) { animation-delay: 405ms; }
-  .a-stagger > *:nth-child(11) { animation-delay: 450ms; }
-  .a-stagger > *:nth-child(n + 12) { animation-delay: 495ms; }
+  .a-stagger > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .a-stagger > *:nth-child(2) {
+    animation-delay: 45ms;
+  }
+  .a-stagger > *:nth-child(3) {
+    animation-delay: 90ms;
+  }
+  .a-stagger > *:nth-child(4) {
+    animation-delay: 135ms;
+  }
+  .a-stagger > *:nth-child(5) {
+    animation-delay: 180ms;
+  }
+  .a-stagger > *:nth-child(6) {
+    animation-delay: 225ms;
+  }
+  .a-stagger > *:nth-child(7) {
+    animation-delay: 270ms;
+  }
+  .a-stagger > *:nth-child(8) {
+    animation-delay: 315ms;
+  }
+  .a-stagger > *:nth-child(9) {
+    animation-delay: 360ms;
+  }
+  .a-stagger > *:nth-child(10) {
+    animation-delay: 405ms;
+  }
+  .a-stagger > *:nth-child(11) {
+    animation-delay: 450ms;
+  }
+  .a-stagger > *:nth-child(n + 12) {
+    animation-delay: 495ms;
+  }
 }

@@ -1,4 +1,12 @@
 import type { NextConfig } from 'next';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+// .env tunggal ada di root repo; Next hanya membaca apps/web/.env. Dimuat di
+// sini supaya API_URL dkk. sudah ada sebelum modul server mana pun dievaluasi.
+// ponytail: process.loadEnvFile = Node >= 20.12, tanpa dotenv.
+const rootEnv = join(process.cwd(), '../../.env');
+if (existsSync(rootEnv)) process.loadEnvFile(rootEnv);
 
 const config: NextConfig = {
   // Docker on-prem: keluarkan server mandiri, tidak perlu node_modules penuh.

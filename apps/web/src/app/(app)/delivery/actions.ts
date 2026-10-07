@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache';
 import type { LoadingPhase, LoadingScanResult } from '@avicenna/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
-import type { CatalogPart } from '@/lib/loading-api';
 
 function toMessage(err: unknown): string {
   if (err instanceof ApiRequestError) {
@@ -14,49 +13,50 @@ function toMessage(err: unknown): string {
   return 'Tidak bisa menghubungi server.';
 }
 
-/** Part yang bisa dimuat untuk sebuah customer. */
-export async function catalogAction(
-  customerId: number,
-  plantId?: number,
-): Promise<CatalogPart[] | { error: string }> {
+export interface DeliveryDocumentMatch {
+  id: number;
+  documentNumber: string;
+  manifestNumber: string | null;
+  customerName: string | null;
+  deliveryDate: string;
+  cycle: number;
+  status: string;
+}
+
+export async function resolveDeliveryDocumentAction(
+  code: string,
+): Promise<{ code: string; matches: DeliveryDocumentMatch[] } | { error: string }> {
   try {
-    const qs = new URLSearchParams({ customerId: String(customerId) });
-    if (plantId) qs.set('plantId', String(plantId));
-    return await apiFetch<CatalogPart[]>(`/loading/catalog?${qs.toString()}`);
+    return await apiFetch<{ code: string; matches: DeliveryDocumentMatch[] }>(
+      `/loading/resolve?code=${encodeURIComponent(code)}`,
+    );
   } catch (err) {
     return { error: toMessage(err) };
   }
 }
 
-export interface SubmitLoadingInput {
-  plantId: number;
-  customerId: number;
-  pdsNumber?: string;
-  cycle: number;
-  dock?: string;
-  locationId?: number;
-  stagingLocationId?: number;
+export interface DeliveryReturnResult {
+  id: number;
+  documentNumber: string;
+  customerName: string | null;
   deliveryDate: string;
-  truckNumber?: string;
-  driverName?: string;
-  lines: Array<{
-    partId: number;
-    customerPartId?: number;
-    plannedKanban: number;
-    qtyPerKanban: number;
-  }>;
+  status: 'RECEIVED';
+  receivedAt: string | Date | null;
+  alreadyReceived: boolean;
 }
 
-export async function submitLoadingAction(
-  input: SubmitLoadingInput,
-): Promise<{ id: number; documentNumber: string } | { error: string }> {
+export async function receiveReturnedDeliveryAction(
+  code: string,
+): Promise<DeliveryReturnResult | { error: string }> {
   try {
-    const res = await apiFetch<{ id: number; documentNumber: string }>('/loading', {
+    const result = await apiFetch<DeliveryReturnResult>('/loading/receive', {
       method: 'POST',
-      body: JSON.stringify(input),
+      body: JSON.stringify({ code }),
     });
     revalidatePath('/delivery');
-    return res;
+    revalidatePath('/trace');
+    revalidatePath(`/delivery/${result.id}`);
+    return result;
   } catch (err) {
     return { error: toMessage(err) };
   }
@@ -68,16 +68,20 @@ export async function scanKanbanAction(input: {
   phase: LoadingPhase;
   customerPart: string;
   internalPart?: string;
+  internalKanban?: string;
   serialNumber?: string;
   clientRef?: string;
-}): Promise<LoadingScanResult | { error: string }> {
+}): Promise<LoadingScanResult | { error: string; retryable: boolean }> {
   try {
     return await apiFetch<LoadingScanResult>('/loading/scan', {
       method: 'POST',
       body: JSON.stringify(input),
     });
   } catch (err) {
-    return { error: toMessage(err) };
+    return {
+      error: toMessage(err),
+      retryable: !(err instanceof ApiRequestError) || err.status >= 500,
+    };
   }
 }
 
@@ -91,11 +95,12 @@ export async function undoKanbanAction(
   deliveryId: number,
   lineId: number,
   phase: LoadingPhase,
+  reason: string,
 ): Promise<UndoResult | { error: string }> {
   try {
     return await apiFetch<UndoResult>(
       `/loading/${deliveryId}/lines/${lineId}/undo?phase=${phase}`,
-      { method: 'POST' },
+      { method: 'POST', body: JSON.stringify({ reason }) },
     );
   } catch (err) {
     return { error: toMessage(err) };
@@ -110,9 +115,7 @@ export interface PickResult {
 }
 
 /** Menutup pulling: barang berpindah dari gudang finish good ke staging. */
-export async function completePickingAction(
-  id: number,
-): Promise<PickResult | { error: string }> {
+export async function completePickingAction(id: number): Promise<PickResult | { error: string }> {
   try {
     const res = await apiFetch<PickResult>(`/loading/${id}/pick`, { method: 'POST' });
     revalidatePath('/delivery');
@@ -156,21 +159,6 @@ export async function setTruckStatusAction(
       method: 'PATCH',
       body: JSON.stringify({ truckStatus }),
     });
-    revalidatePath(`/delivery/${id}`);
-    return res;
-  } catch (err) {
-    return { error: toMessage(err) };
-  }
-}
-
-export async function cancelLoadingAction(
-  id: number,
-): Promise<{ id: number; status: string } | { error: string }> {
-  try {
-    const res = await apiFetch<{ id: number; status: string }>(`/loading/${id}/cancel`, {
-      method: 'POST',
-    });
-    revalidatePath('/delivery');
     revalidatePath(`/delivery/${id}`);
     return res;
   } catch (err) {

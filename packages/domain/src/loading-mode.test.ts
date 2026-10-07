@@ -6,6 +6,7 @@ import {
   adaScanPerBox,
   MODE_LOADING,
   MODE_LOADING_INSTRUKSI,
+  deliveryAttentionReason,
 } from './loading-mode';
 
 /** Pabrik UNIT tidak men-scan customer direct kanban; pabrik BODY men-scan. */
@@ -76,5 +77,46 @@ describe('apa yang harus discan', () => {
 describe('instruksi operator', () => {
   it('setiap mode punya instruksinya', () => {
     for (const m of MODE_LOADING) expect(MODE_LOADING_INSTRUKSI[m]).toBeTruthy();
+  });
+});
+
+describe('perlu tindakan delivery', () => {
+  const normal = {
+    status: 'LOADING',
+    plannedKanban: 10,
+    pickedKanban: 10,
+    actualKanban: 7,
+    sapStatus: null,
+  };
+
+  it('loading yang masih berjalan bukan exception', () => {
+    expect(deliveryAttentionReason(normal)).toBeNull();
+  });
+
+  it('menandai selisih setelah tahapan ditutup', () => {
+    expect(deliveryAttentionReason({ ...normal, pickedKanban: 8 })).toBe(
+      'Pulling selesai dengan kekurangan',
+    );
+    expect(deliveryAttentionReason({ ...normal, status: 'SHIPPED', actualKanban: 8 })).toBe(
+      'Pengiriman berangkat dengan kekurangan',
+    );
+  });
+
+  it('masalah Good Issue SAP diprioritaskan', () => {
+    expect(deliveryAttentionReason({ ...normal, sapStatus: 'REJECTED' })).toBe(
+      'Good Issue ditolak SAP',
+    );
+  });
+
+  it('menandai data master yang belum siap sebelum operasi dimulai', () => {
+    expect(deliveryAttentionReason({ ...normal, invalidQtyPerBox: 1 })).toBe(
+      'Qty per box belum lengkap',
+    );
+    expect(deliveryAttentionReason({ ...normal, unmappedItems: 2 })).toBe(
+      'Part customer belum termapping',
+    );
+    expect(deliveryAttentionReason({ ...normal, missingSloc: true })).toBe(
+      'SLOC pengiriman belum lengkap',
+    );
   });
 });

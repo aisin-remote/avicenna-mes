@@ -1,0 +1,20 @@
+CREATE INDEX `TT_DELIVERY_ITEM_DELIVERY_PART_IDX` ON `TT_DELIVERY_ITEM` (`INT_DELIVERY_ID`,`INT_PART_ID`);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY_ITEM` DROP INDEX `TT_DELIVERY_ITEM_UNIQUE`;--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_PO_NO` varchar(64);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_SORG` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_DIS_CHANNEL` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_DIVISION` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_DEL_TYPE` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_GI_DEL` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_INV_NO` varchar(64);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_QC_STATUS` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `DTM_DEL_DATE_ACT` date;--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_SM_H_FLAG` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_SM_L_FLAG` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `CHR_FLAG_RECEIVE` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `DTM_DATE_RECEIVE` date;--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY` ADD `DTM_TIME_RECEIVE` time;--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY_ITEM` ADD `CHR_DEL_ITEM` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY_ITEM` ADD `INT_DEL_QTY` int DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY_ITEM` ADD `CHR_ITEM_TYPE` varchar(16);--> statement-breakpoint
+ALTER TABLE `TT_DELIVERY_ITEM` ADD CONSTRAINT `TT_DELIVERY_ITEM_SOURCE_UNIQUE` UNIQUE(`INT_DELIVERY_ID`,`CHR_DEL_ITEM`);

@@ -1,4 +1,5 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect, unstable_rethrow } from 'next/navigation';
+import { ApiRequestError } from '@/lib/api';
 import { getReceipt } from '@/lib/receiving-api';
 import { getMasterOptions } from '@/lib/master-api';
 import { PageHeader } from '@/components/ui/page-header';
@@ -6,11 +7,7 @@ import { ReceivingForm } from '@/components/receiving/receiving-form';
 
 export const dynamic = 'force-dynamic';
 
-export default async function EditReceiptPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function EditReceiptPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const numericId = Number(id);
   if (!Number.isInteger(numericId)) notFound();
@@ -18,9 +15,13 @@ export default async function EditReceiptPage({
   let receipt;
   try {
     receipt = await getReceipt(numericId);
-  } catch {
-    notFound();
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiRequestError && error.status === 404) notFound();
+    throw error;
   }
+
+  if (receipt.aresOrderId) redirect(`/receiving/${receipt.id}`);
 
   const [plants, suppliers, locations] = await Promise.all([
     getMasterOptions('plants'),

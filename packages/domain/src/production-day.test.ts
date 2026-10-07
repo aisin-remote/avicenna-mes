@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { productionDayWindow, productionDateKey } from './shift';
+import {
+  DELIVERY_DAY_START_HOUR,
+  productionDayWindow,
+  productionDateKey,
+} from './shift';
 
 /** Membentuk Date waktu lokal, supaya test tidak bergantung zona waktu mesin. */
 const lokal = (y: number, m: number, d: number, h: number, mi = 0) =>
@@ -51,6 +55,15 @@ describe('productionDayWindow', () => {
     const { start, key } = productionDayWindow(lokal(2026, 9, 17, 5), 4);
     expect(key).toBe('2026-09-17');
     expect(start.getHours()).toBe(4);
+  });
+
+  it('hari pengiriman berganti tepat pukul 6 pagi', () => {
+    expect(productionDayWindow(lokal(2026, 9, 17, 6), DELIVERY_DAY_START_HOUR).key).toBe(
+      '2026-09-17',
+    );
+    expect(productionDayWindow(lokal(2026, 9, 17, 5, 59), DELIVERY_DAY_START_HOUR).key).toBe(
+      '2026-09-16',
+    );
   });
 
   it('jendelanya tepat 24 jam', () => {

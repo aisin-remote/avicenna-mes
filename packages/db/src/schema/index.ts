@@ -15,6 +15,7 @@ export * from './_shared';
 export * from './org';
 export * from './master';
 export * from './kanban';
+export * from './kanban-crop';
 export * from './production';
 export * from './inventory';
 export * from './quality';

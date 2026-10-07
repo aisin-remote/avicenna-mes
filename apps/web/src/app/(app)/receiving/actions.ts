@@ -3,6 +3,86 @@
 import { revalidatePath } from 'next/cache';
 import type { ResolvedPart } from '@avicenna/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
+import { unstable_rethrow } from 'next/navigation';
+import type { ReceivingSession, ReceivingScanOutcome } from '@avicenna/contracts';
+
+type ActionError = { error: string; retryable: boolean };
+
+function receivingError(error: unknown): ActionError {
+  unstable_rethrow(error);
+  return {
+    error:
+      error instanceof ApiRequestError
+        ? error.message
+        : 'Tidak bisa menghubungi server. Coba lagi.',
+    retryable: !(error instanceof ApiRequestError) || error.status >= 500,
+  };
+}
+
+export async function openReceivingAction(
+  code: string,
+  locationId: number,
+): Promise<ReceivingSession | ActionError> {
+  try {
+    const session = await apiFetch<ReceivingSession>('/receiving/open', {
+      method: 'POST',
+      body: JSON.stringify({ code, locationId }),
+    });
+    revalidatePath('/receiving');
+    return session;
+  } catch (error) {
+    return receivingError(error);
+  }
+}
+
+export async function scanReceivingAction(
+  id: number,
+  code: string,
+  clientRef: string,
+): Promise<ReceivingScanOutcome | ActionError> {
+  try {
+    return await apiFetch<ReceivingScanOutcome>(`/receiving/${id}/scan`, {
+      method: 'POST',
+      body: JSON.stringify({ code, clientRef }),
+    });
+  } catch (error) {
+    return receivingError(error);
+  }
+}
+
+export async function closeReceivingAction(
+  id: number,
+  reason: string,
+): Promise<{ id: number } | ActionError> {
+  try {
+    const result = await apiFetch<{ id: number }>(`/receiving/${id}/close`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    revalidatePath('/receiving');
+    revalidatePath(`/receiving/${id}`);
+    return result;
+  } catch (error) {
+    return receivingError(error);
+  }
+}
+
+export async function cancelReceivingAction(
+  id: number,
+  reason: string,
+): Promise<{ id: number } | ActionError> {
+  try {
+    const result = await apiFetch<{ id: number }>(`/receiving/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    revalidatePath('/receiving');
+    revalidatePath(`/receiving/${id}`);
+    return result;
+  } catch (error) {
+    return receivingError(error);
+  }
+}
 
 /**
  * Mencari part dari barcode yang discan.
@@ -16,8 +96,7 @@ export async function resolveBarcodeAction(code: string): Promise<ResolvedPart> 
   } catch (err) {
     return {
       found: false,
-      message:
-        err instanceof ApiRequestError ? err.message : 'Tidak bisa menghubungi server.',
+      message: err instanceof ApiRequestError ? err.message : 'Tidak bisa menghubungi server.',
     };
   }
 }

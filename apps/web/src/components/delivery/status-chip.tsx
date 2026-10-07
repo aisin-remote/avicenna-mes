@@ -6,7 +6,7 @@ const DOC_LABEL: Record<string, string> = {
   PICKED: 'Siap dimuat',
   LOADING: 'Sedang dimuat',
   SHIPPED: 'Berangkat',
-  RECEIVED: 'Diterima',
+  RECEIVED: 'Diterima customer',
   CANCELLED: 'Dibatalkan',
 };
 

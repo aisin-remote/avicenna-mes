@@ -1,9 +1,27 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, or, type Database } from '@avicenna/db';
-import { parts, customers, suppliers, customerParts, plants } from '@avicenna/db';
+import { eq, and, or, inArray, type Database } from '@avicenna/db';
+import {
+  parts,
+  customers,
+  suppliers,
+  customerParts,
+  plants,
+  locations,
+  deliveries,
+  deliveryLines,
+  deliverySyncs,
+} from '@avicenna/db';
+import { DELIVERY_DAY_START_HOUR, productionDayWindow } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 import { StagingDbService } from './staging-db.service';
-import { SUMBER_MASTER, bersih, type SumberMaster } from './staging-tables';
+import {
+  DELIVERY,
+  SUMBER_MASTER,
+  bersih,
+  tanggalIsoAtauNull,
+  jamIsoAtauNull,
+  type SumberMaster,
+} from './staging-tables';
 
 export interface HasilTarik {
   entitas: string;
@@ -17,6 +35,50 @@ export interface HasilTarik {
 
 /** Berapa baris master ditarik sekali jalan. */
 const BATCH = 2000;
+
+type BarisPengirimanStaging = {
+  delNo: unknown;
+  customerCode: unknown;
+  destination: unknown;
+  manifestNumber: unknown;
+  pdsNumber: unknown;
+  cycle: unknown;
+  deliveryDate: unknown;
+  actualDeliveryDate: unknown;
+  purchaseOrderNumber: unknown;
+  salesOrganization: unknown;
+  distributionChannel: unknown;
+  division: unknown;
+  deliveryType: unknown;
+  sapGiStatus: unknown;
+  invoiceNumber: unknown;
+  qcStatus: unknown;
+  sapHeaderMovementStatus: unknown;
+  sapLineMovementStatus: unknown;
+  sapReceiveStatus: unknown;
+  sapReceiveDate: unknown;
+  sapReceiveTime: unknown;
+  headerDeleted: unknown;
+  deliveryItem: unknown;
+  partNumber: unknown;
+  customerPartNumber: unknown;
+  plannedQty: unknown;
+  deliveryQty: unknown;
+  qtyPerBox: unknown;
+  itemType: unknown;
+  lineDeleted: unknown;
+};
+
+const angkaBulat = (value: unknown): number => {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : 0;
+};
+
+const ditandaiHapus = (value: unknown): boolean =>
+  ['1', 'Y', 'YES', 'X', 'D', 'DELETE', 'DELETED'].includes((bersih(value) ?? '').toUpperCase());
+
+const tanggalIso = (value: unknown, fallback: string): string =>
+  tanggalIsoAtauNull(value) ?? fallback;
 
 /**
  * Menarik master data dari database jembatan.
@@ -81,19 +143,411 @@ export class StagingPullService {
         const pesan = err instanceof Error ? err.message : String(err);
         this.logger.error(`tarik master ${sumber.entitas} gagal: ${pesan}`);
         hasil.push({
-          entitas: sumber.entitas, dibaca: 0, baru: 0, diperbarui: 0,
-          dinonaktifkan: 0, dilewati: 0, catatan: [pesan],
+          entitas: sumber.entitas,
+          dibaca: 0,
+          baru: 0,
+          diperbarui: 0,
+          dinonaktifkan: 0,
+          dilewati: 0,
+          catatan: [pesan],
         });
       }
     }
     return { hasil };
   }
 
+  /**
+   * Menyalin loading list hari pengiriman aktif dari staging.
+   *
+   * Kepala dan rencana item dimiliki SAP. Hitungan pulling/loading serta status
+   * operasional tetap milik MES dan tidak ditimpa saat sinkronisasi berikutnya.
+   */
+  async tarikPengiriman(at = new Date(), uji = false): Promise<HasilTarik> {
+    const hasil: HasilTarik = {
+      entitas: 'DELIVERY',
+      dibaca: 0,
+      baru: 0,
+      diperbarui: 0,
+      dinonaktifkan: 0,
+      dilewati: 0,
+      catatan: [],
+    };
+    if (!this.aktif && !uji) {
+      hasil.catatan.push(
+        this.staging.terkonfigurasi
+          ? 'STAGING_PULL_ENABLED masih false'
+          : 'koneksi staging belum dikonfigurasi',
+      );
+      return hasil;
+    }
+
+    const operationalDate = productionDayWindow(at, DELIVERY_DAY_START_HOUR).key;
+    const stagingDate = operationalDate.replaceAll('-', '');
+    const H = DELIVERY.kolomKepala;
+    const L = DELIVERY.kolomBaris;
+    const rows = await this.staging.query<BarisPengirimanStaging>(
+      `SELECT
+        h.[${H.delNo}] AS [delNo],
+        h.[${H.custNo}] AS [customerCode],
+        h.[${H.custDest}] AS [destination],
+        h.[${H.dokNo}] AS [manifestNumber],
+        h.[${H.pdsNo}] AS [pdsNumber],
+        h.[${H.cycle}] AS [cycle],
+        h.[${H.tanggalKirim}] AS [deliveryDate],
+        h.[${H.tanggalKirimAktual}] AS [actualDeliveryDate],
+        h.[${H.poNo}] AS [purchaseOrderNumber],
+        h.[${H.salesOrg}] AS [salesOrganization],
+        h.[${H.distributionChannel}] AS [distributionChannel],
+        h.[${H.division}] AS [division],
+        h.[${H.deliveryType}] AS [deliveryType],
+        h.[${H.giFlag}] AS [sapGiStatus],
+        h.[${H.invoiceNo}] AS [invoiceNumber],
+        h.[${H.qcStatus}] AS [qcStatus],
+        h.[${H.smHeaderFlag}] AS [sapHeaderMovementStatus],
+        h.[${H.smLineFlag}] AS [sapLineMovementStatus],
+        h.[${H.flagTerima}] AS [sapReceiveStatus],
+        h.[${H.tanggalTerima}] AS [sapReceiveDate],
+        h.[${H.jamTerima}] AS [sapReceiveTime],
+        h.[${H.hapus}] AS [headerDeleted],
+        l.[${L.delItem}] AS [deliveryItem],
+        l.[${L.partNo}] AS [partNumber],
+        l.[${L.custPartNo}] AS [customerPartNumber],
+        l.[${L.qtyRencana}] AS [plannedQty],
+        l.[${L.qtyKirim}] AS [deliveryQty],
+        l.[${L.qtyPerBox}] AS [qtyPerBox],
+        l.[${L.itemType}] AS [itemType],
+        l.[${L.hapus}] AS [lineDeleted]
+      FROM [${DELIVERY.kepala}] h
+      LEFT JOIN [${DELIVERY.baris}] l ON l.[${L.delNo}] = h.[${H.delNo}]
+      WHERE h.[${H.tanggalKirim}] = @tanggal
+      ORDER BY h.[${H.delNo}], l.[${L.delItem}]`,
+      { tanggal: stagingDate },
+    );
+
+    const perDokumen = new Map<string, BarisPengirimanStaging[]>();
+    for (const row of rows) {
+      const nomor = bersih(row.delNo);
+      if (!nomor) continue;
+      const daftar = perDokumen.get(nomor) ?? [];
+      daftar.push(row);
+      perDokumen.set(nomor, daftar);
+    }
+    hasil.dibaca = perDokumen.size;
+
+    const catat = (message: string) => {
+      if (hasil.catatan.length < 20) hasil.catatan.push(message);
+    };
+
+    for (const [documentNumber, documentRows] of perDokumen) {
+      const header = documentRows[0];
+      if (!header) continue;
+      if (ditandaiHapus(header.headerDeleted)) {
+        const existing = await this.db
+          .select({ id: deliveries.id, status: deliveries.status })
+          .from(deliveries)
+          .where(eq(deliveries.documentNumber, documentNumber));
+        const cancellable = existing.filter(
+          (row) =>
+            row.status !== 'SHIPPED' && row.status !== 'RECEIVED' && row.status !== 'CANCELLED',
+        );
+        if (!uji) {
+          for (const row of cancellable) {
+            await this.db
+              .update(deliveries)
+              .set({ status: 'CANCELLED' })
+              .where(eq(deliveries.id, row.id));
+          }
+        }
+        hasil.dinonaktifkan += cancellable.length;
+        continue;
+      }
+
+      const customerCode = bersih(header.customerCode);
+      const sourceLines = documentRows.filter(
+        (row) => bersih(row.partNumber) && !ditandaiHapus(row.lineDeleted),
+      );
+      if (!customerCode || sourceLines.length === 0) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: customer atau item kosong`);
+        continue;
+      }
+
+      if (
+        sourceLines.some((row) =>
+          [row.plannedQty, row.deliveryQty, row.qtyPerBox].some(
+            (qty) =>
+              bersih(qty) !== null && (!Number.isSafeInteger(Number(qty)) || Number(qty) < 0),
+          ),
+        )
+      ) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: qty sumber tidak valid atau negatif`);
+        continue;
+      }
+
+      const sourceItemNumbers = sourceLines.map((line) => bersih(line.deliveryItem));
+      if (
+        sourceItemNumbers.some((item) => !item) ||
+        new Set(sourceItemNumbers).size !== sourceItemNumbers.length
+      ) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: nomor item SAP kosong atau duplikat`);
+        continue;
+      }
+      if (!tanggalIsoAtauNull(header.deliveryDate)) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: tanggal pengiriman tidak valid`);
+        continue;
+      }
+
+      const [customer] = await this.db
+        .select({ id: customers.id })
+        .from(customers)
+        .where(eq(customers.code, customerCode))
+        .limit(1);
+      if (!customer) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: customer ${customerCode} belum ada di master`);
+        continue;
+      }
+
+      const partNumbers = [
+        ...new Set(sourceLines.map((row) => bersih(row.partNumber)).filter(Boolean)),
+      ] as string[];
+      const firstPartNumber = partNumbers[0];
+      if (!firstPartNumber) {
+        hasil.dilewati++;
+        continue;
+      }
+      const partRows = await this.db
+        .select()
+        .from(parts)
+        .where(inArray(parts.partNumber, partNumbers));
+      const perPart = new Map<string, typeof partRows>();
+      for (const part of partRows) {
+        const daftar = perPart.get(part.partNumber) ?? [];
+        daftar.push(part);
+        perPart.set(part.partNumber, daftar);
+      }
+      if (partNumbers.some((partNumber) => !perPart.has(partNumber))) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: ada part staging yang belum masuk master`);
+        continue;
+      }
+
+      let candidatePlants = new Set(perPart.get(firstPartNumber)!.map((part) => part.plantId));
+      for (const partNumber of partNumbers.slice(1)) {
+        const plantsForPart = new Set(perPart.get(partNumber)!.map((part) => part.plantId));
+        candidatePlants = new Set([...candidatePlants].filter((id) => plantsForPart.has(id)));
+      }
+      const existingHeaders = await this.db
+        .select({ id: deliveries.id, plantId: deliveries.plantId, status: deliveries.status })
+        .from(deliveries)
+        .where(eq(deliveries.documentNumber, documentNumber));
+      const knownPlant = existingHeaders.find((doc) => candidatePlants.has(doc.plantId))?.plantId;
+      const plantId = knownPlant ?? (candidatePlants.size === 1 ? [...candidatePlants][0] : null);
+      if (!plantId) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: pabrik tidak bisa ditentukan dari item`);
+        continue;
+      }
+
+      const selectedParts = partNumbers.map(
+        (partNumber) => perPart.get(partNumber)!.find((part) => part.plantId === plantId)!,
+      );
+      const selectedPartByNumber = new Map(selectedParts.map((part) => [part.partNumber, part]));
+      const partIds = selectedParts.map((part) => part.id);
+      const mappings = await this.db
+        .select()
+        .from(customerParts)
+        .where(
+          and(eq(customerParts.customerId, customer.id), inArray(customerParts.partId, partIds)),
+        );
+      const siteLocations = await this.db
+        .select()
+        .from(locations)
+        .where(
+          and(eq(locations.plantId, plantId), inArray(locations.kind, ['FINISH_GOOD', 'STAGING'])),
+        );
+      const sourceLocationId =
+        siteLocations.find((location) => location.code === 'PP02')?.id ??
+        siteLocations.find((location) => location.kind === 'FINISH_GOOD')?.id;
+      const stagingLocationId =
+        siteLocations.find((location) => location.code === 'PP04')?.id ??
+        siteLocations.find((location) => location.kind === 'STAGING')?.id;
+      const existing = existingHeaders.find((doc) => doc.plantId === plantId);
+
+      if (uji) {
+        if (existing) hasil.diperbarui++;
+        else hasil.baru++;
+        continue;
+      }
+
+      await this.db.transaction(async (tx) => {
+        if (existing)
+          await tx.select().from(deliveries).where(eq(deliveries.id, existing.id)).for('update');
+        const headerValues = {
+          customerId: customer.id,
+          manifestNumber: bersih(header.manifestNumber),
+          pdsNumber: bersih(header.pdsNumber),
+          purchaseOrderNumber: bersih(header.purchaseOrderNumber),
+          salesOrganization: bersih(header.salesOrganization),
+          distributionChannel: bersih(header.distributionChannel),
+          division: bersih(header.division),
+          deliveryType: bersih(header.deliveryType),
+          sapGiStatus: bersih(header.sapGiStatus),
+          invoiceNumber: bersih(header.invoiceNumber),
+          qcStatus: bersih(header.qcStatus),
+          sapActualDeliveryDate: tanggalIsoAtauNull(header.actualDeliveryDate),
+          sapHeaderMovementStatus: bersih(header.sapHeaderMovementStatus),
+          sapLineMovementStatus: bersih(header.sapLineMovementStatus),
+          sapReceiveStatus: bersih(header.sapReceiveStatus),
+          sapReceiveDate: tanggalIsoAtauNull(header.sapReceiveDate),
+          sapReceiveTime: jamIsoAtauNull(header.sapReceiveTime),
+          deliveryDate: tanggalIso(header.deliveryDate, operationalDate),
+          cycle: Math.max(1, angkaBulat(header.cycle)),
+          dock: bersih(header.destination),
+          ...(sourceLocationId ? { locationId: sourceLocationId } : {}),
+          ...(stagingLocationId ? { stagingLocationId } : {}),
+          ...(existing?.status === 'CANCELLED' ? { status: 'DRAFT' as const } : {}),
+        };
+        let deliveryId = existing?.id;
+        if (deliveryId) {
+          await tx.update(deliveries).set(headerValues).where(eq(deliveries.id, deliveryId));
+          hasil.diperbarui++;
+        } else {
+          const inserted = await tx.insert(deliveries).values({
+            plantId,
+            documentNumber,
+            ...headerValues,
+          });
+          deliveryId = Number((inserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
+          hasil.baru++;
+        }
+
+        const existingLines = await tx
+          .select()
+          .from(deliveryLines)
+          .where(eq(deliveryLines.deliveryId, deliveryId));
+        const matchedExistingIds = new Set<number>();
+        for (const sourceLine of sourceLines) {
+          const partNumber = bersih(sourceLine.partNumber);
+          const part = partNumber ? selectedPartByNumber.get(partNumber) : undefined;
+          if (!part) continue;
+          const sourceItemNumber = bersih(sourceLine.deliveryItem);
+          const sourceDeliveryQty = angkaBulat(sourceLine.deliveryQty);
+          const plannedFromSource = angkaBulat(sourceLine.plannedQty);
+          const plannedQty = plannedFromSource > 0 ? plannedFromSource : sourceDeliveryQty;
+          const qtyPerKanban = angkaBulat(sourceLine.qtyPerBox) || part.qtyPerKanban || 0;
+          const customerPartNumber = bersih(sourceLine.customerPartNumber);
+          const mapping =
+            mappings.find(
+              (item) =>
+                item.partId === part.id &&
+                customerPartNumber &&
+                item.customerPartNumber === customerPartNumber,
+            ) ??
+            (!customerPartNumber ? mappings.find((item) => item.partId === part.id) : undefined);
+          const values = {
+            customerPartId: mapping?.id ?? null,
+            customerPartNumberSource: customerPartNumber,
+            sapItemNumber: sourceItemNumber,
+            sapDeliveryQty: sourceDeliveryQty,
+            itemType: bersih(sourceLine.itemType),
+            plannedQty,
+            qtyPerKanban,
+            plannedKanban: qtyPerKanban > 0 ? Math.ceil(plannedQty / qtyPerKanban) : 0,
+          };
+          const current = sourceItemNumber
+            ? (existingLines.find((line) => line.sapItemNumber === sourceItemNumber) ??
+              existingLines.find(
+                (line) =>
+                  line.sapItemNumber === null &&
+                  line.partId === part.id &&
+                  !matchedExistingIds.has(line.id),
+              ))
+            : existingLines.find(
+                (line) =>
+                  line.partId === part.id &&
+                  line.sapItemNumber === null &&
+                  !matchedExistingIds.has(line.id),
+              );
+          if (current) {
+            if (
+              (current.pickedKanban > 0 || current.actualKanban > 0) &&
+              (current.qtyPerKanban !== qtyPerKanban ||
+                current.partId !== part.id ||
+                (current.customerPartNumberSource &&
+                  current.customerPartNumberSource !== customerPartNumber))
+            ) {
+              catat(
+                `${documentNumber}: identitas/kemasan item ${sourceItemNumber} berubah setelah discan; data lama dipertahankan`,
+              );
+              matchedExistingIds.add(current.id);
+              continue;
+            }
+            if (
+              current.partId !== part.id &&
+              (current.pickedKanban > 0 || current.actualKanban > 0)
+            ) {
+              catat(`${documentNumber}: item ${sourceItemNumber} berubah part setelah discan`);
+              matchedExistingIds.add(current.id);
+              continue;
+            }
+            await tx
+              .update(deliveryLines)
+              .set(
+                ['SHIPPED', 'RECEIVED'].includes(existing?.status ?? '')
+                  ? { sapDeliveryQty: sourceDeliveryQty, itemType: values.itemType }
+                  : { ...values, partId: part.id },
+              )
+              .where(eq(deliveryLines.id, current.id));
+            matchedExistingIds.add(current.id);
+          } else {
+            if (['SHIPPED', 'RECEIVED'].includes(existing?.status ?? '')) {
+              catat(`${documentNumber}: item baru pada dokumen selesai belum ditambahkan`);
+              continue;
+            }
+            await tx.insert(deliveryLines).values({ deliveryId, partId: part.id, ...values });
+          }
+        }
+
+        for (const oldLine of existingLines) {
+          if (matchedExistingIds.has(oldLine.id)) continue;
+          if (
+            oldLine.pickedKanban === 0 &&
+            oldLine.actualKanban === 0 &&
+            !['SHIPPED', 'RECEIVED'].includes(existing?.status ?? '')
+          ) {
+            await tx.delete(deliveryLines).where(eq(deliveryLines.id, oldLine.id));
+          } else {
+            catat(`${documentNumber}: item yang sudah discan tidak dihapus saat sumber berubah`);
+          }
+        }
+      });
+    }
+
+    this.logger.log(
+      `tarik pengiriman ${operationalDate}${uji ? ' (uji coba)' : ''}: ` +
+        `${hasil.dibaca} dokumen, ${hasil.baru} baru, ${hasil.diperbarui} diperbarui`,
+    );
+    if (!uji) {
+      const syncedAt = new Date();
+      await this.db
+        .insert(deliverySyncs)
+        .values({ operationalDate, syncedAt, result: hasil })
+        .onDuplicateKeyUpdate({ set: { syncedAt, result: hasil } });
+    }
+    return hasil;
+  }
+
   private async tarikSatu(sumber: SumberMaster, uji: boolean): Promise<HasilTarik> {
     const catatan: string[] = [];
 
     // Ekspresi SELECT dibangun dari pemetaan, dengan alias = nama field kita.
-    const pilih = Object.entries(sumber.kolom).map(([field, ekspresi]) => `${ekspresi} AS [${field}]`);
+    const pilih = Object.entries(sumber.kolom).map(
+      ([field, ekspresi]) => `${ekspresi} AS [${field}]`,
+    );
     pilih.push(`${sumber.kunci} AS [__kunci]`);
     if (sumber.flagHapus) pilih.push(`${sumber.flagHapus} AS [__hapus]`);
 
@@ -105,8 +559,13 @@ export class StagingPullService {
     );
 
     const hasil: HasilTarik = {
-      entitas: sumber.entitas, dibaca: rows.length, baru: 0, diperbarui: 0,
-      dinonaktifkan: 0, dilewati: 0, catatan,
+      entitas: sumber.entitas,
+      dibaca: rows.length,
+      baru: 0,
+      diperbarui: 0,
+      dinonaktifkan: 0,
+      dilewati: 0,
+      catatan,
     };
 
     if (rows.length === 0) {
@@ -127,7 +586,10 @@ export class StagingPullService {
 
     for (const row of rows) {
       const kunci = bersih(row.__kunci);
-      if (!kunci) { hasil.dilewati++; continue; }
+      if (!kunci) {
+        hasil.dilewati++;
+        continue;
+      }
 
       /*
        * Nilai char(n) di staging dipadatkan spasi. Tanpa trim, "AV-001    "
@@ -209,7 +671,10 @@ export class StagingPullService {
     if (terhapus) {
       if (!ada.isActive) return 'tetap';
       if (uji) return 'nonaktif';
-      await this.db.update(tabel).set({ isActive: false } as never).where(eq(kolomKunci, kunci));
+      await this.db
+        .update(tabel)
+        .set({ isActive: false } as never)
+        .where(eq(kolomKunci, kunci));
       return 'nonaktif';
     }
 
@@ -217,7 +682,10 @@ export class StagingPullService {
     if (!ada.isActive) berubah.isActive = true;
     if (Object.keys(berubah).length === 0) return 'tetap';
     if (uji) return 'ubah';
-    await this.db.update(tabel).set(berubah as never).where(eq(kolomKunci, kunci));
+    await this.db
+      .update(tabel)
+      .set(berubah as never)
+      .where(eq(kolomKunci, kunci));
     return 'ubah';
   }
 
@@ -265,8 +733,10 @@ export class StagingPullService {
     }
 
     const [ada] = await this.db
-      .select().from(parts)
-      .where(and(eq(parts.plantId, pabrik.id), eq(parts.partNumber, kunci))).limit(1);
+      .select()
+      .from(parts)
+      .where(and(eq(parts.plantId, pabrik.id), eq(parts.partNumber, kunci)))
+      .limit(1);
 
     if (!ada) {
       if (terhapus) return 'tetap';
@@ -293,7 +763,10 @@ export class StagingPullService {
     if (!ada.isActive) berubah.isActive = true;
     if (Object.keys(berubah).length === 0) return 'tetap';
     if (uji) return 'ubah';
-    await this.db.update(parts).set(berubah as never).where(eq(parts.id, ada.id));
+    await this.db
+      .update(parts)
+      .set(berubah as never)
+      .where(eq(parts.id, ada.id));
     return 'ubah';
   }
 
@@ -314,33 +787,43 @@ export class StagingPullService {
     if (!partNumber || !customerCode || !customerPartNumber) return 'tetap';
 
     const [cust] = await this.db
-      .select({ id: customers.id }).from(customers).where(eq(customers.code, customerCode)).limit(1);
+      .select({ id: customers.id })
+      .from(customers)
+      .where(eq(customers.code, customerCode))
+      .limit(1);
     if (!cust) return 'tetap';
 
     // Satu nomor part bisa ada di beberapa pabrik; pemetaan customer berlaku
     // untuk semuanya, jadi setiap baris part yang cocok ikut dipetakan.
     const daftarPart = await this.db
-      .select({ id: parts.id }).from(parts).where(eq(parts.partNumber, partNumber));
+      .select({ id: parts.id })
+      .from(parts)
+      .where(eq(parts.partNumber, partNumber));
     if (daftarPart.length === 0) return 'tetap';
 
     let berubah = false;
     for (const p of daftarPart) {
       const [ada] = await this.db
-        .select().from(customerParts)
+        .select()
+        .from(customerParts)
         .where(and(eq(customerParts.partId, p.id), eq(customerParts.customerId, cust.id)))
         .limit(1);
 
       if (!ada) {
         if (!uji) {
           await this.db.insert(customerParts).values({
-            partId: p.id, customerId: cust.id, customerPartNumber,
+            partId: p.id,
+            customerId: cust.id,
+            customerPartNumber,
           } as never);
         }
         berubah = true;
       } else if (ada.customerPartNumber !== customerPartNumber) {
         if (!uji) {
-          await this.db.update(customerParts)
-            .set({ customerPartNumber }).where(eq(customerParts.id, ada.id));
+          await this.db
+            .update(customerParts)
+            .set({ customerPartNumber })
+            .where(eq(customerParts.id, ada.id));
         }
         berubah = true;
       }
