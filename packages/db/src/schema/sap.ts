@@ -1,5 +1,6 @@
 import {
   mysqlTable,
+  bigint,
   varchar,
   int,
   mysqlEnum,
@@ -94,6 +95,17 @@ export const sapOutbox = mysqlTable(
     lastError: varchar('CHR_LAST_ERROR', { length: 1000 }),
     /** Nomor dokumen material yang dikembalikan SAP, bila ada. */
     sapDocNumber: varchar('CHR_SAP_DOC_NUMBER', { length: 32 }),
+
+    /**
+     * Nomor dokumen yang DIBERIKAN staging saat baris ini didorong.
+     *
+     * `INT_NUMBER` di TT_GOODS_MOVEMENT_H dan TT_PRODUCTION_RESULT ternyata
+     * kolom IDENTITY — SQL Server menolak nilai yang kita tentukan sendiri.
+     * Jadi nomornya datang dari sana, dan disimpan di sini karena dialah yang
+     * dipakai membaca balasan SAP dan mencegah dokumen yang sama terdorong
+     * dua kali.
+     */
+    stagingNumber: bigint('INT_STAGING_NUMBER', { mode: 'number' }),
 
     /** Kapan perpindahan barangnya terjadi — bukan kapan barisnya dibuat. */
     occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),

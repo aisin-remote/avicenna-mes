@@ -7,12 +7,13 @@ import {
   PackageCheck, X,
 } from 'lucide-react';
 import type {
-  KanbanOwner, SampleCheck, StationResult, StationSummary, ProcessType,
+  BerhentiLini, KanbanOwner, SampleCheck, StationResult, StationSummary, ProcessType,
 } from '@avicenna/contracts';
 import {
-  grupProses, menghasilkanFinishGood, sepertiKanban, sepertiKartuLogin, sepertiNomorPartPolos,
+  grupProses, sepertiKanban, sepertiKartuLogin, sepertiNomorPartPolos,
 } from '@avicenna/domain';
 import { periksaSampleAction, periksaScanAction, submitScanAction } from '@/app/(app)/scan/actions';
+import { PanelBerhenti } from './panel-berhenti';
 import { keluarStasiunAction } from '@/app/(station)/scan/proses/[grup]/actions';
 import { NgInline } from './ng-inline';
 import { useScanSound } from './use-scan-sound';
@@ -62,15 +63,16 @@ const LABEL_PEMILIK: Record<KanbanOwner, string> = {
  *  2. Status harus terbaca dari jarak beberapa meter.
  *  3. Hasilnya harus terdengar, karena operator sering tidak menatap layar.
  *
- * Tiga alur di satu layar, dipilih dari `summary.line.scanMode` dan prosesnya:
- *  - PER_PIECE lini WIP (UNIT): tiap scan adalah satu barang berseri.
- *  - PER_PIECE lini FG (UNIT): mengikuti layar Casting Dowa di avicenna lama —
+ * Tiga alur di satu layar, dipilih HANYA dari metode scan lini itu
+ * (`summary.line.scanMode`, isi master Rute Proses):
+ *  - PART_SAJA / PART_TANPA_KANBAN: tiap scan adalah satu barang berseri.
+ *  - PART_KANBAN: mengikuti layar Casting Dowa di avicenna lama —
  *    part ditahan satu per satu sampai box penuh (isi box dari master part,
  *    bukan angka 3 yang ditanam di kode), lalu KARTU menutup box. Tiap part
  *    diperiksa server saat ditahan; saat kartu discan, unit dikirim satu per
  *    satu dan yang gagal disebut, sisanya tetap tertahan — sistem lama
  *    mengosongkan ketiganya saat galat.
- *  - PER_KANBAN (BODY): operator men-scan MASTER SAMPLE yang tertempel di lini
+ *  - KANBAN_BOX (BODY): operator men-scan MASTER SAMPLE yang tertempel di lini
  *    satu kali, lalu satu scan kanban = satu box. Nomor part sample dikirim
  *    bersama tiap kanban, dan server mencocokkan keduanya — sample yang salah
  *    ditolak di kartu pertama, bukan ketahuan di akhir shift.
@@ -92,7 +94,7 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
   const [pcs, setPcs] = useState(summary.pcsToday);
   const [recent, setRecent] = useState<Row[]>(summary.recent.slice(0, MAX_RECENT));
 
-  const perKanban = summary.line.scanMode === 'PER_KANBAN';
+  const perKanban = summary.line.scanMode === 'KANBAN_BOX';
   /*
    * Master sample yang sedang berlaku — hanya di lini per-kanban.
    *
@@ -106,8 +108,14 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
   const [sampleBaru, setSampleBaru] = useState<SampleCheck | null>(null);
 
   const processType = summary.line.processType as ProcessType;
-  /** Lini FG per barang: part ditahan sampai box penuh, kartu menutup box. */
-  const fg = !perKanban && menghasilkanFinishGood(processType);
+  /*
+   * Lini yang menutup box dengan kartu: part ditahan sampai box penuh.
+   *
+   * Dibaca dari METODE SCAN, bukan dari jenis prosesnya. Dulu dari
+   * `menghasilkanFinishGood(processType)` — sehingga lini FG yang ternyata
+   * tidak memakai kartu mustahil dinyatakan tanpa menyunting kode.
+   */
+  const fg = summary.line.scanMode === 'PART_KANBAN';
   /*
    * Unit yang menunggu kartunya. Di memori layar, bukan localStorage — sistem
    * lama menyimpannya di sana dan part yang tertinggal dari shift kemarin ikut
@@ -127,6 +135,12 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
    */
   const [daftarMuat, setDaftarMuat] = useState<StationResult['loadingList']>(null);
   const [busy, setBusy] = useState(false);
+  /*
+   * Keadaan berhenti lini ini. Dimuat dari server, lalu dijaga di layar:
+   * scan yang diterima menutupnya di server, jadi layar harus ikut tahu —
+   * kalau tidak, tombol "Mulai" tetap terlihat padahal lini sudah berjalan.
+   */
+  const [berhenti, setBerhenti] = useState<BerhentiLini | null>(summary.berhenti ?? null);
   // Diawali dari preferensi tersimpan, lalu masih bisa dimatikan sesaat dari
   // layar ini tanpa mengubah pengaturan perangkat.
   const { prefs } = usePreferences();
@@ -237,7 +251,7 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
      * terakhir — kartu tanpa part ditolak, bukan disimpan diam-diam.
      */
     if (fg) {
-      if (sepertiKanban(value, { processType, scanMode: 'PER_PIECE' })) {
+      if (sepertiKanban(value, { processType, scanMode: summary.line.scanMode })) {
         await tutupBox(value);
       } else {
         await tahanPart(value);
@@ -282,6 +296,8 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
     setPcs(res.pcsToday);
 
     if (res.status === 'ACCEPTED') {
+      // Server menutup berhenti yang terbuka saat scan diterima; layar ikut.
+      setBerhenti(null);
       sound.ok();
       setRecent((prev) =>
         [
@@ -432,6 +448,7 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
       }
 
       terakhir = res;
+      setBerhenti(null);
       if (res.loadingList) setDaftarMuat(res.loadingList);
       sisa = sisa.filter((u) => u.rawCode !== unit.rawCode);
       setDitahan(sisa);
@@ -582,6 +599,17 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
   return (
     <div className="space-y-5">
       {tab}
+
+      {/* Tombol berhenti ditaruh DI ATAS kotak scan: saat lini bermasalah,
+          itulah yang dicari operator, dan menaruhnya di bawah daftar riwayat
+          membuat orang menggulir sambil lini diam. */}
+      <PanelBerhenti
+        lineCode={summary.line.code}
+        alasan={summary.alasanBerhenti ?? []}
+        berhenti={berhenti}
+        onBerubah={setBerhenti}
+      />
+
       <div className="grid gap-5 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,260px)]">
         {/* ── Input ─────────────────────────────────────────────────────── */}
         <section className="rounded-card border border-line bg-card p-5">

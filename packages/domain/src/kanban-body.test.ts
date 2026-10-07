@@ -18,8 +18,8 @@ function label(panjang: 230 | 220 | 241 | 218, isi: { part: string; seri: string
   return buf.join('');
 }
 
-const BODY = { scanMode: 'PER_KANBAN' as const };
-const UNIT = { scanMode: 'PER_PIECE' as const };
+const BODY = { scanMode: 'KANBAN_BOX' as const };
+const UNIT = { scanMode: 'PART_KANBAN' as const };
 
 describe('kanban BODY posisi tetap', () => {
   it.each([

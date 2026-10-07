@@ -7,6 +7,7 @@ export * from './loading-mode';
 export * from './role';
 export * from './stock';
 export * from './shift';
+export * from './work-time';
 export * from './process-chain';
 export * from './bom';
 export * from './backflush';

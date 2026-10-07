@@ -17,7 +17,7 @@ import {
   SOURCE_TYPES,
   TRACKING_MODES,
 } from './_shared';
-import { SCAN_MODES } from '@avicenna/contracts';
+import { SCAN_MODE_ENUM } from '@avicenna/contracts';
 import { plants } from './org';
 
 /** Line produksi. Satu line terikat pada satu pabrik dan satu jenis proses. */
@@ -31,6 +31,15 @@ export const lines = mysqlTable(
     code: varchar('CHR_CODE', { length: 32 }).notNull(),
     name: varchar('CHR_NAME', { length: 128 }).notNull(),
     processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    /**
+     * Penimpa METODE SCAN untuk lini ini. Kosong = ikut master Rute Proses.
+     *
+     * Injection dan assembling BODY ada di pabrik yang sama tetapi caranya
+     * berbeda: yang satu mulai dari tag mold, yang lain dari papan dandori.
+     * Tanpa penimpa per lini, keduanya terpaksa berbagi satu metode yang tidak
+     * cocok untuk salah satunya.
+     */
+    scanMode: mysqlEnum('CHR_SCAN_MODE', SCAN_MODE_ENUM),
     /*
      * SLOC asal dan tujuan line ini.
      *
@@ -259,13 +268,14 @@ export const routeProcesses = mysqlTable(
       .references(() => plants.id),
     processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
     /**
-     * Cara scan di proses ini — lihat SCAN_MODES di contracts.
+     * METODE SCAN lini ini — lihat SCAN_MODES di contracts.
      *
-     * PER_PIECE: barcode seri per barang (UNIT). PER_KANBAN: master sample lalu
-     * kanban per box (BODY). Sifat proses, bukan pabrik: assy 660A yang
-     * berinterlock dan injection biasa boleh berbeda dalam satu pabrik.
+     * Sifat proses, bukan pabrik: assy 660A yang berinterlock dan injection
+     * biasa boleh berbeda dalam satu pabrik. Enumnya memuat nilai LAMA
+     * (PER_PIECE/PER_KANBAN) supaya baris dan snapshot yang sudah ada tetap
+     * sah; nilai itu tidak pernah ditawarkan lagi di formulir.
      */
-    scanMode: mysqlEnum('CHR_SCAN_MODE', SCAN_MODES).notNull().default('PER_PIECE'),
+    scanMode: mysqlEnum('CHR_SCAN_MODE', SCAN_MODE_ENUM).notNull().default('PART_SAJA'),
     /** Kosong = pakai SLOC asal lini. */
     inputLocationId: fk('INT_INPUT_LOCATION_ID'),
     /** Kosong = pakai SLOC tujuan lini. */

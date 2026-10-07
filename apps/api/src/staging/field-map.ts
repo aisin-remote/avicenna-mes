@@ -35,14 +35,6 @@ const L = GOODS_MOVEMENT.kolomBaris;
 
 /** Kepala dokumen perpindahan → TT_GOODS_MOVEMENT_H. */
 export const PETA_GM_KEPALA: PetaField[] = [
-  {
-    tabelStaging: GOODS_MOVEMENT.kepala, staging: H.nomor, field: 'nomor', arah: 'tulis',
-    asal: { jenis: 'turunan', rumus: 'TT_SAP_OUTBOX.INT_ID' },
-    catatan:
-      'Staging tidak punya kolom kunci idempoten. Kuncinya INT_NUMBER + INT_NUMBER_ITEM, ' +
-      'jadi id outbox dipakai apa adanya sebagai nomor dokumen — stabil lintas percobaan, ' +
-      'sehingga dorongan ulang mengenai baris yang sama alih-alih menggandakannya.',
-  },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.plant, field: 'plant', arah: 'tulis',
     asal: { jenis: 'kolom', tabel: 'TM_PLANT', kolom: 'CHR_SAP_CODE', lewat: 'TT_STOCK_MUTATION.INT_PLANT_ID' } },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.tanggal, field: 'tanggal', arah: 'tulis',
@@ -54,8 +46,17 @@ export const PETA_GM_KEPALA: PetaField[] = [
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.jenisTransaksi, field: 'jenisTransaksi', arah: 'tulis',
     asal: { jenis: 'kolom', tabel: 'TT_SAP_OUTBOX', kolom: 'CHR_DOC_TYPE' } },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.keterangan, field: 'keterangan', arah: 'tulis',
-    asal: { jenis: 'turunan', rumus: 'CHR_SOURCE_TABLE + "#" + INT_SOURCE_ID' },
-    catatan: 'Jejak balik ke dokumen asal. char(25), jadi dipotong bila lebih panjang.' },
+    asal: { jenis: 'turunan', rumus: '"AVI-" + TT_SAP_OUTBOX.INT_ID + " " + CHR_SOURCE_TABLE singkat' },
+    catatan:
+      'Sekaligus KUNCI ANTI-GANDA. INT_NUMBER diberikan SQL Server (IDENTITY), jadi tidak ' +
+      'bisa dipakai memeriksa "sudah pernah didorong atau belum" SEBELUM insert. Kolom ini ' +
+      'yang diperiksa lebih dulu. char(25), jadi dipotong bila lebih panjang.' },
+  { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.nomorProduksi, field: 'nomorProduksi', arah: 'tulis',
+    asal: { jenis: 'kolom', tabel: 'TT_SAP_OUTBOX', kolom: 'INT_STAGING_NUMBER', lewat: 'dokumen PRODUCTION dari scan yang sama' },
+    catatan:
+      'Menautkan perpindahan ke dokumen produksinya di staging. Kosong bila dokumen ' +
+      'produksinya belum pernah terdorong — transfer memang baru dilepas setelah produksinya ' +
+      'dikonfirmasi, jadi dalam keadaan normal selalu terisi.' },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.user, field: 'user', arah: 'tulis',
     asal: { jenis: 'tetap', nilai: 'AVICENNA' } },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.tanggalEntry, field: 'tanggalEntry', arah: 'tulis',
@@ -67,9 +68,8 @@ export const PETA_GM_KEPALA: PetaField[] = [
 /** Baris dokumen perpindahan → TT_GOODS_MOVEMENT_L. */
 export const PETA_GM_BARIS: PetaField[] = [
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.nomor, field: 'nomor', arah: 'tulis',
-    asal: { jenis: 'turunan', rumus: 'TT_SAP_OUTBOX.INT_ID (sama dengan kepalanya)' } },
-  { tabelStaging: GOODS_MOVEMENT.baris, staging: L.nomorItem, field: 'nomorItem', arah: 'tulis',
-    asal: { jenis: 'turunan', rumus: 'urutan baris dalam dokumen, mulai 1' } },
+    asal: { jenis: 'turunan', rumus: 'INT_NUMBER kepala, sebagaimana diberikan SQL Server' },
+    catatan: 'INT_NUMBER_ITEM TIDAK diisi — kolom IDENTITY, nomornya diberikan SQL Server.' },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.partNo, field: 'partNo', arah: 'tulis',
     asal: { jenis: 'kolom', tabel: 'TM_PARTS', kolom: 'CHR_PART_NO', lewat: 'TT_STOCK_MUTATION.INT_PART_ID' } },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.partName, field: 'partName', arah: 'tulis',

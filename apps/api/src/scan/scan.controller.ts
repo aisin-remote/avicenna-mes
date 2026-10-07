@@ -1,6 +1,11 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UsePipes } from '@nestjs/common';
 import type { Request } from 'express';
-import { scanInputSchema, scanBatchSchema } from '@avicenna/contracts';
+import { scanInputSchema, scanBatchSchema,
+  mulaiBerhentiSchema,
+  selesaiBerhentiSchema,
+  type MulaiBerhentiInput,
+  type SelesaiBerhentiInput,
+} from '@avicenna/contracts';
 import type { ScanInput, ScanBatchInput } from '@avicenna/contracts';
 import { ScanService } from './scan.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -64,6 +69,31 @@ export class ScanController {
   @UsePipes(new ZodValidationPipe(scanInputSchema))
   async periksaStation(@Body() body: ScanInput, @Req() req: Request) {
     return this.scan.station(body, req.principal, { ujiSaja: true });
+  }
+
+  /** Kartu per lini untuk papan monitor di lantai produksi. */
+  @Get('dashboard')
+  async dashboard(@Query('plant') plant?: string) {
+    return this.scan.dashboard(plant?.trim() || undefined);
+  }
+
+  /**
+   * Operator menekan tombol berhenti (Problem / Setup / QC Cek).
+   *
+   * Satu lini hanya boleh punya satu baris terbuka; menekan dua kali
+   * mengembalikan baris yang sudah ada, bukan membuat catatan bertumpuk.
+   */
+  @Post('berhenti')
+  @UsePipes(new ZodValidationPipe(mulaiBerhentiSchema))
+  async mulaiBerhenti(@Body() body: MulaiBerhentiInput, @Req() req: Request) {
+    return this.scan.mulaiBerhenti(body, req.principal);
+  }
+
+  /** Operator menekan "Mulai" — menutup berhenti yang sedang berlangsung. */
+  @Post('berhenti/selesai')
+  @UsePipes(new ZodValidationPipe(selesaiBerhentiSchema))
+  async selesaiBerhenti(@Body() body: SelesaiBerhentiInput) {
+    return this.scan.selesaiBerhenti(body.lineCode, 'TOMBOL');
   }
 
   /** Master sample di lini per-kanban: part apa, dan boleh di lini ini? */

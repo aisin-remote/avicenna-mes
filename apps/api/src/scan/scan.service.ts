@@ -1,5 +1,7 @@
 import { Injectable, Logger, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { eq, and, or, desc, gte, lt, count, sum, inArray, type Database } from '@avicenna/db';
+import {
+  eq, and, or, isNull, desc, asc, gte, lt, count, sum, inArray, type Database,
+} from '@avicenna/db';
 import {
   scanEvents,
   lines,
@@ -16,6 +18,8 @@ import {
   programNumbers,
   users,
   roles,
+  lineStops,
+  stopReasons,
   deliveries,
   deliveryLines,
   customers,
@@ -29,6 +33,7 @@ import {
   rencanaMutasiScanProduksi,
   productionDateKey,
   productionDayWindow,
+  statusLini,
   prosesSebelumnya,
   prosesAdaDiRute,
   grupProses,
@@ -39,6 +44,8 @@ import {
   KanbanTidakTerbaca,
   syaratScan,
   modeScanBawaan,
+  modeScanBerlaku,
+  normalkanModeScan,
   duplikatDariBarcode,
   type ScanMode,
   programCodeOf,
@@ -47,7 +54,18 @@ import {
   REJECT_MESSAGES,
   type ScanRejectReason,
 } from '@avicenna/domain';
-import type { KanbanOwner, ScanInput, ScanResult, StationResult } from '@avicenna/contracts';
+import type {
+  AlasanBerhenti,
+  BerhentiLini,
+  DashboardProduksi,
+  KartuLini,
+  KanbanOwner,
+  MulaiBerhentiInput,
+  ScanInput,
+  ScanModeTersimpan,
+  ScanResult,
+  StationResult,
+} from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
 import { RealtimeService } from '../realtime/realtime.service';
 import { QueueService } from '../queue/queue.service';
@@ -213,7 +231,9 @@ export class ScanService {
      */
     const prosesAwal = normalized.processType ?? line?.processType ?? null;
     const modeAwal: ScanMode =
-      line && prosesAwal ? await this.modeScanLini(line.plantId, prosesAwal) : 'PER_PIECE';
+      line && prosesAwal
+        ? await this.modeScanLini(line.plantId, prosesAwal, line.scanMode)
+        : 'PART_SAJA';
     const konteksBarcode = {
       processType: prosesAwal,
       scanMode: modeAwal,
@@ -401,26 +421,53 @@ export class ScanService {
     };
 
     if (normalized.kind === 'PRODUCTION') {
-      if ((sapRoute.productionEnabled || transferLocationId) && !outputLocationId) {
-        throw new ScanRejected('STOCK_LOCATION_INVALID', REJECT_MESSAGES.STOCK_LOCATION_INVALID);
-      }
-      if (sapRoute.transferEnabled && !transferLocationId) {
-        throw new ScanRejected('STOCK_LOCATION_INVALID', REJECT_MESSAGES.STOCK_LOCATION_INVALID);
-      }
-      if (transferLocationId && transferLocationId === outputLocationId) {
-        throw new ScanRejected('STOCK_LOCATION_INVALID', REJECT_MESSAGES.STOCK_LOCATION_INVALID);
-      }
+      /*
+       * Galat SLOC menyebut SEBABNYA, bukan hanya "tidak valid".
+       *
+       * Ini galat pengaturan, bukan galat operator: yang harus dibereskan ada
+       * di Integrasi › Rute Proses. Pesan yang hanya berbunyi "SLOC rute belum
+       * lengkap" membuat leader menebak di antara empat kemungkinan — dan
+       * selama menebak, seluruh lini proses itu berhenti. Pernah terjadi: SLOC
+       * Transfer diisi sama dengan SLOC Keluar, dan SETIAP scan casting
+       * ditolak tanpa ada yang tahu kolom mana.
+       */
+      const tolakSloc = (sebab: string): never => {
+        throw new ScanRejected(
+          'STOCK_LOCATION_INVALID',
+          `${REJECT_MESSAGES.STOCK_LOCATION_INVALID} (${processType}: ${sebab})`,
+        );
+      };
+
       const ids = [inputLocationId, outputLocationId, transferLocationId].filter(
         (id): id is number => id !== null,
       );
-      if (ids.length > 0) {
-        const daftar = await this.db
-          .select({ id: locations.id, plantId: locations.plantId })
-          .from(locations)
-          .where(inArray(locations.id, ids));
-        if (ids.some((id) => !daftar.some((l) => l.id === id && l.plantId === plantId))) {
-          throw new ScanRejected('STOCK_LOCATION_INVALID', REJECT_MESSAGES.STOCK_LOCATION_INVALID);
-        }
+      const daftar =
+        ids.length > 0
+          ? await this.db
+              .select({ id: locations.id, code: locations.code, plantId: locations.plantId })
+              .from(locations)
+              .where(inArray(locations.id, ids))
+          : [];
+      const kode = (id: number | null) =>
+        id === null ? '(kosong)' : (daftar.find((l) => l.id === id)?.code ?? `id=${id}`);
+
+      if ((sapRoute.productionEnabled || transferLocationId) && !outputLocationId) {
+        tolakSloc(
+          'SLOC Keluar kosong padahal push produksi atau transfer aktif — isi SLOC Keluar di Integrasi › Rute Proses',
+        );
+      }
+      if (sapRoute.transferEnabled && !transferLocationId) {
+        tolakSloc('push transfer aktif tetapi SLOC Transfer kosong');
+      }
+      if (transferLocationId && transferLocationId === outputLocationId) {
+        tolakSloc(
+          `SLOC Transfer sama dengan SLOC Keluar (${kode(outputLocationId)}) — ` +
+            'pindah ke gudang yang sama bukan perpindahan; kosongkan SLOC Transfer',
+        );
+      }
+      const salahPabrik = ids.filter((id) => !daftar.some((l) => l.id === id && l.plantId === plantId));
+      if (salahPabrik.length > 0) {
+        tolakSloc(`SLOC ${salahPabrik.map(kode).join(', ')} bukan milik pabrik lini ini`);
       }
     }
 
@@ -437,16 +484,36 @@ export class ScanService {
      * akan pernah bisa dikirim.
      */
     /*
-     * Cara scan proses ini — PER_PIECE (UNIT) atau PER_KANBAN (BODY).
+     * METODE SCAN proses ini, dari master Rute Proses.
      *
      * Dari master per proses, dengan bawaan per jenis proses bila barisnya
      * belum ada. Semua syarat kanban di bawah diturunkan dari sini lewat
      * syaratScan(), bukan dari "apakah ini lini FG" — aturan FG/WIP itu milik
      * UNIT, sedangkan di BODY setiap lini men-scan kanban.
      */
-    const modeScan: ScanMode =
-      aturanProses?.scanMode ?? (processType ? modeScanBawaan(processType) : 'PER_PIECE');
+    // Penimpa lini didahulukan: satu pabrik bisa punya dua lini dengan cara
+    // berbeda pada proses yang sama (injection vs assembling BODY).
+    const modeScan: ScanMode = modeScanBerlaku({
+      modeLini: line?.scanMode,
+      modeProses: aturanProses?.scanMode,
+      proses: processType,
+    });
     const syarat = processType ? syaratScan(modeScan, processType) : null;
+
+    /*
+     * Metode yang dikenal tetapi alurnya belum dibangun ditolak di sini.
+     *
+     * Diam-diam memperlakukannya sebagai metode lain adalah kegagalan yang
+     * paling mahal: PART_PINDAH_KARTU yang dijalankan seperti PART_KANBAN akan
+     * menempelkan unit ke kartu customer TANPA melepasnya dari kartu internal,
+     * dan barang yang sama tercatat di dua kartu sekaligus.
+     */
+    if (normalized.kind === 'PRODUCTION' && syarat?.belumTersedia) {
+      throw new ScanRejected(
+        'SCAN_MODE_UNSUPPORTED',
+        `${REJECT_MESSAGES.SCAN_MODE_UNSUPPORTED} (${modeScan})`,
+      );
+    }
 
     let labelDn: LabelDn | null = null;
     let kanbanTerpilih:
@@ -1222,7 +1289,7 @@ export class ScanService {
      * "barcode ini sudah discan di proses ini" akan menolak scan kedua dan
      * seterusnya. Di mode itu duplikatnya ditentukan status kartu, di ingestOne.
      */
-    if (processType && duplikatDariBarcode(modeScan)) {
+    if (processType && duplikatDariBarcode(modeScan, processType)) {
       const already = await this.db
         .select({ id: scanEvents.id })
         .from(scanEvents)
@@ -1276,6 +1343,23 @@ export class ScanService {
       }
 
       const part = outcome.partId ? await this.partById(outcome.partId) : undefined;
+
+      /*
+       * Scan yang diterima MENUTUP berhenti yang masih terbuka.
+       *
+       * Operator yang lupa menekan "Mulai" tetap berproduksi. Membiarkan baris
+       * berhenti terbuka membuat lini terlihat STOP di dashboard sambil terus
+       * mengeluarkan barang, dan loss time-nya membengkak tanpa dasar.
+       */
+      if (!opsi.ujiSaja && input.lineCode) {
+        try {
+          const line = await this.findLine(input.lineCode);
+          if (line) await this.tutupBerhenti(line.id, 'SCAN');
+        } catch (err) {
+          // Tidak boleh menggagalkan scan yang datanya sudah tersimpan.
+          this.logger.warn(`gagal menutup berhenti di ${input.lineCode}: ${String(err)}`);
+        }
+      }
 
       return {
         status: 'ACCEPTED',
@@ -1351,15 +1435,25 @@ export class ScanService {
     return line?.processType;
   }
 
-  /** Cara scan yang berlaku di lini ini — dari master per proses, atau bawaannya. */
+  /** Metode scan yang berlaku di lini ini — dari master per proses, atau bawaannya. */
   private async modeScanFor(input: ScanInput): Promise<ScanMode> {
-    if (!input.lineCode) return 'PER_PIECE';
+    if (!input.lineCode) return 'PART_SAJA';
     const line = await this.findLine(input.lineCode);
-    if (!line) return 'PER_PIECE';
-    return this.modeScanLini(line.plantId, line.processType);
+    if (!line) return 'PART_SAJA';
+    return this.modeScanLini(line.plantId, line.processType, line.scanMode);
   }
 
-  private async modeScanLini(plantId: number, processType: ScanInput['processType'] & {}): Promise<ScanMode> {
+  /**
+   * Metode scan sebuah lini, SELALU dalam bentuk nilai yang berlaku sekarang.
+   *
+   * Nilai lama diterjemahkan di sini, jadi pemanggil — termasuk layar operator
+   * yang menerimanya lewat `summary` — tidak perlu tahu nilai lama pernah ada.
+   */
+  private async modeScanLini(
+    plantId: number,
+    processType: ScanInput['processType'] & {},
+    modeLini?: ScanModeTersimpan | null,
+  ): Promise<ScanMode> {
     const [aturan] = await this.db
       .select({ scanMode: routeProcesses.scanMode })
       .from(routeProcesses)
@@ -1371,7 +1465,7 @@ export class ScanService {
         ),
       )
       .limit(1);
-    return aturan?.scanMode ?? modeScanBawaan(processType);
+    return modeScanBerlaku({ modeLini, modeProses: aturan?.scanMode, proses: processType });
   }
 
   private async partById(id: number) {
@@ -1443,8 +1537,8 @@ export class ScanService {
     const line = await this.findLine(lineCode);
     if (!line) throw new BadRequestException(`${REJECT_MESSAGES.LINE_NOT_FOUND} (${lineCode})`);
 
-    const mode = await this.modeScanLini(line.plantId, line.processType);
-    if (mode !== 'PER_KANBAN') {
+    const mode = await this.modeScanLini(line.plantId, line.processType, line.scanMode);
+    if (mode !== 'KANBAN_BOX') {
       throw new BadRequestException(
         `Lini ${line.code} men-scan per barang, bukan per kanban — tidak memakai master sample.`,
       );
@@ -1512,11 +1606,309 @@ export class ScanService {
          * atau master sample lalu kanban (PER_KANBAN). Diputuskan server, bukan
          * ditebak layar dari nama pabriknya.
          */
-        scanMode: await this.modeScanLini(line.plantId, line.processType),
+        scanMode: await this.modeScanLini(line.plantId, line.processType, line.scanMode),
       },
       ...(await this.hitunganUntukHasil(lineCode)),
+      berhenti: await this.berhentiTerbuka(line.id),
+      alasanBerhenti: await this.alasanUntukLini(line.plantId, line.id),
       recent: await this.recent(lineCode, limit),
     };
+  }
+
+  /**
+   * Baris berhenti yang belum ditutup di sebuah lini.
+   *
+   * Paling banyak satu — dijaga saat membuka. Dibaca tiap kali layar dimuat,
+   * supaya operator yang datang setelah pergantian shift melihat keadaan
+   * sebenarnya, bukan layar yang seolah lini sedang berjalan.
+   */
+  private async berhentiTerbuka(lineId: number): Promise<BerhentiLini | null> {
+    const [baris] = await this.db
+      .select({
+        id: lineStops.id,
+        reasonId: lineStops.reasonId,
+        reasonCode: stopReasons.code,
+        reasonName: stopReasons.name,
+        isPlanned: stopReasons.isPlanned,
+        startedAt: lineStops.startedAt,
+        endedAt: lineStops.endedAt,
+        note: lineStops.note,
+        npk: lineStops.npk,
+      })
+      .from(lineStops)
+      .leftJoin(stopReasons, eq(lineStops.reasonId, stopReasons.id))
+      .where(and(eq(lineStops.lineId, lineId), isNull(lineStops.endedAt)))
+      .orderBy(desc(lineStops.startedAt))
+      .limit(1);
+
+    if (!baris) return null;
+    return {
+      id: baris.id,
+      reasonId: baris.reasonId ?? null,
+      reasonCode: baris.reasonCode ?? null,
+      reasonName: baris.reasonName ?? null,
+      isPlanned: baris.isPlanned ?? false,
+      startedAt: baris.startedAt.toISOString(),
+      endedAt: baris.endedAt ? baris.endedAt.toISOString() : null,
+      note: baris.note ?? null,
+      npk: baris.npk ?? null,
+    };
+  }
+
+  /**
+   * Alasan yang boleh dipilih di sebuah lini.
+   *
+   * Milik lini itu sendiri DAN yang berlaku se-pabrik. Daftar panjang berisi
+   * alasan yang tidak relevan akan selalu diisi asal pilih, dan laporan loss
+   * time kehilangan gunanya.
+   */
+  private async alasanUntukLini(plantId: number, lineId: number): Promise<AlasanBerhenti[]> {
+    return this.db
+      .select({
+        id: stopReasons.id,
+        code: stopReasons.code,
+        name: stopReasons.name,
+        category: stopReasons.category,
+        isPlanned: stopReasons.isPlanned,
+      })
+      .from(stopReasons)
+      .where(
+        and(
+          eq(stopReasons.plantId, plantId),
+          eq(stopReasons.isActive, true),
+          or(isNull(stopReasons.lineId), eq(stopReasons.lineId, lineId)),
+        ),
+      )
+      .orderBy(asc(stopReasons.sortOrder), asc(stopReasons.code));
+  }
+
+  /**
+   * Operator menekan tombol berhenti.
+   *
+   * Satu lini hanya boleh punya satu baris terbuka: menekan tombol dua kali
+   * tidak membuat dua catatan yang saling tumpang tindih — yang kedua
+   * mengembalikan baris yang sudah ada apa adanya.
+   */
+  async mulaiBerhenti(input: MulaiBerhentiInput, principal?: Principal): Promise<BerhentiLini> {
+    const line = await this.findLine(input.lineCode);
+    if (!line) throw new BadRequestException(`${REJECT_MESSAGES.LINE_NOT_FOUND} (${input.lineCode})`);
+
+    const sudah = await this.berhentiTerbuka(line.id);
+    if (sudah) return sudah;
+
+    const [alasan] = await this.db
+      .select({ id: stopReasons.id, plantId: stopReasons.plantId, lineId: stopReasons.lineId })
+      .from(stopReasons)
+      .where(and(eq(stopReasons.id, input.reasonId), eq(stopReasons.isActive, true)))
+      .limit(1);
+    if (!alasan || alasan.plantId !== line.plantId || (alasan.lineId && alasan.lineId !== line.id)) {
+      throw new BadRequestException('Alasan berhenti itu tidak berlaku untuk lini ini.');
+    }
+
+    const sekarang = new Date();
+    // Part yang sedang dikerjakan diambil dari scan terakhir hari ini — supaya
+    // laporan loss time bisa dipilah per model tanpa menyuruh operator memilih.
+    const [terakhir] = await this.db
+      .select({ partId: scanEvents.partId })
+      .from(scanEvents)
+      .where(eq(scanEvents.lineId, line.id))
+      .orderBy(desc(scanEvents.scannedAt))
+      .limit(1);
+
+    await this.db.insert(lineStops).values({
+      plantId: line.plantId,
+      lineId: line.id,
+      partId: terakhir?.partId ?? null,
+      reasonId: alasan.id,
+      productionDate: productionDateKey(sekarang),
+      startedAt: sekarang,
+      npk: principal?.kind === 'user' ? principal.npk : null,
+      userId: principal?.kind === 'user' ? principal.sub : null,
+      note: input.note ?? null,
+    });
+
+    const dibuka = await this.berhentiTerbuka(line.id);
+    if (!dibuka) throw new BadRequestException('Gagal mencatat berhenti. Coba lagi.');
+    this.logger.log(`lini ${line.code} berhenti: ${dibuka.reasonName ?? dibuka.reasonCode}`);
+    return dibuka;
+  }
+
+  /** Operator menekan "Mulai" — menutup baris berhenti yang terbuka. */
+  async selesaiBerhenti(
+    lineCode: string,
+    penutup: 'TOMBOL' | 'SCAN' = 'TOMBOL',
+  ): Promise<BerhentiLini | null> {
+    const line = await this.findLine(lineCode);
+    if (!line) throw new BadRequestException(`${REJECT_MESSAGES.LINE_NOT_FOUND} (${lineCode})`);
+    return this.tutupBerhenti(line.id, penutup);
+  }
+
+  /**
+   * Menutup berhenti yang terbuka di sebuah lini.
+   *
+   * Dipanggil tombol "Mulai" dan juga oleh scan produksi: operator yang lupa
+   * menekan tombol tetap berproduksi, dan menolak scannya berarti hasil
+   * produksi hilang hanya karena tombol terlewat. Penutupnya dicatat supaya
+   * selisih keduanya bisa diperiksa nanti.
+   */
+  private async tutupBerhenti(
+    lineId: number,
+    penutup: 'TOMBOL' | 'SCAN' | 'SISTEM',
+  ): Promise<BerhentiLini | null> {
+    const terbuka = await this.berhentiTerbuka(lineId);
+    if (!terbuka) return null;
+    await this.db
+      .update(lineStops)
+      .set({ endedAt: new Date(), closedBy: penutup })
+      .where(and(eq(lineStops.id, terbuka.id), isNull(lineStops.endedAt)));
+    return { ...terbuka, endedAt: new Date().toISOString() };
+  }
+
+  /**
+   * Kartu per lini untuk dashboard produksi.
+   *
+   * Satu kueri per lini terlalu mahal untuk layar yang menyala sepanjang hari
+   * dan menampilkan puluhan lini, jadi semuanya dikumpulkan secara borongan:
+   * hitungan hari ini, scan terakhir, dan berhenti yang terbuka.
+   *
+   * Statusnya DITURUNKAN di sini (statusLini), bukan dibaca dari kolom —
+   * kolom status pasti melenceng begitu satu proses lupa memperbaruinya, dan
+   * papan monitor di lantai produksi menjadi bohong tanpa ada yang menyadari.
+   */
+  async dashboard(plantCode?: string): Promise<DashboardProduksi> {
+    const sekarang = new Date();
+    const { start, end } = productionDayWindow(sekarang);
+
+    const daftarLini = await this.db
+      .select({
+        id: lines.id,
+        code: lines.code,
+        name: lines.name,
+        processType: lines.processType,
+        sortOrder: lines.sortOrder,
+        plantCode: plants.code,
+      })
+      .from(lines)
+      .leftJoin(plants, eq(lines.plantId, plants.id))
+      .where(
+        plantCode
+          ? and(eq(lines.isActive, true), eq(plants.code, plantCode))
+          : eq(lines.isActive, true),
+      )
+      .orderBy(asc(lines.sortOrder), asc(lines.code));
+
+    if (daftarLini.length === 0) {
+      return { hariProduksi: productionDateKey(sekarang), kartu: [] };
+    }
+    const idLini = daftarLini.map((l) => l.id);
+
+    /*
+     * Hitungan hari produksi ini per lini.
+     *
+     * Waktu scan terakhir SENGAJA tidak diambil lewat MAX() di sini. Agregat
+     * lewat sql mentah kembali sebagai string tanpa zona waktu, lalu diurai
+     * sebagai waktu lokal — padahal kolomnya disimpan UTC. Selisih tujuh jam
+     * membuat SELURUH lini terbaca IDLE di papan monitor, dan tidak ada yang
+     * salah di layar kecuali semuanya. Waktunya diambil dari baris scan
+     * terakhir di bawah, yang dibaca sebagai kolom sungguhan.
+     */
+    const hitungan = await this.db
+      .select({
+        lineId: scanEvents.lineId,
+        pcs: sum(scanEvents.qty),
+      })
+      .from(scanEvents)
+      .where(
+        and(
+          inArray(scanEvents.lineId, idLini),
+          eq(scanEvents.kind, 'PRODUCTION'),
+          gte(scanEvents.scannedAt, start),
+          lt(scanEvents.scannedAt, end),
+        ),
+      )
+      .groupBy(scanEvents.lineId);
+    const perLini = new Map(hitungan.map((h) => [Number(h.lineId), h]));
+
+    /*
+     * Model yang sedang dikerjakan = part pada scan TERAKHIR hari ini, beserta
+     * kapan model itu mulai dikerjakan. Diambil per lini lewat satu kueri yang
+     * mengurutkan menurun, lalu baris pertama tiap lini yang dipakai.
+     */
+    const terakhirPerLini = await this.db
+      .select({
+        lineId: scanEvents.lineId,
+        partId: scanEvents.partId,
+        partNumber: parts.partNumber,
+        partName: parts.name,
+        backNumber: parts.backNumber,
+        scannedAt: scanEvents.scannedAt,
+      })
+      .from(scanEvents)
+      .leftJoin(parts, eq(scanEvents.partId, parts.id))
+      .where(
+        and(
+          inArray(scanEvents.lineId, idLini),
+          eq(scanEvents.kind, 'PRODUCTION'),
+          gte(scanEvents.scannedAt, start),
+          lt(scanEvents.scannedAt, end),
+        ),
+      )
+      .orderBy(desc(scanEvents.scannedAt));
+
+    const modelLini = new Map<number, (typeof terakhirPerLini)[number]>();
+    /** Scan paling awal untuk model yang sedang berjalan — "Start Date" di kartu. */
+    const mulaiModel = new Map<number, Date>();
+    for (const r of terakhirPerLini) {
+      const id = Number(r.lineId);
+      const ada = modelLini.get(id);
+      if (!ada) {
+        modelLini.set(id, r);
+        mulaiModel.set(id, r.scannedAt);
+        continue;
+      }
+      // Selama part-nya masih sama, mundurkan waktu mulainya.
+      if (ada.partId === r.partId) mulaiModel.set(id, r.scannedAt);
+    }
+
+    const berhentiTerbuka = await this.db
+      .select({
+        lineId: lineStops.lineId,
+        startedAt: lineStops.startedAt,
+        reasonName: stopReasons.name,
+        reasonCode: stopReasons.code,
+      })
+      .from(lineStops)
+      .leftJoin(stopReasons, eq(lineStops.reasonId, stopReasons.id))
+      .where(and(inArray(lineStops.lineId, idLini), isNull(lineStops.endedAt)));
+    const stopLini = new Map(berhentiTerbuka.map((b) => [Number(b.lineId), b]));
+
+    const kartu: KartuLini[] = daftarLini.map((l) => {
+      const h = perLini.get(l.id);
+      const model = modelLini.get(l.id);
+      const stop = stopLini.get(l.id);
+      const scanTerakhir = model?.scannedAt ?? null;
+      return {
+        lineCode: l.code,
+        lineName: l.name,
+        processType: l.processType,
+        plantCode: l.plantCode ?? null,
+        status: statusLini({
+          adaBerhentiTerbuka: Boolean(stop),
+          scanTerakhir,
+          sekarang,
+        }),
+        partNumber: model?.partNumber ?? null,
+        partName: model?.partName ?? null,
+        backNumber: model?.backNumber ?? null,
+        startedAt: mulaiModel.get(l.id)?.toISOString() ?? null,
+        scanTerakhir: scanTerakhir ? scanTerakhir.toISOString() : null,
+        qtyOk: Number(h?.pcs ?? 0),
+        alasanBerhenti: stop ? (stop.reasonName ?? stop.reasonCode ?? 'Berhenti') : null,
+        berhentiSejak: stop ? stop.startedAt.toISOString() : null,
+      };
+    });
+
+    return { hariProduksi: productionDateKey(sekarang), kartu };
   }
 
   /** Riwayat scan terbaru — dipakai layar operator untuk konfirmasi visual. */

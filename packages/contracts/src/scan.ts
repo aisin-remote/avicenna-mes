@@ -129,6 +129,16 @@ export interface StationSummary {
   };
   counterToday: number;
   pcsToday: number;
+  /**
+   * Berhenti yang sedang berlangsung di lini ini, bila ada.
+   *
+   * Layar memakainya untuk menampilkan tombol "Mulai" alih-alih tombol-tombol
+   * alasan — operator yang kembali ke layar setelah ganti shift harus melihat
+   * keadaan yang sebenarnya, bukan layar yang seolah lini sedang berjalan.
+   */
+  berhenti: BerhentiLini | null;
+  /** Pilihan alasan untuk lini ini: milik lini sendiri dan milik pabriknya. */
+  alasanBerhenti: AlasanBerhenti[];
   recent: Array<{
     id: number;
     kind: string;
@@ -156,4 +166,74 @@ export interface SampleCheck {
   qtyPerKanban: number | null;
   /** false = part ini belum punya rute sama sekali, jadi lininya tidak bisa diperiksa. */
   ruteDiperiksa: boolean;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * BERHENTI PRODUKSI
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Alasan yang bisa dipilih operator di lini itu. */
+export interface AlasanBerhenti {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  isPlanned: boolean;
+}
+
+export const mulaiBerhentiSchema = z.object({
+  lineCode: z.string().trim().min(1).max(32),
+  reasonId: z.coerce.number().int().positive(),
+  note: z.string().trim().max(255).optional(),
+});
+export type MulaiBerhentiInput = z.infer<typeof mulaiBerhentiSchema>;
+
+export const selesaiBerhentiSchema = z.object({
+  lineCode: z.string().trim().min(1).max(32),
+});
+export type SelesaiBerhentiInput = z.infer<typeof selesaiBerhentiSchema>;
+
+/** Keadaan berhenti sebuah lini — dipakai layar operator dan dashboard. */
+export interface BerhentiLini {
+  id: number;
+  reasonId: number | null;
+  reasonCode: string | null;
+  reasonName: string | null;
+  isPlanned: boolean;
+  startedAt: string;
+  /** Kosong = masih berhenti. */
+  endedAt: string | null;
+  note: string | null;
+  npk: string | null;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * DASHBOARD PRODUKSI
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Satu kartu lini di dashboard — seperti papan monitor di lantai produksi. */
+export interface KartuLini {
+  lineCode: string;
+  lineName: string;
+  processType: string;
+  plantCode: string | null;
+  /** Diturunkan: ada berhenti terbuka = STOP, ada scan baru = RUNNING. */
+  status: 'RUNNING' | 'STOP' | 'IDLE';
+  /** Part yang sedang dikerjakan — dari scan terakhir hari produksi ini. */
+  partNumber: string | null;
+  partName: string | null;
+  backNumber: string | null;
+  /** Kapan model ini mulai dikerjakan hari ini. */
+  startedAt: string | null;
+  scanTerakhir: string | null;
+  qtyOk: number;
+  /** Alasan berhenti yang sedang berlangsung, bila STOP. */
+  alasanBerhenti: string | null;
+  berhentiSejak: string | null;
+}
+
+export interface DashboardProduksi {
+  /** Hari produksi yang ditampilkan (YYYY-MM-DD). */
+  hariProduksi: string;
+  kartu: KartuLini[];
 }

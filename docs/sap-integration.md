@@ -572,3 +572,74 @@ Dua akibat langsungnya:
 2. **Nilai flag masih tebakan.** Rencananya dibaca dari baris yang sudah pernah
    diproses SAP, tetapi tidak ada satu pun baris untuk dibaca. `N`/`S`/`E` di
    `STAGING_FLAG_*` harus dikonfirmasi tim SAP sebelum pendorongan dinyalakan.
+
+---
+
+## Pembacaan ulang struktur staging, 5 Oktober 2026
+
+Dibaca lagi dari `172.18.3.19 / A_DB_STG` — **34 tabel** (sebelumnya 32). Yang
+baru dan penting: `TM_PROCESS`. Data contoh dari server LIVE dikirim Handika
+berupa tangkapan layar; strukturnya sama persis dengan server dev ini, hanya
+dev-nya masih 0 baris.
+
+### TM_PROCESS_PARTS bukan sekadar daftar part
+
+Kuncinya **(CHR_PART_NO, CHR_PV)** — satu baris per LANGKAH proses, bukan per
+part. Isinya jauh lebih kaya daripada yang kita duga:
+
+| Kolom | Isi | Padanan di sini |
+|---|---|---|
+| `CHR_PV` char(4) | urutan langkah (0001, 0002, …) | `TM_PROCESS_PARTS.INT_SEQ_NO` |
+| `CHR_WORK_CENTER` char(8) | work center langkah itu | `TM_LINE` — **pemetaannya belum ada** |
+| `CHR_SLOC_TO` char(6) | SLOC tujuan langkah itu | SLOC keluar per proses |
+| `INT_FLG_METHODS` int | metode scan langkah itu | `CHR_SCAN_MODE` — **artinya belum diketahui** |
+| `INT_IS_SCAN_CUST_KANBAN` int | apakah kanban customer discan | belum dipakai |
+| `INT_CYCLE_TIME`, `INT_MP`, `CHR_LOTSIZE`, `CHR_STDDAY` | data perencanaan | belum dipakai |
+
+Dua akibat langsung, keduanya sudah diperbaiki:
+
+1. **Tarik PART menghasilkan duplikat.** Part yang melewati empat proses
+   menghasilkan empat baris identik; satu putaran `TOP (n)` habis oleh duplikat.
+   Sekarang dikelompokkan per (pabrik, part), dan penanda hapus memakai MIN —
+   part dianggap terhapus hanya bila SELURUH langkahnya terhapus.
+2. **Pabrik dicocokkan ke kolom yang salah.** `CHR_PLANT` berisi kode SAP
+   (`600` pada data nyata), sedangkan kita mencocokkannya ke `TM_PLANT.CHR_CODE`
+   yang berisi "UNIT"/"BODY". Dengan data nyata, SETIAP part akan dilewati dan
+   tarik master melaporkan "berhasil, 0 baris". Sekarang dicocokkan ke
+   `CHR_SAP_CODE` lebih dulu, dan yang tidak cocok dicatat sebagai peringatan.
+
+`CHR_PART_UOM` char(40) juga dipotong ke 16 karakter saat dibaca, mengikuti
+lebar kolom kita.
+
+### TM_PROCESS = master work center
+
+Enam kolom: `CHR_PLANT`, `CHR_WORK_CENTER` char(10), `CHR_PERSON_RESPONSIBLE`,
+`CHR_FLAG_DELETE`, `CHR_DATE`, `CHR_AREA`. Kunci (work center, person
+responsible). Inilah padanan `TM_LINE` kita — contoh isinya MADS05, PK0006,
+ASCD01, SACD01, dengan area CC-001, CD-001, ASWE-002, DL-008.
+
+Perhatikan lebarnya tidak konsisten di sisi SAP: `CHR_WORK_CENTER` char(8) di
+`TM_PROCESS_PARTS` dan `TM_KANBAN`, tetapi char(10) di `TM_PROCESS` dan
+`TT_PRODUCTION_RESULT`. Kode work center yang lebih dari 8 karakter tidak akan
+pernah cocok dengan rutenya.
+
+### Yang sudah terjawab
+
+- **Unique index sudah ada** di kedua tabel dorongan: `PK_TT_GOODS_MOVEMENT_H_1`
+  pada `INT_NUMBER`, `PK_TT_GOODS_MOVEMENT_L_1` pada `INT_NUMBER + INT_NUMBER_ITEM`,
+  dan `INT_NO` pada `TT_PRODUCTION_RESULT.INT_NUMBER`. Permintaan ke tim SAP soal
+  ini sudah tidak berlaku.
+- **Kolom NOT NULL hanya kuncinya**, jadi INSERT kita tidak akan gagal karena
+  kolom wajib yang tidak diisi.
+- `TT_PRODUCTION_RESULT.CHR_DATE` memang char(10) — format `YYYY-MM-DD` yang
+  sudah kita kirim benar. `CHR_PLANT` di tabel itu char(4), berbeda dari char(3)
+  di `TT_GOODS_MOVEMENT_H`.
+
+### Yang masih menunggu jawaban
+
+1. **Arti `INT_FLG_METHODS`.** Angka berapa berarti metode apa. Pada contoh live
+   semuanya 0. Tanpa legenda ini, metode scan tidak bisa ditarik dari SAP.
+2. **Pemetaan work center → lini kita.** Kode SAP (MADS05, ASCD01) berbeda dari
+   kode kita (DC-01, MC-01), dan jenis proses tidak ada di staging.
+3. **Kode SAP tiap pabrik.** Data nyata memakai `600`; `TM_PLANT.CHR_SAP_CODE`
+   untuk UNIT dan BODY harus diisi sebelum tarik maupun dorong bisa jalan.

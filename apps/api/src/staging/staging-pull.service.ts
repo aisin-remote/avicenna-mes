@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, type Database } from '@avicenna/db';
+import { eq, and, or, type Database } from '@avicenna/db';
 import { parts, customers, suppliers, customerParts, plants } from '@avicenna/db';
 import { InjectDb } from '../db/db.module';
 import { StagingDbService } from './staging-db.service';
@@ -111,6 +111,17 @@ export class StagingPullService {
 
     if (rows.length === 0) {
       catatan.push(`tabel ${sumber.tabel} di staging masih kosong`);
+      /*
+       * Part baru memakai jenis proses SEMENTARA — staging tidak menyediakannya.
+       * Disebutkan di laporan supaya tidak diam-diam dianggap benar; yang
+       * menentukan proses sebenarnya adalah rute part dan lini tempat scan.
+       */
+      if (sumber.entitas === 'PART' && hasil.baru > 0 && sumber.bawaan?.processType) {
+        catatan.push(
+          `${hasil.baru} part baru diberi jenis proses sementara ` +
+            `"${sumber.bawaan.processType}" — betulkan setelah work center SAP dipetakan ke lini.`,
+        );
+      }
       return hasil;
     }
 
@@ -229,11 +240,29 @@ export class StagingPullService {
     delete nilai.plantCode;
     if (!kodePabrik) return 'tetap';
 
+    /*
+     * Dicocokkan ke KODE SAP pabrik, bukan ke kode kita.
+     *
+     * CHR_PLANT di staging berisi kode SAP — "600" pada data nyata — sedangkan
+     * kode kita "UNIT"/"BODY". Mencocokkannya ke `code` membuat SETIAP part
+     * dilewati dengan diam: tarik master melaporkan "berhasil, 0 baris", dan
+     * tidak ada yang tahu sebabnya. Kode kita tetap diterima sebagai cadangan
+     * supaya data contoh yang memakai "UNIT" tidak ikut patah.
+     */
     const [pabrik] = await this.db
-      .select({ id: plants.id }).from(plants).where(eq(plants.code, kodePabrik)).limit(1);
+      .select({ id: plants.id })
+      .from(plants)
+      .where(or(eq(plants.sapCode, kodePabrik), eq(plants.code, kodePabrik)))
+      .limit(1);
     // Pabrik yang belum dikenal dilewati. Membuatnya otomatis berarti satu salah
     // ketik di staging melahirkan pabrik baru yang tidak ada di dunia nyata.
-    if (!pabrik) return 'tetap';
+    if (!pabrik) {
+      this.logger.warn(
+        `part ${kunci} dilewati: pabrik "${kodePabrik}" dari staging belum cocok dengan ` +
+          'Kode SAP mana pun di master Pabrik. Isi CHR_SAP_CODE di master Pabrik.',
+      );
+      return 'tetap';
+    }
 
     const [ada] = await this.db
       .select().from(parts)

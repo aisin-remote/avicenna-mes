@@ -11,6 +11,12 @@
  *    TT_DELIVERY/TT_DELIVERY_ITEM — jadi dorongan dilakukan PER JENIS DOKUMEN,
  *    masing-masing ke pasangan kepala + barisnya sendiri.
  *
+ * 1b. INT_NUMBER pada TT_GOODS_MOVEMENT_H dan TT_PRODUCTION_RESULT, serta
+ *    INT_NUMBER_ITEM pada TT_GOODS_MOVEMENT_L, adalah kolom IDENTITY. Nomornya
+ *    DIBERIKAN SQL Server; mengisinya sendiri ditolak dengan "Cannot insert
+ *    explicit value for identity column". Nomor yang diberikan dibaca kembali
+ *    lewat OUTPUT INSERTED dan disimpan di TT_SAP_OUTBOX.INT_STAGING_NUMBER.
+ *
  * 2. Semua kolom bertipe `char(n)` fixed-width, space-padded. Nilai yang dibaca
  *    HARUS di-trim; nilai yang ditulis tidak boleh melebihi lebarnya. Tanggal
  *    disimpan sebagai char(8) `YYYYMMDD` dan jam sebagai char(6) `HHMMSS` di
@@ -23,6 +29,9 @@
  * dan `CHR_RECEIPT_BOX` juga float. Jangan pernah menyimpulkan tipe dari
  * prefiksnya — baca INFORMATION_SCHEMA.
  */
+
+import type { ProcessType } from '@avicenna/contracts';
+import { PART_TYPES, SOURCE_TYPES, TRACKING_MODES } from '@avicenna/contracts';
 
 const env = (nama: string, bawaan: string): string => (process.env[nama] ?? '').trim() || bawaan;
 
@@ -82,6 +91,8 @@ export const GOODS_MOVEMENT = {
     jenisTransaksi: 'CHR_TYPE_TRANS',
     movementType: 'CHR_MVMT_TYPE',
     keterangan: 'CHR_REMARKS',
+    /** Nomor dokumen produksi yang mendahului perpindahan ini, bila ada. */
+    nomorProduksi: 'INT_NUMBER_PROD',
     user: 'CHR_USER',
     npk: 'CHR_NPK',
     ip: 'CHR_IP',
@@ -126,6 +137,14 @@ export const PRODUCTION_RESULT = {
   tabel: env('STAGING_TABLE_PRODUCTION', 'TT_PRODUCTION_RESULT'),
   kolom: {
     nomor: 'INT_NUMBER',
+    /**
+     * Nomor rujukan KITA — satu-satunya cara mengenali dokumen yang sudah
+     * terdorong, karena INT_NUMBER diberikan SQL Server (IDENTITY) dan baru
+     * diketahui setelah INSERT berhasil.
+     */
+    woNumber: 'CHR_WO_NUMBER',
+    /** Langkah proses menurut SAP (TM_PROCESS_PARTS.CHR_PV). */
+    pv: 'CHR_PV',
     tanggal: 'CHR_DATE',
     bulan: 'INT_BULAN',
     tahun: 'INT_TAHUN',
@@ -303,8 +322,19 @@ export interface SumberMaster {
    * ditimpa dengan nilai ini — kalau seseorang sudah membetulkan PROCESS_TYPE
    * sebuah part, putaran tarik berikutnya tidak boleh mengembalikannya ke
    * tebakan bawaan.
+   *
+   * DIKETIK KETAT, bukan Record<string, unknown>. Sebelumnya bebas, dan
+   * `processType: 'ASSEMBLING'` — nilai yang tidak ada di enum — lolos sampai
+   * ke MySQL: SETIAP part gagal masuk, dan galatnya hanya terlihat sebagai
+   * "Failed query" di log. Sekarang nilai yang bukan anggota enum ditolak
+   * compiler.
    */
-  bawaan?: Record<string, unknown>;
+  bawaan?: {
+    processType?: ProcessType;
+    partType?: (typeof PART_TYPES)[number];
+    sourceType?: (typeof SOURCE_TYPES)[number];
+    trackingMode?: (typeof TRACKING_MODES)[number];
+  };
   /** Kolom penanda baris berubah, untuk tarik inkremental. Kosong = tarik penuh. */
   kolomPerubahan?: string;
 }
@@ -362,15 +392,38 @@ export const SUMBER_MASTER: SumberMaster[] = [
      */
     entitas: 'PART',
     tabel: 'TM_PARTS',
-    dari: 'TM_PROCESS_PARTS pp LEFT JOIN TM_PARTS p ON p.CHR_PART_NO = pp.CHR_PART_NO',
+    /*
+     * DIKELOMPOKKAN per (pabrik, part) — TM_PROCESS_PARTS berkunci
+     * (CHR_PART_NO, CHR_PV), satu baris per LANGKAH proses.
+     *
+     * Tanpa pengelompokan, part yang melewati empat proses menghasilkan empat
+     * baris identik: empat kali upsert part yang sama, dan jatah satu putaran
+     * (TOP n) habis oleh duplikat alih-alih part yang belum tertarik.
+     *
+     * Penanda hapus memakai MIN: part baru dianggap terhapus bila SELURUH
+     * langkahnya terhapus. Satu langkah yang dicabut bukan berarti part-nya
+     * hilang — dan menonaktifkan part yang masih diproduksi akan membuat
+     * seluruh scan-nya ditolak.
+     */
+    dari:
+      '(SELECT CHR_PLANT, CHR_PART_NO, ' +
+      "MIN(CASE WHEN CHR_FLAG_DELETE IS NULL OR LTRIM(RTRIM(CHR_FLAG_DELETE)) = '' THEN 0 ELSE 1 END) " +
+      'AS INT_SEMUA_HAPUS, MAX(CHR_MODIFIED_DATE) AS CHR_UBAH_TERAKHIR ' +
+      'FROM TM_PROCESS_PARTS GROUP BY CHR_PLANT, CHR_PART_NO) pp ' +
+      'LEFT JOIN TM_PARTS p ON p.CHR_PART_NO = pp.CHR_PART_NO',
     kunci: 'pp.CHR_PART_NO',
-    flagHapus: 'pp.CHR_FLAG_DELETE',
-    kolomPerubahan: 'pp.CHR_MODIFIED_DATE',
+    flagHapus: "CASE WHEN pp.INT_SEMUA_HAPUS = 1 THEN 'X' END",
+    kolomPerubahan: 'pp.CHR_UBAH_TERAKHIR',
     kolom: {
       plantCode: 'pp.CHR_PLANT',
       partNumber: 'pp.CHR_PART_NO',
       name: 'p.CHR_PART_NAME',
-      uom: 'p.CHR_PART_UOM',
+      /*
+       * CHR_PART_UOM char(40) di staging, sedangkan kolom kita varchar(16).
+       * Dipotong di sisi SQL Server supaya terlihat di sini — bukan dibiarkan
+       * MySQL menolak seluruh baris karena satuan yang kepanjangan.
+       */
+      uom: 'LEFT(p.CHR_PART_UOM, 16)',
       backNumber: 'p.CHR_BACK_NO',
       qtyPerKanban: 'p.INT_QTY_PER_BOX',
     },
@@ -380,8 +433,13 @@ export const SUMBER_MASTER: SumberMaster[] = [
        * PROCESS_TYPE di sisi kita NOT NULL tanpa bawaan. Nilai di bawah hanya
        * dipakai saat part BARU dibuat; part yang sudah ada tidak pernah
        * ditimpa, sehingga koreksi manual tidak hilang pada putaran berikutnya.
+       *
+       * PROCESS_TYPE di TM_PARTS adalah peninggalan masa satu part = satu
+       * proses; yang menentukan proses sebenarnya adalah rute part dan lini
+       * tempat scan terjadi. Nilai di sini SEMENTARA sampai work center SAP
+       * dipetakan ke lini kita — dan tarik master menyebutkannya di laporan.
        */
-      processType: 'ASSEMBLING',
+      processType: 'ASSEMBLING_UNIT',
       partType: 'FINISHED_GOOD',
       sourceType: 'MANUFACTURED',
       trackingMode: 'SERIAL',

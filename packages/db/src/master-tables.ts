@@ -14,6 +14,9 @@ import {
   routeProcesses,
   kanbans,
   programNumbers,
+  workTimes,
+  workBreaks,
+  stopReasons,
 } from './schema/index';
 
 /**
@@ -38,6 +41,9 @@ export const MASTER_TABLES = {
   'route-processes': routeProcesses,
   kanbans,
   'program-numbers': programNumbers,
+  'work-times': workTimes,
+  'work-breaks': workBreaks,
+  'stop-reasons': stopReasons,
 } as const;
 
 export type MasterTable = (typeof MASTER_TABLES)[MasterEntity];

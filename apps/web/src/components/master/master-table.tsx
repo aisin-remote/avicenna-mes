@@ -148,7 +148,14 @@ export function MasterTable({
                         f.numeric && 'tabular text-right',
                       )}
                     >
-                      {renderCell(f.name, row[f.name], f.kind, refLabels[f.name])}
+                      {renderCell(
+                        f.name,
+                        row[f.name],
+                        f.kind,
+                        // Kolom referensi memakai peta id→label dari server;
+                        // kolom pilihan memakai label dari registry.
+                        f.kind === 'select' ? f.optionLabels : refLabels[f.name],
+                      )}
                     </td>
                   ))}
                   <td className="border-b border-line px-5 py-3.5">
@@ -254,7 +261,7 @@ function renderCell(
   if (kind === 'select') {
     return (
       <span className="inline-flex items-center rounded-full border border-line px-3 py-1.5 text-[12px]">
-        {String(value)}
+        {labels?.[String(value)] ?? String(value)}
       </span>
     );
   }

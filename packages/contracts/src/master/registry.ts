@@ -28,6 +28,9 @@ export const MASTER_ENTITIES = [
   'route-processes',
   'kanbans',
   'program-numbers',
+  'work-times',
+  'work-breaks',
+  'stop-reasons',
 ] as const;
 
 export type MasterEntity = (typeof MASTER_ENTITIES)[number];
@@ -40,8 +43,8 @@ export type MasterEntity = (typeof MASTER_ENTITIES)[number];
  * di kolom enum, lalu setiap penyimpanan gagal dengan pesan dari MySQL yang
  * tidak menyebut sebabnya.
  */
-export { PROCESS_TYPES, PROCESS_GROUPS, SCAN_MODES } from '../common';
-import { PROCESS_TYPES, PROCESS_GROUPS, SCAN_MODES } from '../common';
+export { PROCESS_TYPES, PROCESS_GROUPS, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
+import { PROCESS_TYPES, PROCESS_GROUPS, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
 export const KANBAN_TYPES = ['REGULER', 'SPARE'] as const;
 export const KANBAN_OWNERS = ['INTERNAL', 'CUSTOMER'] as const;
 export type KanbanOwner = (typeof KANBAN_OWNERS)[number];
@@ -60,6 +63,26 @@ export const SOURCE_TYPES = ['PURCHASED', 'MANUFACTURED'] as const;
 export const TRACKING_MODES = ['SERIAL', 'LOT', 'QUANTITY'] as const;
 export const PART_NUMBER_FORMATS = ['TMMIN', 'SUZUKI', 'MMKI', 'TBINA', 'NONE'] as const;
 
+/** Kategori alasan berhenti — harus sama dengan STOP_REASON_CATEGORIES di @avicenna/db. */
+export const STOP_REASON_CATEGORIES = [
+  'PROBLEM',
+  'SETUP',
+  'QC',
+  'CHANGEOVER',
+  'MATERIAL',
+  'LAINNYA',
+] as const;
+export type StopReasonCategory = (typeof STOP_REASON_CATEGORIES)[number];
+
+export const STOP_REASON_CATEGORY_LABELS: Record<StopReasonCategory, string> = {
+  PROBLEM: 'Problem / kerusakan',
+  SETUP: 'Setup / dandori',
+  QC: 'Pemeriksaan kualitas',
+  CHANGEOVER: 'Ganti model',
+  MATERIAL: 'Material habis / menunggu',
+  LAINNYA: 'Lainnya',
+};
+
 export type FieldKind = 'text' | 'number' | 'decimal' | 'date' | 'boolean' | 'select' | 'reference';
 
 export interface FieldDef {
@@ -70,6 +93,15 @@ export interface FieldDef {
   required?: boolean;
   /** Pilihan untuk kind 'select'. */
   options?: readonly string[];
+  /**
+   * Label yang ditampilkan untuk tiap pilihan.
+   *
+   * Tanpa ini layar menampilkan nilai enum apa adanya. Untuk kolom seperti
+   * metode scan, yang dibaca leader produksi bukan "PART_TANPA_KANBAN"
+   * melainkan apa artinya di lantai. Pilihan tanpa entri di sini tampil apa
+   * adanya, jadi kolom lain tidak perlu disentuh.
+   */
+  optionLabels?: Readonly<Record<string, string>>;
   /** Entitas tujuan untuk kind 'reference'. */
   refEntity?: MasterEntity;
   /** Tampil sebagai kolom di tabel daftar. */
@@ -166,6 +198,18 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         options: PROCESS_TYPES,
         required: true,
         inList: true,
+      },
+      {
+        name: 'scanMode',
+        label: 'Metode Scan',
+        kind: 'select',
+        options: SCAN_MODES,
+        optionLabels: SCAN_MODE_LABELS,
+        inList: true,
+        hint:
+          'Kosongkan untuk mengikuti master Rute Proses. Isi hanya bila lini ini berbeda ' +
+          'dari lini lain pada proses yang sama — mis. injection (tag mold) dan assembling ' +
+          'BODY (papan dandori) di pabrik yang sama.',
       },
       {
         name: 'inputLocationId',
@@ -522,13 +566,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       },
       {
         name: 'scanMode',
-        label: 'Cara Scan',
+        label: 'Metode Scan',
         kind: 'select',
         options: SCAN_MODES,
+        optionLabels: SCAN_MODE_LABELS,
         required: true,
-        defaultValue: 'PER_PIECE',
+        defaultValue: 'PART_SAJA',
         inList: true,
-        hint: 'PER_PIECE: barcode seri per barang (UNIT). PER_KANBAN: master sample lalu kanban per box (BODY).',
+        hint:
+          'Menentukan seluruh syarat scan di lini ini: wajib kanban atau tidak, ' +
+          'unit ditempel ke kartu atau tidak, dan jumlah diambil dari kartu atau dari barcode.',
       },
       {
         name: 'inputLocationId',
@@ -760,6 +807,136 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       { name: 'note', label: 'Catatan', kind: 'text', max: 255 },
     ],
   },
+
+  /**
+   * JAM KERJA per pabrik — menentukan hari produksi dan rentang laporan.
+   *
+   * Jam mulai hari produksi dulu ditanam di kode (07:00), padahal UNIT dan BODY
+   * berbeda dan keduanya berubah mengikuti kebutuhan produksi.
+   */
+  'work-times': {
+    key: 'work-times',
+    label: 'Jam Kerja',
+    singular: 'Jam Kerja',
+    icon: 'Clock',
+    description: 'Shift dan jamnya per pabrik — dasar hari produksi dan laporan per jam',
+    searchFields: ['code', 'name'],
+    defaultSort: 'startTime',
+    fields: [
+      plantRef,
+      {
+        name: 'code',
+        label: 'Kode Shift',
+        kind: 'text',
+        required: true,
+        max: 16,
+        inList: true,
+        hint: 'Mis. 1, 2, 3.',
+      },
+      { name: 'name', label: 'Nama', kind: 'text', required: true, max: 64, inList: true },
+      { name: 'startTime', label: 'Mulai', kind: 'text', required: true, max: 8, inList: true, hint: 'Format 24 jam, mis. 07:00.' },
+      {
+        name: 'endTime',
+        label: 'Selesai',
+        kind: 'text',
+        required: true,
+        max: 8,
+        inList: true,
+        hint: 'Boleh lebih kecil dari jam mulai untuk shift malam, mis. 23:00 → 07:00.',
+      },
+      {
+        name: 'startsProductionDay',
+        label: 'Awal Hari Produksi',
+        kind: 'boolean',
+        defaultValue: false,
+        inList: true,
+        hint: 'Tandai TEPAT SATU shift per pabrik. Scan sebelum jam ini masuk hari sebelumnya.',
+      },
+      activeField,
+    ],
+  },
+
+  /** Istirahat terjadwal di dalam sebuah shift — dipotong dari waktu kerja. */
+  'work-breaks': {
+    key: 'work-breaks',
+    label: 'Jam Istirahat',
+    singular: 'Jam Istirahat',
+    icon: 'Coffee',
+    description: 'Istirahat terjadwal; dipotong dari waktu kerja saat menghitung efisiensi',
+    searchFields: ['name'],
+    defaultSort: 'startTime',
+    fields: [
+      {
+        name: 'workTimeId',
+        label: 'Shift',
+        kind: 'reference',
+        refEntity: 'work-times',
+        required: true,
+        inList: true,
+      },
+      { name: 'name', label: 'Nama', kind: 'text', required: true, max: 64, inList: true },
+      { name: 'startTime', label: 'Mulai', kind: 'text', required: true, max: 8, inList: true },
+      { name: 'endTime', label: 'Selesai', kind: 'text', required: true, max: 8, inList: true },
+      activeField,
+    ],
+  },
+
+  /**
+   * ALASAN BERHENTI — menempel pada lini.
+   *
+   * Lini dikosongkan berarti berlaku untuk semua lini di pabrik itu.
+   */
+  'stop-reasons': {
+    key: 'stop-reasons',
+    label: 'Alasan Berhenti',
+    singular: 'Alasan Berhenti',
+    icon: 'OctagonPause',
+    description: 'Pilihan yang muncul saat operator menekan tombol berhenti di layar scan',
+    searchFields: ['code', 'name'],
+    defaultSort: 'sortOrder',
+    fields: [
+      plantRef,
+      {
+        name: 'lineId',
+        label: 'Line',
+        kind: 'reference',
+        refEntity: 'lines',
+        inList: true,
+        hint: 'Kosongkan bila alasan ini berlaku untuk semua lini di pabrik.',
+      },
+      { name: 'code', label: 'Kode', kind: 'text', required: true, max: 32, inList: true },
+      { name: 'name', label: 'Nama', kind: 'text', required: true, max: 128, inList: true },
+      {
+        name: 'category',
+        label: 'Kategori',
+        kind: 'select',
+        options: STOP_REASON_CATEGORIES,
+        optionLabels: STOP_REASON_CATEGORY_LABELS,
+        required: true,
+        defaultValue: 'PROBLEM',
+        inList: true,
+      },
+      {
+        name: 'isPlanned',
+        label: 'Direncanakan',
+        kind: 'boolean',
+        defaultValue: false,
+        inList: true,
+        hint: 'Setup dan QC biasanya direncanakan; kerusakan tidak. Memisahkan keduanya di laporan efisiensi.',
+      },
+      {
+        name: 'sortOrder',
+        label: 'Urutan',
+        kind: 'number',
+        min: 0,
+        defaultValue: 0,
+        numeric: true,
+        hint: 'Yang paling sering dipakai ditaruh di atas supaya operator tidak mencari.',
+      },
+      activeField,
+    ],
+  },
+
 };
 
 export function isMasterEntity(value: string): value is MasterEntity {

@@ -104,7 +104,8 @@ export type ScanRejectReason =
   | 'DN_NOT_FOUND'
   | 'DN_CLOSED'
   | 'DN_PART_NOT_LISTED'
-  | 'CUSTOMER_PART_UNKNOWN';
+  | 'CUSTOMER_PART_UNKNOWN'
+  | 'SCAN_MODE_UNSUPPORTED';
 
 /** Pesan untuk operator. Ditulis sebagai instruksi, bukan sekadar keterangan. */
 export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
@@ -148,6 +149,13 @@ export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
   DN_PART_NOT_LISTED: 'Part ini tidak ada dalam loading list tersebut. Periksa label dan part-nya.',
   CUSTOMER_PART_UNKNOWN:
     'Nomor part customer pada label tidak cocok dengan part ini. Laporkan ke leader.',
+
+  /*
+   * Metode scan lini ini dikenal tetapi layarnya belum ada. Lebih baik berhenti
+   * di sini daripada menjalankan metode lain yang kebetulan mirip.
+   */
+  SCAN_MODE_UNSUPPORTED:
+    'Metode scan lini ini belum didukung. Periksa Metode Scan di Integrasi › Rute Proses.',
 };
 
 /**

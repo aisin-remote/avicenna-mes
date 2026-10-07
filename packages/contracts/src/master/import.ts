@@ -58,6 +58,11 @@ export const KUNCI_ALAMI: Record<MasterEntity, KunciAlami> = {
    * sini dipakai hanya sebagai label saat melaporkan baris yang bentrok.
    */
   kanbans: { kolom: 'serialNumber', perPabrik: true },
+  'work-times': { kolom: 'code', perPabrik: true },
+  // Istirahat tidak punya kode; identitasnya shift + jam mulai. Nama dipakai
+  // sebagai label saat melaporkan baris yang bentrok.
+  'work-breaks': { kolom: 'name', perPabrik: false },
+  'stop-reasons': { kolom: 'code', perPabrik: true },
   'part-processes': { kolom: 'seqNo', perPabrik: true },
   bom: { kolom: 'qtyPer', perPabrik: true },
 };

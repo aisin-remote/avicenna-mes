@@ -1,6 +1,6 @@
 'use server';
 
-import type { SampleCheck, StationResult } from '@avicenna/contracts';
+import type { BerhentiLini, SampleCheck, StationResult } from '@avicenna/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 
 /**
@@ -74,6 +74,43 @@ export async function periksaSampleAction(input: {
   try {
     const q = new URLSearchParams({ code: input.code, line: input.lineCode });
     return await apiFetch<SampleCheck>(`/scan/sample?${q.toString()}`);
+  } catch (err) {
+    if (err instanceof ApiRequestError) return { error: err.message };
+    return { error: 'Tidak bisa menghubungi server. Periksa jaringan.' };
+  }
+}
+
+/**
+ * Operator menekan tombol berhenti di layar scan.
+ *
+ * Alasannya dipilih dari daftar milik lini itu — bukan diketik — supaya
+ * laporan loss time bisa dikelompokkan tanpa menebak maksud tulisan orang.
+ */
+export async function mulaiBerhentiAction(input: {
+  lineCode: string;
+  reasonId: number;
+}): Promise<BerhentiLini | { error: string }> {
+  try {
+    return await apiFetch<BerhentiLini>('/scan/berhenti', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  } catch (err) {
+    if (err instanceof ApiRequestError) return { error: err.message };
+    return { error: 'Tidak bisa menghubungi server. Periksa jaringan.' };
+  }
+}
+
+/** Operator menekan "Mulai" — lini kembali berjalan. */
+export async function selesaiBerhentiAction(
+  lineCode: string,
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    await apiFetch<unknown>('/scan/berhenti/selesai', {
+      method: 'POST',
+      body: JSON.stringify({ lineCode }),
+    });
+    return { ok: true };
   } catch (err) {
     if (err instanceof ApiRequestError) return { error: err.message };
     return { error: 'Tidak bisa menghubungi server. Periksa jaringan.' };

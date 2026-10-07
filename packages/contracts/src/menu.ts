@@ -125,7 +125,16 @@ const MENU_MASTER: MenuDef[] = MASTER_ENTITIES.map((key, i) => ({
  * Tidak ada menu tambahan. Kedua master rute lahir dari MASTER_ENTITIES lewat
  * penimpa di atas — tes menu.test.ts menjaga alamatnya tidak pernah kembar.
  */
-const MENU_KHUSUS: MenuDef[] = [];
+const MENU_KHUSUS: MenuDef[] = [
+  {
+    key: 'produksi.papan-lini',
+    label: 'Papan Lini',
+    href: '/produksi/dashboard',
+    icon: 'MonitorDot',
+    group: 'Produksi',
+    sortOrder: 5,
+  },
+];
 
 export const MENU_ITEMS: readonly MenuDef[] = [
   ...MENU_TETAP,

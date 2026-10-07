@@ -20,6 +20,7 @@ export * from './inventory';
 export * from './quality';
 export * from './delivery';
 export * from './machine';
+export * from './worktime';
 export * from './supply';
 export * from './scrap';
 export * from './sap';

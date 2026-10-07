@@ -65,10 +65,44 @@ function tabelAman(penuh: string): string {
   return penuh.replace(/[[\]]/g, '').split('.').map(identifierAman).join('.');
 }
 
+/**
+ * Rujukan kita pada dokumen di staging.
+ *
+ * INT_NUMBER di sana kolom IDENTITY, jadi nomornya baru diketahui SETELAH
+ * insert berhasil. Tanpa penanda milik sendiri, satu percobaan yang gagal
+ * tepat di antara "insert berhasil" dan "nomor tersimpan di outbox" akan
+ * mendorong dokumen yang sama dua kali pada percobaan berikutnya — dan
+ * koreksinya manual oleh orang finance. Penanda inilah yang diperiksa lebih
+ * dulu, dan bentuknya sengaja khas supaya tidak bisa tertukar dengan isian
+ * aplikasi lain.
+ */
+function rujukan(idOutbox: number): string {
+  return `AVI-${idOutbox}`;
+}
+
 /** char(n) di staging memotong diam-diam; dipotong di sini supaya terlihat di kode. */
 function potong(v: string | null, n: number): string | null {
   if (v === null) return null;
   return v.length > n ? v.slice(0, n) : v;
+}
+
+/**
+ * Nilai yang MENGENALI barang tidak boleh dipotong — harus ditolak.
+ *
+ * Memotong nama part hanya membuat laporan kurang enak dibaca. Memotong back
+ * number mengubah IDENTITAS: "BN-001" dan "BN-002" sama-sama menjadi "BN-0",
+ * dan dua part berbeda terposting sebagai satu di SAP. Yang seperti itu tidak
+ * boleh lewat diam-diam.
+ */
+function wajibMuat(nilai: string | null, n: number, nama: string): string | null {
+  if (nilai === null) return null;
+  if (nilai.length > n) {
+    throw new Error(
+      `${nama} "${nilai}" lebih dari ${n} karakter, sedangkan kolomnya char(${n}) di staging. ` +
+        'Perbaiki di master — memotongnya akan mengubah identitas barang di SAP.',
+    );
+  }
+  return nilai;
 }
 
 /**
@@ -222,14 +256,15 @@ export class StagingPushService {
     const sekarang = new Date();
     const C = PRODUCTION_RESULT.kolom;
     const nilai: Record<string, unknown> = {
-      [C.nomor]: row.id,
+      // INT_NUMBER TIDAK diisi — kolom IDENTITY di SQL Server.
+      [C.woNumber]: potong(`${rujukan(row.id)} ${payload.sourceTable}`, 30),
       [C.tanggal]: `${keTanggalStaging(terjadi).slice(0, 4)}-${keTanggalStaging(terjadi).slice(4, 6)}-${keTanggalStaging(terjadi).slice(6)}`,
       [C.bulan]: terjadi.getMonth() + 1,
       [C.tahun]: terjadi.getFullYear(),
       [C.plant]: plant,
       [C.workCenter]: payload.lineCode,
       [C.partNo]: hasil.partNumber,
-      [C.backNo]: potong(payload.backNumber ?? null, 4),
+      [C.backNo]: wajibMuat(payload.backNumber ?? null, 4, 'Back number'),
       [C.partName]: potong(payload.partName ?? null, 40),
       [C.uom]: potong(hasil.uom ?? null, 3),
       [C.qtyOk]: hasil.qtyAbsolute,
@@ -245,48 +280,48 @@ export class StagingPushService {
     };
     const kolom = Object.keys(nilai);
     const tabel = tabelAman(PRODUCTION_RESULT.tabel);
-    // INT_NUMBER bisa sudah dipakai aplikasi lain di staging. Menemukan nomor
-    // yang sama bukan bukti idempoten sampai isi dan penandanya cocok.
-    const bacaAda = async () =>
-      this.staging.query<{
-        plant: string;
-        workCenter: string;
-        partNo: string;
-        qtyOk: number;
-        tanggal: string;
-        user: string | null;
-      }>(
-        `SELECT ${identifierAman(C.plant)} AS plant, ${identifierAman(C.workCenter)} AS workCenter, ` +
-          `${identifierAman(C.partNo)} AS partNo, ${identifierAman(C.qtyOk)} AS qtyOk, ` +
-          `${identifierAman(C.tanggal)} AS tanggal, ${identifierAman(C.user)} AS [user] ` +
-          `FROM ${tabel} WHERE ${identifierAman(C.nomor)} = @nomor`,
-        { nomor: row.id },
+    const ref = rujukan(row.id);
+
+    /*
+     * Dicari lewat RUJUKAN KITA, bukan lewat nomor dokumen.
+     *
+     * Nomornya milik SQL Server; yang kita kendalikan hanya CHR_WO_NUMBER.
+     * Pencarian ini yang membuat percobaan ulang menemukan dokumen yang
+     * terlanjur masuk, alih-alih menulisnya untuk kedua kalinya.
+     */
+    const cariMilikKita = async () =>
+      this.staging.query<{ nomor: number }>(
+        `SELECT ${identifierAman(C.nomor)} AS nomor FROM ${tabel} ` +
+          `WHERE ${identifierAman(C.woNumber)} LIKE @ref`,
+        { ref: `${ref} %` },
       );
-    const cocok = (ada: Awaited<ReturnType<typeof bacaAda>>[number]) =>
-      bersih(ada.plant) === plant &&
-      bersih(ada.workCenter) === payload.lineCode &&
-      bersih(ada.partNo) === hasil.partNumber &&
-      Number(ada.qtyOk) === hasil.qtyAbsolute &&
-      bersih(ada.tanggal) === nilai[C.tanggal] &&
-      bersih(ada.user) === 'AVICENNA';
-    const sebelum = await bacaAda();
-    if (sebelum.length > 0) {
-      if (!sebelum.every(cocok))
-        throw new Error(`INT_NUMBER=${row.id} sudah dipakai dokumen produksi lain di staging`);
+
+    const sudahAda = await cariMilikKita();
+    if (sudahAda.length > 0) {
+      await this.simpanNomorStaging(row.id, Number(sudahAda[0]!.nomor));
       return;
     }
+
     const req = (await this.staging.kolam()).request();
     kolom.forEach((k, i) => req.input(`v${i}`, nilai[k]));
-    req.input('nomorCari', row.id);
-    await req.query(
+    const hasilTulis = await req.query<{ nomor: number }>(
       `INSERT INTO ${tabel} (${kolom.map(identifierAman).join(', ')}) ` +
-        `SELECT ${kolom.map((_, i) => `@v${i}`).join(', ')} ` +
-        `WHERE NOT EXISTS (SELECT 1 FROM ${tabel} WHERE ${identifierAman(C.nomor)} = @nomorCari)`,
+        `OUTPUT INSERTED.${identifierAman(C.nomor)} AS nomor ` +
+        `VALUES (${kolom.map((_, i) => `@v${i}`).join(', ')})`,
     );
-    const sesudah = await bacaAda();
-    if (sesudah.length !== 1 || !cocok(sesudah[0]!)) {
-      throw new Error(`dokumen produksi ${row.id} tidak cocok setelah ditulis ke staging`);
+    const nomorBaru = Number(hasilTulis.recordset?.[0]?.nomor);
+    if (!Number.isFinite(nomorBaru) || nomorBaru <= 0) {
+      throw new Error('staging tidak mengembalikan INT_NUMBER untuk dokumen produksi');
     }
+    await this.simpanNomorStaging(row.id, nomorBaru);
+  }
+
+  /** Mencatat nomor yang diberikan staging; dialah kunci baca balasan nanti. */
+  private async simpanNomorStaging(idOutbox: number, nomor: number): Promise<void> {
+    await this.db
+      .update(sapOutbox)
+      .set({ stagingNumber: nomor })
+      .where(eq(sapOutbox.id, idOutbox));
   }
 
   /** Menulis kepala + seluruh barisnya, dalam satu transaksi di sisi staging. */
@@ -298,7 +333,6 @@ export class StagingPushService {
     const lines = Array.isArray(payload?.lines) ? payload.lines : [];
     if (lines.length === 0) throw new Error('dokumen tidak punya baris yang bisa didorong');
 
-    const nomor = row.id;
     const terjadi = new Date(payload.occurredAt ?? row.occurredAt);
     const sekarang = new Date();
     /*
@@ -323,49 +357,66 @@ export class StagingPushService {
       );
     }
 
+    const ref = rujukan(row.id);
     const nilaiKepala: Record<string, unknown> = {
-      nomor,
       plant: pabrik,
       tanggal: keTanggalStaging(terjadi),
       tanggalDokumen: keTanggalStaging(terjadi),
       movementType: potong(row.movementType, 3),
       jenisTransaksi: potong(row.docType, 4),
-      keterangan: potong(`${row.sourceTable}#${row.sourceId}`, 25),
+      // Rujukan kita DI DEPAN: dialah yang dicari saat percobaan ulang.
+      keterangan: potong(`${ref} ${row.sourceTable}#${row.sourceId}`, 25),
+      nomorProduksi: await this.nomorProduksiTerkait(row),
       user: potong('AVICENNA', 12),
       tanggalEntry: keTanggalStaging(sekarang),
       jamEntry: keJamStaging(sekarang),
     };
 
+    const tKepala = tabelAman(GOODS_MOVEMENT.kepala);
+    const kNomorH = identifierAman(GOODS_MOVEMENT.kolomKepala.nomor);
+
+    /*
+     * Dicari lewat rujukan kita — INT_NUMBER diberikan SQL Server, jadi belum
+     * ada sebelum insert pertama berhasil.
+     */
+    const [sudah] = await this.staging.query<{ nomor: number }>(
+      `SELECT ${kNomorH} AS nomor FROM ${tKepala} ` +
+        `WHERE ${identifierAman(GOODS_MOVEMENT.kolomKepala.keterangan)} LIKE @ref`,
+      { ref: `${ref} %` },
+    );
+    if (sudah) {
+      await this.simpanNomorStaging(row.id, Number(sudah.nomor));
+      return;
+    }
+
     await this.staging.transaksi(async (tx) => {
       // ── kepala ──────────────────────────────────────────────────────────
-      const tKepala = tabelAman(GOODS_MOVEMENT.kepala);
       const kolKepala = PETA_GM_KEPALA.map((f) => f.staging);
       const reqH = tx.request();
       for (const f of PETA_GM_KEPALA) reqH.input(f.field, nilaiKepala[f.field] ?? null);
-      reqH.input('__nomor', nomor);
-      await reqH.query(
+      const hasilH = await reqH.query<{ nomor: number }>(
         `INSERT INTO ${tKepala} (${kolKepala.map(identifierAman).join(', ')})\n` +
-          `SELECT ${PETA_GM_KEPALA.map((f) => `@${f.field}`).join(', ')}\n` +
-          `WHERE NOT EXISTS (SELECT 1 FROM ${tKepala} WHERE ${identifierAman(GOODS_MOVEMENT.kolomKepala.nomor)} = @__nomor)`,
+          `OUTPUT INSERTED.${kNomorH} AS nomor\n` +
+          `VALUES (${PETA_GM_KEPALA.map((f) => `@${f.field}`).join(', ')})`,
       );
+      const nomorDok = Number(hasilH.recordset?.[0]?.nomor);
+      if (!Number.isFinite(nomorDok) || nomorDok <= 0) {
+        throw new Error('staging tidak mengembalikan INT_NUMBER untuk dokumen perpindahan');
+      }
 
       // ── baris ───────────────────────────────────────────────────────────
+      // INT_NUMBER_ITEM tidak diisi: kolom IDENTITY, nomornya dari SQL Server.
       const tBaris = tabelAman(GOODS_MOVEMENT.baris);
       const kolBaris = PETA_GM_BARIS.map((f) => f.staging);
-      const kNomor = identifierAman(GOODS_MOVEMENT.kolomBaris.nomor);
-      const kItem = identifierAman(GOODS_MOVEMENT.kolomBaris.nomorItem);
 
-      let item = 0;
       for (const b of lines) {
-        item += 1;
         const nilai: Record<string, unknown> = {
-          nomor,
-          nomorItem: item,
-          partNo: potong(bersih(b.partNumber), 18),
+          nomor: nomorDok,
+          partNo: wajibMuat(bersih(b.partNumber), 18, 'Nomor part'),
           partName: null,
           backNo: null,
-          slocFrom: potong(bersih(b.slocFrom), 4),
-          slocTo: potong(bersih(b.slocTo), 4),
+          slocFrom: wajibMuat(bersih(b.slocFrom), 4, 'SLOC asal'),
+          slocTo: wajibMuat(bersih(b.slocTo), 4, 'SLOC tujuan'),
           // INT_TOTAL_QTY bertipe int di staging; pecahan dibulatkan di sini
           // supaya pembulatannya terjadi di tempat yang terbaca, bukan diam-diam
           // di sisi SQL Server.
@@ -380,15 +431,42 @@ export class StagingPushService {
 
         const req = tx.request();
         for (const f of PETA_GM_BARIS) req.input(f.field, nilai[f.field] ?? null);
-        req.input('__nomor', nomor);
-        req.input('__item', item);
         await req.query(
           `INSERT INTO ${tBaris} (${kolBaris.map(identifierAman).join(', ')})\n` +
-            `SELECT ${PETA_GM_BARIS.map((f) => `@${f.field}`).join(', ')}\n` +
-            `WHERE NOT EXISTS (SELECT 1 FROM ${tBaris} WHERE ${kNomor} = @__nomor AND ${kItem} = @__item)`,
+            `VALUES (${PETA_GM_BARIS.map((f) => `@${f.field}`).join(', ')})`,
         );
       }
+
+      // Disimpan di dalam transaksi yang sama: nomor yang tercatat di outbox
+      // selalu menunjuk dokumen yang benar-benar ada.
+      await this.simpanNomorStaging(row.id, nomorDok);
     });
+  }
+
+  /**
+   * Nomor dokumen produksi dari scan yang sama, bila sudah terdorong.
+   *
+   * TT_GOODS_MOVEMENT_H punya INT_NUMBER_PROD untuk menautkan perpindahan ke
+   * dokumen produksinya. Transfer memang baru dilepas setelah produksinya
+   * dikonfirmasi, jadi nomor itu hampir selalu sudah ada — dan dengan tautan
+   * ini orang SAP bisa menelusuri keduanya tanpa menebak.
+   */
+  private async nomorProduksiTerkait(
+    row: typeof sapOutbox.$inferSelect,
+  ): Promise<number | null> {
+    if (row.docType !== 'TRANSFER') return null;
+    const [produksi] = await this.db
+      .select({ nomor: sapOutbox.stagingNumber })
+      .from(sapOutbox)
+      .where(
+        and(
+          eq(sapOutbox.sourceTable, row.sourceTable),
+          eq(sapOutbox.sourceId, row.sourceId),
+          eq(sapOutbox.docType, 'PRODUCTION'),
+        ),
+      )
+      .limit(1);
+    return produksi?.nomor ?? null;
   }
 
   /**
@@ -422,12 +500,20 @@ export class StagingPushService {
       };
     }
 
-    const balasanTransfer = await this.bacaFlag(
-      menunggu.filter((r) => r.docType === 'TRANSFER').map((r) => r.id),
-    );
-    const balasanProduksi = await this.bacaFlagProduksi(
-      menunggu.filter((r) => r.docType === 'PRODUCTION').map((r) => r.id),
-    );
+    /*
+     * Balasan dicari lewat NOMOR YANG DIBERIKAN STAGING, bukan id outbox.
+     *
+     * Dokumen yang sudah SENT tetapi belum punya nomor berarti dorongannya
+     * terputus sebelum nomornya sempat tercatat; dilewati di sini dan akan
+     * ditemukan lagi lewat rujukan pada percobaan berikutnya.
+     */
+    const nomorDari = (jenis: string) =>
+      menunggu
+        .filter((r) => r.docType === jenis && r.stagingNumber != null)
+        .map((r) => Number(r.stagingNumber));
+
+    const balasanTransfer = await this.bacaFlag(nomorDari('TRANSFER'));
+    const balasanProduksi = await this.bacaFlagProduksi(nomorDari('PRODUCTION'));
 
     let dikonfirmasi = 0;
     let ditolak = 0;
@@ -435,7 +521,11 @@ export class StagingPushService {
 
     for (const row of menunggu) {
       const baris =
-        (row.docType === 'PRODUCTION' ? balasanProduksi : balasanTransfer).get(row.id) ?? [];
+        row.stagingNumber == null
+          ? []
+          : ((row.docType === 'PRODUCTION' ? balasanProduksi : balasanTransfer).get(
+              Number(row.stagingNumber),
+            ) ?? []);
       if (baris.length === 0 || baris.some((b) => !b.status || b.status === FLAG.baru)) {
         masih++;
         continue;

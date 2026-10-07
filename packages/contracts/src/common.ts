@@ -51,7 +51,14 @@ export const FINISH_GOOD_PROCESSES = [
   'ASSEMBLING_BODY',
 ] as const satisfies readonly ProcessType[];
 
-/** Apakah lini proses ini menghasilkan finish good — menentukan cara scan-nya. */
+/**
+ * Apakah lini proses ini menghasilkan finish good.
+ *
+ * TIDAK LAGI menentukan syarat scan — itu sekarang milik METODE SCAN di
+ * TM_ROUTE_PROCESS (lihat SCAN_MODES di bawah). Yang masih memakainya:
+ * pemeriksaan kewajaran rute ("lini FG harus jadi langkah terakhir sebelum
+ * Delivery") dan penerjemahan nilai metode yang lama.
+ */
 export function menghasilkanFinishGood(p: ProcessType): boolean {
   return (FINISH_GOOD_PROCESSES as readonly string[]).includes(p);
 }
@@ -115,41 +122,149 @@ export const ROLE_KINDS = ['SCANNING', 'VIEW', 'ADMIN'] as const;
 export type RoleKind = (typeof ROLE_KINDS)[number];
 
 /**
- * ─── Cara scan di sebuah proses ─────────────────────────────────────────────
+ * ─── METODE SCAN sebuah proses ──────────────────────────────────────────────
  *
- *   PER_PIECE   tiap barang punya barcode seri sendiri (UNIT: 15 digit).
- *               Satu scan = satu barang. Lini FG menempelkan barang ke kanban.
+ * Satu kolom di TM_ROUTE_PROCESS (per pabrik per proses) yang menentukan
+ * SELURUH syarat scan di lini itu. Sebelumnya hanya dua nilai, dan "wajib
+ * kanban atau tidak" disimpulkan dari NAMA jenis prosesnya lewat daftar yang
+ * ditanam di kode — sehingga menambah variasi menuntut menyunting kode, bukan
+ * mengisi master. Sekarang metodenya data.
  *
- *   PER_KANBAN  barang tidak berseri (BODY: injection, painting, assy).
- *               Operator men-scan master sample (part), lalu men-scan kanban
- *               tiap kali satu box selesai. Satu scan = isi satu kanban.
+ *   PART_SAJA          scan part code saja; kanban ditolak.
+ *                      Casting WIP, Machining WIP.
  *
- * Ini SIFAT PROSES, bukan sifat pabrik: disimpan di TM_ROUTE_PROCESS per
- * pabrik per proses. Dengan begitu assy 660A yang berinterlock dan injection
- * biasa bisa berbeda dalam satu pabrik, dan Electric nanti mengisi masternya
- * sendiri tanpa menyentuh kode.
+ *   PART_KANBAN        part ditahan sampai box penuh, lalu kartu kanban
+ *                      menutup box; tiap unit ditempel ke kartu.
+ *                      Casting FG, Machining FG, Assembling UNIT.
+ *
+ *   KANBAN_BOX         barang tidak berseri. Master sample sekali di awal
+ *                      shift, lalu satu scan kartu = satu box.
+ *                      Injection, Painting, Assembling BODY.
+ *
+ *   PART_TANPA_KANBAN  hasil jadi tetapi tidak ditempel kartu ("noseri" di
+ *                      sebagian lini BODY). Syarat scannya sama dengan
+ *                      PART_SAJA; yang berbeda artinya di hilir — barangnya
+ *                      barang jadi, hanya tanpa kartu.
+ *
+ *   PART_PINDAH_KARTU  part dilepas dari kartu internal lalu ditempel ke kartu
+ *                      customer (Torimetron D05E). BELUM ADA ALURNYA — scan
+ *                      pada lini bermetode ini ditolak dengan pesan jelas,
+ *                      bukan diperlakukan sebagai metode lain.
+ *
+ *   KANBAN_MOLD        tag mold dulu, lalu kanban milik ANGGOTA mold itu,
+ *                      dihitung per siklus (injection, mold keluarga).
+ *                      BELUM ADA ALURNYA.
+ *
+ *   KANBAN_BOX_DANDORI papan dandori dulu, lalu master sample, lalu kanban
+ *                      per box (assembling BODY). BELUM ADA ALURNYA.
+ *
+ * ── Per LINI, bukan hanya per proses ────────────────────────────────────────
+ *
+ * Metodenya ditentukan di master Rute Proses (per pabrik per proses) dan boleh
+ * DITIMPA per lini di master Line. Injection dan assembling BODY berada di
+ * pabrik yang sama tetapi caranya berbeda — tanpa penimpa per lini, keduanya
+ * terpaksa berbagi satu metode yang tidak cocok untuk salah satunya.
  */
-export const SCAN_MODES = ['PER_PIECE', 'PER_KANBAN'] as const;
+export const SCAN_MODES = [
+  'PART_SAJA',
+  'PART_KANBAN',
+  'KANBAN_BOX',
+  'PART_TANPA_KANBAN',
+  'PART_PINDAH_KARTU',
+  'KANBAN_MOLD',
+  'KANBAN_BOX_DANDORI',
+] as const;
 export const scanModeSchema = z.enum(SCAN_MODES);
 export type ScanMode = z.infer<typeof scanModeSchema>;
 
+/**
+ * Nilai lama yang masih ada di data.
+ *
+ * 54 scan yang sudah tercatat menyimpan kebijakannya sebagai snapshot di
+ * `meta.scanMode`, dan baris master yang belum dimigrasi bisa masih berisi
+ * nilai ini. Keduanya tetap harus terbaca — karena itu nilai lama diterima
+ * sebagai MASUKAN, tetapi tidak pernah ditawarkan sebagai pilihan baru.
+ */
+export const SCAN_MODES_LAMA = ['PER_PIECE', 'PER_KANBAN'] as const;
+export type ScanModeLama = (typeof SCAN_MODES_LAMA)[number];
+
+/** Nilai yang sah di kolom enum — baru dan lama sekaligus. */
+export const SCAN_MODE_ENUM = [...SCAN_MODES, ...SCAN_MODES_LAMA] as const;
+
+/** Apa pun yang mungkin tersimpan: metode sekarang, atau nilai lama. */
+export type ScanModeTersimpan = ScanMode | ScanModeLama;
+
 export const SCAN_MODE_LABELS: Record<ScanMode, string> = {
-  PER_PIECE: 'Per barang (barcode seri)',
-  PER_KANBAN: 'Per kanban (satu scan = satu box)',
+  PART_SAJA: 'Part saja (tanpa kanban)',
+  PART_KANBAN: 'Part + kanban (box ditutup kartu)',
+  KANBAN_BOX: 'Kanban per box (master sample dulu)',
+  PART_TANPA_KANBAN: 'Part saja, hasil jadi tanpa kartu',
+  PART_PINDAH_KARTU: 'Part pindah kartu (belum tersedia)',
+  KANBAN_MOLD: 'Tag mold lalu kanban anggota (belum tersedia)',
+  KANBAN_BOX_DANDORI: 'Papan dandori, sample, lalu kanban (belum tersedia)',
 };
 
 /**
- * Cara scan bawaan sebuah jenis proses — dipakai saat baris master belum ada.
+ * Menerjemahkan nilai tersimpan menjadi metode yang berlaku sekarang.
+ *
+ * SATU-SATUNYA tempat nilai lama ditafsirkan. `PER_PIECE` dulu berarti dua hal
+ * berbeda tergantung jenis prosesnya — kanban wajib di lini FG, dilarang di
+ * lini WIP — jadi penerjemahannya memang butuh jenis prosesnya.
+ */
+export function normalkanModeScan(
+  mode: ScanModeTersimpan | null | undefined,
+  proses: ProcessType | null | undefined,
+): ScanMode {
+  if (mode === 'PER_KANBAN') return 'KANBAN_BOX';
+  if (mode === 'PER_PIECE') {
+    return proses && menghasilkanFinishGood(proses) ? 'PART_KANBAN' : 'PART_SAJA';
+  }
+  if (mode) return mode;
+  return proses ? modeScanBawaan(proses) : 'PART_SAJA';
+}
+
+/**
+ * Apakah metode ini menghitung satu scan sebagai SATU BOX, bukan satu barang.
+ *
+ * Dipakai aturan barcode: hanya di metode ini barcode polos boleh ditafsirkan
+ * sebagai nomor part (master sample). Menerima nilai lama supaya pemanggil
+ * yang belum menormalkan tetap benar.
+ */
+export function scanPerBox(mode: ScanModeTersimpan | null | undefined): boolean {
+  return (
+    mode === 'KANBAN_BOX' ||
+    mode === 'KANBAN_BOX_DANDORI' ||
+    mode === 'KANBAN_MOLD' ||
+    mode === 'PER_KANBAN'
+  );
+}
+
+/**
+ * Metode yang berlaku di sebuah lini.
+ *
+ * Urutannya: penimpa di master Line, lalu master Rute Proses, lalu bawaan
+ * jenis prosesnya. Ditulis sekali di sini supaya layar operator, dashboard,
+ * dan pencatat scan tidak pernah berbeda pendapat soal lini yang sama.
+ */
+export function modeScanBerlaku(input: {
+  modeLini?: ScanModeTersimpan | null;
+  modeProses?: ScanModeTersimpan | null;
+  proses?: ProcessType | null;
+}): ScanMode {
+  return normalkanModeScan(input.modeLini ?? input.modeProses ?? null, input.proses);
+}
+
+/**
+ * Metode bawaan sebuah jenis proses — dipakai saat baris master belum ada.
  *
  * Injection, painting, dan assembling body adalah proses plant BODY, dan di
- * sana barang tidak berseri: satu scan = satu box (bella, prdreport).
- * Selebihnya proses die casting UNIT dengan barcode 15 digit per barang.
+ * sana barang tidak berseri: satu scan = satu box (bella, prdreport). Proses
+ * UNIT yang menghasilkan barang jadi menempelkan kartu; sisanya part saja.
  *
  * Hanya BAWAAN. Yang berlaku adalah isi TM_ROUTE_PROCESS per pabrik.
  */
 export function modeScanBawaan(p: ProcessType): ScanMode {
-  return p === 'INJECTION' || p === 'PAINTING' || p === 'ASSEMBLING_BODY'
-    ? 'PER_KANBAN'
-    : 'PER_PIECE';
+  if (p === 'INJECTION' || p === 'PAINTING' || p === 'ASSEMBLING_BODY') return 'KANBAN_BOX';
+  return menghasilkanFinishGood(p) ? 'PART_KANBAN' : 'PART_SAJA';
 }
 

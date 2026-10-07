@@ -1,4 +1,4 @@
-import type { ProcessType, ScanMode } from '@avicenna/contracts';
+import { scanPerBox, type ProcessType, type ScanModeTersimpan } from '@avicenna/contracts';
 import type { PartNumberFormat } from './customer-part';
 
 /**
@@ -61,7 +61,7 @@ export interface KonteksBarcode {
    * Cara scan proses ini. Menentukan apakah barcode polos dibaca sebagai
    * NOMOR PART (master sample di BODY) atau nomor SERI (barang di UNIT).
    */
-  scanMode?: ScanMode | null;
+  scanMode?: ScanModeTersimpan | null;
 }
 
 export interface AturanBarcode {
@@ -189,7 +189,7 @@ export const ATURAN_PROGRAM_15: AturanBarcode = {
 export const ATURAN_NOMOR_PART: AturanBarcode = {
   nama: 'NOMOR_PART',
   keterangan: 'nomor part polos (master sample), hanya di proses per-kanban',
-  berlaku: (ctx) => ctx.scanMode === 'PER_KANBAN',
+  berlaku: (ctx) => scanPerBox(ctx.scanMode),
   // Tanpa pemisah — yang berpemisah sudah ditangani ATURAN_BERPEMISAH di atas.
   cocok: (raw) => !raw.includes('|') && /^[A-Za-z0-9][A-Za-z0-9.\-_/]{2,63}$/.test(raw),
   baca: (raw) => ({ raw, partNumber: raw }),
@@ -386,7 +386,7 @@ const POSISI_KANBAN_BODY: Record<number, { part: [number, number]; seri: number;
 export const ATURAN_KANBAN_BODY: AturanKanban = {
   nama: 'KANBAN_BODY',
   keterangan: 'label kanban customer BODY, dibedakan dari panjang (230/220/241/218)',
-  berlaku: (ctx) => ctx.scanMode === 'PER_KANBAN',
+  berlaku: (ctx) => scanPerBox(ctx.scanMode),
   cocok: (raw) => raw.length in POSISI_KANBAN_BODY,
   baca(raw) {
     const p = POSISI_KANBAN_BODY[raw.length]!;
@@ -418,7 +418,7 @@ export const ATURAN_KANBAN_BODY: AturanKanban = {
 export const ATURAN_KANBAN_AIGSYS: AturanKanban = {
   nama: 'KANBAN_AIGSYS',
   keterangan: 'label kanban AIGSYS bertoken (BODY)',
-  berlaku: (ctx) => ctx.scanMode === 'PER_KANBAN',
+  berlaku: (ctx) => scanPerBox(ctx.scanMode),
   cocok: (raw) => /^AIGSYS/i.test(raw.trim().split(/\s+/)[0] ?? ''),
   baca(raw) {
     const token = raw.trim().split(/\s+/);

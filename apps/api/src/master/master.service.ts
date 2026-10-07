@@ -194,11 +194,69 @@ export class MasterService {
     }
   }
 
+  /**
+   * Aturan khusus master Rute Proses yang tidak bisa dinyatakan registry.
+   *
+   * Registry hanya tahu bentuk kolom; yang di bawah ini soal HUBUNGAN antar
+   * kolom. Dibiarkan lolos, akibatnya baru muncul di layar operator sebagai
+   * scan yang ditolak — dan pernah begitu: SLOC Transfer diisi sama dengan
+   * SLOC Keluar, lalu seluruh scan casting berhenti tanpa ada yang tahu kolom
+   * mana yang salah.
+   */
+  private async pastikanRuteProsesWajar(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ) {
+    if (entity !== 'route-processes') return;
+
+    const nilai = <T,>(nama: string): T | null | undefined =>
+      (values[nama] !== undefined ? values[nama] : barisLama?.[nama]) as T | null | undefined;
+
+    const keluar = nilai<number>('outputLocationId') ?? null;
+    const transfer = nilai<number>('transferLocationId') ?? null;
+    const pushProduksi = Boolean(nilai<boolean>('sapProductionEnabled'));
+    const pushTransfer = Boolean(nilai<boolean>('sapTransferEnabled'));
+
+    const details: Array<{ field: string; message: string }> = [];
+
+    if (transfer !== null && transfer === keluar) {
+      details.push({
+        field: 'transferLocationId',
+        message:
+          'SLOC Transfer sama dengan SLOC Keluar. Pindah ke gudang yang sama bukan perpindahan — ' +
+          'kosongkan kolom ini bila hasil scan tidak dipindah lagi.',
+      });
+    }
+    if (pushTransfer && transfer === null) {
+      details.push({
+        field: 'transferLocationId',
+        message: 'Push transfer ke SAP aktif, jadi SLOC Transfer wajib diisi.',
+      });
+    }
+    if ((pushProduksi || transfer !== null) && keluar === null) {
+      details.push({
+        field: 'outputLocationId',
+        message: 'SLOC Keluar wajib diisi bila push produksi aktif atau ada SLOC Transfer.',
+      });
+    }
+
+    if (details.length > 0) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'ValidationError',
+        message: 'Data yang dikirim tidak valid',
+        details,
+      });
+    }
+  }
+
   async create(entity: MasterEntity, body: unknown) {
     const parsed = buildCreateSchema(entity).safeParse(body);
     if (!parsed.success) throw validationError(parsed.error);
 
     await this.pastikanSatuPabrik(entity, parsed.data as Record<string, unknown>);
+    await this.pastikanRuteProsesWajar(entity, parsed.data as Record<string, unknown>);
 
     const table = this.table(entity);
     try {
@@ -225,6 +283,7 @@ export class MasterService {
     const table = this.table(entity);
     const barisLama = await this.findOne(entity, id);
     await this.pastikanSatuPabrik(entity, values, barisLama as Record<string, unknown>);
+    await this.pastikanRuteProsesWajar(entity, values, barisLama as Record<string, unknown>);
 
     try {
       await this.db.update(table).set(values).where(eq(table.id, id));

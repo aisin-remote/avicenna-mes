@@ -321,7 +321,7 @@ function Field({
           <option value="">— pilih —</option>
           {(field.options ?? []).map((o) => (
             <option key={o} value={o}>
-              {o}
+              {field.optionLabels?.[o] ?? o}
             </option>
           ))}
         </select>

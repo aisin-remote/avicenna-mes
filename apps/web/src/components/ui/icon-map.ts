@@ -20,6 +20,12 @@ import {
   Tag,
   Hash,
   Boxes,
+  Clock,
+  Coffee,
+  OctagonPause,
+  MonitorDot,
+  Filter,
+  CalendarClock,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -51,6 +57,12 @@ const ICONS: Record<string, LucideIcon> = {
   Tag,
   Hash,
   Boxes,
+  Clock,
+  Coffee,
+  OctagonPause,
+  MonitorDot,
+  Filter,
+  CalendarClock,
 };
 
 /** Mengembalikan ikon Database sebagai cadangan agar UI tidak pernah kosong. */
