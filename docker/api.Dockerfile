@@ -91,6 +91,16 @@ RUN test -f /repo/out/node_modules/@avicenna/db/dist/index.js \
  && test -f /repo/out/drizzle/meta/_journal.json \
  && echo "[build] paket workspace, dist API, dan migrasi lengkap"
 
+# Setiap dependensi langsung HARUS teresolusi dari hasil deploy.
+#
+# Pernah lolos: main.ts mengimpor 'express' langsung, tetapi express hanya
+# transitif (lewat @nestjs/platform-express) dan tidak tertulis di
+# apps/api/package.json. Di laptop (dev) ia teresolusi diam-diam; di image
+# hasil `pnpm deploy --prod` ia hilang, dan wadah mati saat start dengan
+# "Cannot find module 'express'". Pemeriksaan ini membuat kelas galat itu
+# gagal saat BUILD, bukan saat server sudah naik.
+RUN cd /repo/out && node -e "const deps = Object.keys(require('./package.json').dependencies || {}); for (const d of deps) { require.resolve(d, { paths: ['/repo/out'] }); } console.log('[build] seluruh dependensi langsung teresolusi:', deps.length)"
+
 
 # ── Tahap 3: runtime ─────────────────────────────────────────────────────────
 FROM base AS runtime

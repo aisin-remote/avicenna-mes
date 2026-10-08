@@ -59,6 +59,9 @@ importers:
       exceljs:
         specifier: ^4.4.0
         version: 4.4.0
+      express:
+        specifier: 5.2.1
+        version: 5.2.1
       ioredis:
         specifier: 5.4.2
         version: 5.4.2
