@@ -1579,6 +1579,8 @@ export class ScanService {
       partName: part.name,
       /** Isi kartu menurut master part — ditampilkan supaya operator tahu tiap scan = berapa pcs. */
       qtyPerKanban: part.qtyPerKanban,
+      /** Foto part untuk dicocokkan operator dengan barang di tangannya. */
+      photoPath: part.photoPath ?? null,
       ruteDiperiksa: rute.length > 0,
     };
   }

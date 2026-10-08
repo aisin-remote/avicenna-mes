@@ -8,6 +8,8 @@ import { X, AlertCircle, Check } from 'lucide-react';
 import type { EntityDef, FieldDef, MasterEntity } from '@avicenna/contracts';
 import { saveMasterAction, type FormState } from '@/app/(app)/master/actions';
 import { useToast } from '../ui/toast';
+import { useHasilAksi } from '../ui/use-hasil-aksi';
+import { BidangGambar } from './bidang-gambar';
 import { durations, easeSoft, springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
@@ -78,13 +80,12 @@ export function MasterForm({
     if (open) setPlantId(rowPlantId);
   }, [open, rowId, rowPlantId]);
 
-  useEffect(() => {
-    if (state.ok) {
-      toast.ok(`${def.singular} tersimpan.`);
-      onClose();
-      router.refresh();
-    }
-  }, [state.ok, onClose, router, toast, def.singular]);
+  useHasilAksi(state, (hasil) => {
+    if (!hasil.ok) return;
+    toast.ok(`${def.singular} tersimpan.`);
+    onClose();
+    router.refresh();
+  });
 
   /*
    * Galat tingkat formulir (bukan per kolom) jadi toast.
@@ -93,17 +94,16 @@ export function MasterForm({
    * atasnya luput saat orang menekan Simpan di bawah; toast tidak ikut
    * menggulir. Galat per kolom tetap di bawah kolomnya: di situlah diperbaiki.
    */
-  useEffect(() => {
-    if (state.error && !state.fieldErrors) toast.galat(state.error, 'Tidak tersimpan');
-    /*
-     * Bergantung pada objek `state`, BUKAN `state.error`.
-     *
-     * useActionState mengembalikan objek baru tiap kali aksi selesai. Kalau
-     * yang diamati string pesannya, dua kali Simpan dengan galat yang sama
-     * hanya memunculkan satu toast — yang kedua diam, dan orangnya mengira
-     * tombolnya tidak jalan. Persis kegagalan yang toast ini ingin hilangkan.
-     */
-  }, [state, toast]);
+  /*
+   * Satu hasil = satu toast.
+   *
+   * Dipicu perubahan objek `state`, bukan isi pesannya: dua kali Simpan dengan
+   * galat yang sama harus tetap memberi tahu dua kali — kalau yang kedua diam,
+   * orangnya mengira tombolnya tidak jalan.
+   */
+  useHasilAksi(state, (hasil) => {
+    if (hasil.error && !hasil.fieldErrors) toast.galat(hasil.error, 'Tidak tersimpan');
+  });
 
   // Esc menutup panel — jalan pintas yang diharapkan ada pada panel semacam ini.
   useEffect(() => {
@@ -267,6 +267,18 @@ function Field({
   const [checked, setChecked] = useState(
     value === undefined ? Boolean(field.defaultValue) : Boolean(value),
   );
+
+  if (field.kind === 'image') {
+    return (
+      <BidangGambar
+        name={field.name}
+        label={field.label}
+        hint={field.hint}
+        nilaiAwal={value === undefined || value === null ? null : String(value)}
+        error={error}
+      />
+    );
+  }
 
   if (field.kind === 'boolean') {
     return (

@@ -14,6 +14,7 @@ import {
 import { springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 import { useToast } from '../ui/toast';
+import { useHasilAksi } from '../ui/use-hasil-aksi';
 
 interface PilihanPabrik {
   id: number;
@@ -306,16 +307,15 @@ function FormPengguna({
   const router = useRouter();
   const toast = useToast();
 
-  useEffect(() => {
-    if (state.ok) {
+  useHasilAksi(state, (hasil) => {
+    if (hasil.ok) {
       toast.ok(mode === 'buat' ? 'Pengguna dibuat.' : 'Pengguna tersimpan.');
       router.refresh();
       onClose();
     }
     // Galat per kolom tetap di bawah kolomnya; hanya galat umum yang jadi toast.
-    if (state.error && !state.fieldErrors) toast.galat(state.error, 'Tidak tersimpan');
-    // Bergantung pada objek state: Simpan kedua dengan galat sama harus tetap memberi tahu.
-  }, [state, router, onClose, toast, mode]);
+    if (hasil.error && !hasil.fieldErrors) toast.galat(hasil.error, 'Tidak tersimpan');
+  });
 
   const e = state.fieldErrors ?? {};
 
@@ -441,13 +441,13 @@ function FormSandi({ user, onClose }: { user: UserRow; onClose: () => void }) {
   const [state, action, pending] = useActionState(gantiSandiAction, AWAL);
   const toast = useToast();
 
-  useEffect(() => {
-    if (state.ok) {
+  useHasilAksi(state, (hasil) => {
+    if (hasil.ok) {
       toast.ok(`Kata sandi ${user.name} diganti.`);
       onClose();
     }
-    if (state.error && !state.fieldErrors) toast.galat(state.error, 'Sandi tidak diganti');
-  }, [state, onClose, toast, user.name]);
+    if (hasil.error && !hasil.fieldErrors) toast.galat(hasil.error, 'Sandi tidak diganti');
+  });
 
   return (
     <Panel

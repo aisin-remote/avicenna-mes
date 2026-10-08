@@ -6,8 +6,7 @@ import {
   getEntityDef,
   MAKS_UKURAN_IMPOR,
   type MasterEntity,
-  type HasilImpor,
-} from '@avicenna/contracts';
+  type HasilImpor, MAKS_UKURAN_FOTO} from '@avicenna/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 
 export interface FormState {
@@ -157,6 +156,37 @@ export async function imporMasterAction(
     // Hanya menyegarkan saat benar-benar menulis; pratinjau tidak mengubah apa pun.
     if (!ujiSaja && hasil.ditulis > 0) revalidatePath(`/master/${entity}`);
     return hasil;
+  } catch (err) {
+    if (err instanceof ApiRequestError) return { error: err.message };
+    return { error: 'Tidak bisa menghubungi server API' };
+  }
+}
+
+/**
+ * Mengunggah satu gambar ke penyimpanan aplikasi.
+ *
+ * Dipanggil formulir master saat orang memilih berkas, sebelum barisnya
+ * disimpan. Dilakukan lewat Server Action karena token sesi ada di cookie
+ * httpOnly yang sengaja tidak bisa dibaca skrip halaman.
+ */
+export async function unggahFotoAction(
+  formData: FormData,
+): Promise<{ nama: string } | { error: string }> {
+  const berkas = formData.get('file');
+  if (!(berkas instanceof File) || berkas.size === 0) {
+    return { error: 'Berkas tidak terbaca. Pilih ulang gambarnya.' };
+  }
+  if (berkas.size > MAKS_UKURAN_FOTO) {
+    const mb = (MAKS_UKURAN_FOTO / 1024 / 1024).toFixed(1);
+    return { error: `Gambar lebih dari ${mb} MB. Perkecil dulu.` };
+  }
+
+  try {
+    const fileBase64 = Buffer.from(await berkas.arrayBuffer()).toString('base64');
+    return await apiFetch<{ nama: string }>('/master/foto', {
+      method: 'POST',
+      body: JSON.stringify({ fileBase64, mimeType: berkas.type }),
+    });
   } catch (err) {
     if (err instanceof ApiRequestError) return { error: err.message };
     return { error: 'Tidak bisa menghubungi server API' };

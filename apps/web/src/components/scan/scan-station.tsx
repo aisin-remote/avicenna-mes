@@ -14,6 +14,8 @@ import {
 } from '@avicenna/domain';
 import { periksaSampleAction, periksaScanAction, submitScanAction } from '@/app/(app)/scan/actions';
 import { PanelBerhenti } from './panel-berhenti';
+import { PanelFotoPart } from './panel-foto-part';
+import { urlFotoPart } from '@/lib/foto-part';
 import { keluarStasiunAction } from '@/app/(station)/scan/proses/[grup]/actions';
 import { NgInline } from './ng-inline';
 import { useScanSound } from './use-scan-sound';
@@ -159,6 +161,17 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
 
   /** Grup proses lini ini — dipakai layar NG dan serah terima operator. */
   const grup = grupProses(summary.line.processType as ProcessType);
+
+  /*
+   * Foto part yang sedang dikerjakan.
+   *
+   * Di lini BODY barangnya tidak berseri dan kartu baru discan setelah box
+   * penuh, jadi pencocokan visual dengan gambar inilah satu-satunya pemeriksaan
+   * sebelum barang masuk box — persis layar prdreport yang sudah dipakai di
+   * sana. Karena itu gambarnya besar dan tetap terlihat sepanjang sample aktif,
+   * bukan muncul sekejap lalu hilang.
+   */
+  const fotoSample = urlFotoPart(sample?.photoPath);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const sound = useScanSound(soundOn);
@@ -589,30 +602,44 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
 
   if (mode === 'NG') {
     return (
-      <div className="space-y-5">
-        {tab}
-        <NgInline lineCode={summary.line.code} lineName={summary.line.name} grup={grup} />
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <div className="shrink-0">{tab}</div>
+        {/* Isinya sendiri yang menggulir bila perlu — halamannya tidak. */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <NgInline lineCode={summary.line.code} lineName={summary.line.name} grup={grup} />
+        </div>
       </div>
     );
   }
 
+  /*
+   * ── Seluruh layar, tanpa gulir ──────────────────────────────────────────
+   *
+   * Operator berdiri dengan barang di tangan; ia tidak akan menggulir layar,
+   * dan apa pun yang berada di bawah lipatan sama saja dengan tidak ada.
+   * Karena itu tingginya dibagi: bagian yang harus selalu terbaca diberi
+   * tempat tetap, sisanya diserahkan ke satu area yang memuai — dan HANYA
+   * area itu yang boleh menggulir di dalam dirinya sendiri.
+   */
   return (
-    <div className="space-y-5">
-      {tab}
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="shrink-0">{tab}</div>
 
       {/* Tombol berhenti ditaruh DI ATAS kotak scan: saat lini bermasalah,
           itulah yang dicari operator, dan menaruhnya di bawah daftar riwayat
           membuat orang menggulir sambil lini diam. */}
-      <PanelBerhenti
-        lineCode={summary.line.code}
-        alasan={summary.alasanBerhenti ?? []}
-        berhenti={berhenti}
-        onBerubah={setBerhenti}
-      />
+      <div className="shrink-0">
+        <PanelBerhenti
+          lineCode={summary.line.code}
+          alasan={summary.alasanBerhenti ?? []}
+          berhenti={berhenti}
+          onBerubah={setBerhenti}
+        />
+      </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,260px)]">
+      <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,260px)]">
         {/* ── Input ─────────────────────────────────────────────────────── */}
-        <section className="rounded-card border border-line bg-card p-5">
+        <section className="scroll-slim max-h-[46vh] overflow-y-auto rounded-card border border-line bg-card p-5">
           <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
             {perKanban
               ? sample
@@ -638,6 +665,14 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
           {perKanban && sample ? (
             <div className="mt-3 flex items-start gap-3 rounded-2xl border border-ok/30 bg-ok/8 px-4 py-3">
               <Tag className="mt-0.5 size-4 shrink-0 text-ok" strokeWidth={1.8} aria-hidden />
+              {fotoSample ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={fotoSample}
+                  alt=""
+                  className="size-12 shrink-0 rounded-lg object-cover"
+                />
+              ) : null}
               <div className="min-w-0 flex-1">
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                   Master sample
@@ -737,7 +772,7 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
           id="scan-status"
           aria-live="assertive"
           className={cn(
-            'flex min-h-[220px] flex-col items-center justify-center rounded-card border-2 p-6 text-center transition-colors duration-300',
+            'flex min-h-[180px] flex-col items-center justify-center rounded-card border-2 p-6 text-center transition-colors duration-300',
             tone === 'idle' && 'border-line bg-card',
             tone === 'ok' && 'border-ok/30 bg-ok/8',
             tone === 'dup' && 'border-warn/30 bg-warn/8',
@@ -899,14 +934,28 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
         </section>
       </div>
 
+      {/*
+        ── Sisa tinggi layar ────────────────────────────────────────────────
+        Satu baris yang memuai mengisi apa pun yang tersisa. Isinya berbeda per
+        metode scan, tetapi aturannya sama: yang paling dibutuhkan operator
+        mendapat ruang terbesar, dan riwayat — yang paling tidak mendesak —
+        menempati kolom sempit di sebelahnya serta menggulir di dalam dirinya
+        sendiri.
+      */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+      {/* ── Lini per-kanban (BODY): foto part yang sedang dikerjakan ─────
+          Slotnya selalu ada, juga saat sample atau fotonya belum ada, supaya
+          kekosongannya terlihat sebagai sesuatu yang harus dibereskan. */}
+      {perKanban ? <PanelFotoPart sample={sample} className="min-h-0 flex-1" /> : null}
+
       {/* ── Lini FG: isi box (kiri) dan detail loading list (kanan) ──────
           Susunannya mengikuti layar D98E lama: PART SCANNED di kiri, LOADING
           LIST INFORMATION di kanan. Jumlah kotak part mengikuti isi box
           menurut master part yang pertama discan. */}
       {fg ? (
-        <div className="grid gap-5 md:grid-cols-2">
-          <section className="rounded-card border border-line bg-card p-5">
-            <header className="flex items-baseline justify-between">
+        <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-2">
+          <section className="scroll-slim flex min-h-0 flex-col overflow-y-auto rounded-card border border-line bg-card p-5">
+            <header className="flex shrink-0 items-baseline justify-between">
               <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
                 Part discan
               </h2>
@@ -1015,9 +1064,17 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
         </div>
       ) : null}
 
-      {/* ── Riwayat ─────────────────────────────────────────────────────── */}
-      <section className="rounded-card border border-line bg-card">
-        <header className="flex items-center justify-between border-b border-line px-5 py-4">
+      {/* ── Riwayat ──────────────────────────────────────────────────────
+          Paling tidak mendesak, jadi ia yang mengalah: kolom sempit di lini
+          yang punya panel utama, dan menggulir di dalam dirinya sendiri supaya
+          tidak pernah mendorong apa pun keluar layar. */}
+      <section
+        className={cn(
+          'flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-card',
+          perKanban || fg ? 'lg:w-[360px] lg:shrink-0' : 'flex-1',
+        )}
+      >
+        <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4">
           <h2 className="text-[15px] font-bold">{perKanban ? 'Kanban terakhir' : 'Scan terakhir'}</h2>
           <span className="text-[13px] text-ink-muted">{recent.length} terbaru</span>
         </header>
@@ -1027,7 +1084,7 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
             Belum ada scan pada line ini hari ini.
           </p>
         ) : (
-          <ul className="divide-y divide-line">
+          <ul className="scroll-slim min-h-0 flex-1 divide-y divide-line overflow-y-auto">
             <AnimatePresence initial={false}>
               {recent.map((r) => (
                 <motion.li
@@ -1068,6 +1125,7 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
           </ul>
         )}
       </section>
+      </div>
     </div>
   );
 }

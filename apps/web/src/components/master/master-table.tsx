@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useCallback, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { Plus, Pencil, Trash2, Check, X } from 'lucide-react';
@@ -9,6 +9,7 @@ import { MasterForm, type RefOptions } from './master-form';
 import { deleteMasterAction } from '@/app/(app)/master/actions';
 import { durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
+import { urlFotoPart } from '@/lib/foto-part';
 import { useToast } from '../ui/toast';
 
 type Row = Record<string, unknown> & { id: number };
@@ -44,6 +45,14 @@ export function MasterTable({
    * efek penutup langsung menutupnya kembali — panel seolah tidak mau terbuka.
    */
   const [formKey, setFormKey] = useState(0);
+
+  /*
+   * Identitasnya dijaga tetap.
+   *
+   * Arrow yang ditulis langsung di JSX berubah tiap render, dan prop yang
+   * berubah-ubah itu pernah memicu putaran refresh tanpa henti pada formulir.
+   */
+  const tutupFormulir = useCallback(() => setFormOpen(false), []);
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -222,7 +231,7 @@ export function MasterTable({
         row={editing}
         options={options}
         open={formOpen}
-        onClose={() => setFormOpen(false)}
+        onClose={tutupFormulir}
       />
     </>
   );
@@ -247,6 +256,13 @@ function renderCell(
         {on ? 'Aktif' : 'Non-aktif'}
       </span>
     );
+  }
+
+  if (kind === 'image') {
+    const url = urlFotoPart(value === null || value === undefined ? null : String(value));
+    if (!url) return <span className="text-ink-muted">—</span>;
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt="" className="size-10 rounded-lg object-cover" />;
   }
 
   if (kind === 'reference') {

@@ -164,6 +164,14 @@ export interface SampleCheck {
   backNumber: string | null;
   partName: string;
   qtyPerKanban: number | null;
+  /**
+   * Foto part, bila diisi di master.
+   *
+   * Di lini assembling BODY operator mencocokkan barang di tangannya dengan
+   * gambar di layar — itu satu-satunya pemeriksaan visual sebelum barang masuk
+   * box, karena barangnya tidak berseri dan kartu baru discan setelah box penuh.
+   */
+  photoPath: string | null;
   /** false = part ini belum punya rute sama sekali, jadi lininya tidak bisa diperiksa. */
   ruteDiperiksa: boolean;
 }

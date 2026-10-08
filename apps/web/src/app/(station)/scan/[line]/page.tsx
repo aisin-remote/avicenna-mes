@@ -32,7 +32,15 @@ export default async function ScanStationPage({ params }: PageProps) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    /*
+     * Tinggi DIKUNCI ke layar, bukan min-height.
+     *
+     * Operator berdiri dengan barang di tangan dan tidak akan menggulir; apa
+     * pun yang jatuh di bawah lipatan sama saja dengan tidak ada. Dengan
+     * tinggi terkunci, bagian dalamlah yang membagi ruang — dan hanya panel
+     * yang memang boleh menggulir yang menggulir.
+     */
+    <div className="flex h-dvh flex-col overflow-hidden">
       <StationBar
         lineName={summary.line.name}
         lineCode={summary.line.code}
@@ -41,7 +49,7 @@ export default async function ScanStationPage({ params }: PageProps) {
         userName={user?.name ?? '—'}
         npk={user?.npk ?? '—'}
       />
-      <main className="flex-1 p-6">
+      <main className="min-h-0 flex-1 overflow-hidden p-4">
         <ScanStation summary={summary} />
       </main>
     </div>

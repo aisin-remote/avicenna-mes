@@ -21,6 +21,7 @@ import {
 } from '@avicenna/contracts';
 import { MasterService } from './master.service';
 import { MasterImportService } from './import.service';
+import { FotoService } from './foto.service';
 
 /**
  * Satu controller untuk seluruh entitas master.
@@ -34,7 +35,43 @@ export class MasterController {
   constructor(
     private readonly master: MasterService,
     private readonly impor: MasterImportService,
+    private readonly foto: FotoService,
   ) {}
+
+  /**
+   * Menyajikan gambar yang tersimpan di aplikasi.
+   *
+   * Dideklarasikan SEBELUM route ber-:entity, kalau tidak "foto" akan
+   * tertangkap sebagai nama entitas dan ditolak sebagai entitas tak dikenal.
+   */
+  @Get('foto/:nama')
+  async ambilFoto(@Param('nama') nama: string, @Res() res: Response) {
+    const { isi, mimeType, etag } = await this.foto.baca(nama);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('ETag', etag);
+    // Nama berkas tidak pernah dipakai ulang, jadi isinya aman disimpan lama
+    // di peramban — layar stasiun memuat gambar yang sama sepanjang shift.
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.end(isi);
+  }
+
+  /**
+   * Mengunggah gambar, mengembalikan nama berkas yang tersimpan.
+   *
+   * Terpisah dari penyimpanan barisnya supaya satu jalur ini melayani
+   * penambahan maupun penyuntingan: layar mengunggah dulu, lalu menyimpan nama
+   * yang dikembalikan bersama kolom lain. Baris yang gagal disimpan hanya
+   * meninggalkan satu berkas yatim, bukan baris tanpa gambar atau sebaliknya.
+   */
+  @Post('foto')
+  async unggahFoto(@Body() body: { fileBase64?: string; mimeType?: string }) {
+    if (!body?.fileBase64) throw new BadRequestException('Berkas tidak ada dalam permintaan.');
+    const nama = await this.foto.simpan({
+      fileBase64: body.fileBase64,
+      mimeType: body.mimeType,
+    });
+    return { nama };
+  }
 
   /** Definisi seluruh entitas — dipakai UI membangun tabel dan formulir. */
   @Get('meta')

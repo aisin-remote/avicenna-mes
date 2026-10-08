@@ -137,4 +137,16 @@ export type HasilImpor = z.infer<typeof hasilImporSchema>;
  * membiarkan orang menunggu lalu gagal.
  */
 export const MAKS_UKURAN_IMPOR = 5 * 1024 * 1024;
+
+/**
+ * Batas ukuran foto part.
+ *
+ * Dikirim sebagai base64 di dalam JSON, mengikuti jalur yang sudah dipakai
+ * impor Excel — dan base64 membengkak sepertiga, jadi batasnya dijaga kecil.
+ * Foto untuk layar scan tidak butuh resolusi kamera penuh.
+ */
+export const MAKS_UKURAN_FOTO = 2 * 1024 * 1024;
+
+/** Jenis berkas yang diterima sebagai foto part. */
+export const JENIS_FOTO_DITERIMA = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const MAKS_BARIS_IMPOR = 5000;

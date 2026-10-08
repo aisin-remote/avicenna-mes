@@ -14,6 +14,7 @@ import { simpanRoleAction, hapusRoleAction, type AksiState } from '@/app/(app)/a
 import { springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 import { useToast } from '../ui/toast';
+import { useHasilAksi } from '../ui/use-hasil-aksi';
 
 const AWAL: AksiState = {};
 
@@ -162,17 +163,24 @@ function FormRole({
   const router = useRouter();
   const toast = useToast();
 
-  useEffect(() => {
-    if (state.ok) toast.ok(mode === 'buat' ? 'Role dibuat.' : 'Role tersimpan.');
-    if (hapusState.ok) toast.ok('Role dihapus.');
-    if (state.ok || hapusState.ok) {
+  useHasilAksi(state, (hasil) => {
+    if (hasil.ok) {
+      toast.ok(mode === 'buat' ? 'Role dibuat.' : 'Role tersimpan.');
       router.refresh();
       onClose();
     }
     // Galat umum jadi toast; galat per kolom tetap di bawah kolomnya.
-    if (state.error && !state.fieldErrors) toast.galat(state.error, 'Role tidak tersimpan');
-    if (hapusState.error) toast.galat(hapusState.error, 'Role tidak terhapus');
-  }, [state, hapusState, router, onClose, toast, mode]);
+    if (hasil.error && !hasil.fieldErrors) toast.galat(hasil.error, 'Role tidak tersimpan');
+  });
+
+  useHasilAksi(hapusState, (hasil) => {
+    if (hasil.ok) {
+      toast.ok('Role dihapus.');
+      router.refresh();
+      onClose();
+    }
+    if (hasil.error) toast.galat(hasil.error, 'Role tidak terhapus');
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

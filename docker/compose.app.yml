@@ -77,6 +77,8 @@ services:
       # menulis data yang bentuknya salah, dan itu tidak bisa ditarik kembali.
       migrate:
         condition: service_completed_successfully
+    volumes:
+      - avicenna-foto:/data/foto
     environment:
       <<: *app-env
       API_PORT: 3001
@@ -90,6 +92,10 @@ services:
       # bawaan: menyala tanpa kredensial yang benar membuat log penuh galat
       # koneksi setiap beberapa detik, dan galat yang sungguhan tenggelam.
       SAP_MSSQL_ENABLED: ${SAP_MSSQL_ENABLED:-false}
+      # Berkas unggahan (foto part) disimpan di volume, BUKAN di dalam image.
+      # Tanpa volume, seluruh foto hilang pada penerapan berikutnya — dan
+      # hilangnya baru terlihat saat operator membuka layar scan.
+      FOTO_DIR: /data/foto
       STAGING_HOST: ${STAGING_HOST:-}
       STAGING_PORT: ${STAGING_PORT:-}
       STAGING_INSTANCE: ${STAGING_INSTANCE:-}
@@ -131,6 +137,12 @@ services:
       # untuk TLS; tanpa TLS, kartu login NPK|sandi lewat sebagai teks polos.
       - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-3000}:3000"
     networks: [avicenna]
+
+volumes:
+  # Berkas yang diunggah lewat aplikasi. Dipisahkan dari image supaya tetap ada
+  # setelah aplikasi diperbarui.
+  avicenna-foto:
+    name: avicenna-foto
 
 networks:
   avicenna:

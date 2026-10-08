@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
+import { json, urlencoded } from 'express';
+import { MAKS_UKURAN_FOTO, MAKS_UKURAN_IMPOR } from '@avicenna/contracts';
 import { periksaMigrasi, cariFolderMigrasi, pesanPeriksaMigrasi } from '@avicenna/db';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
@@ -42,6 +44,23 @@ async function bootstrap(): Promise<void> {
   await pastikanMigrasiCocok(logger);
 
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
+
+  /*
+   * Batas ukuran body dinaikkan dari bawaan Express yang 100 KB.
+   *
+   * Berkas di aplikasi ini dikirim sebagai base64 DI DALAM JSON — impor Excel
+   * dan foto part. Dengan bawaan 100 KB, unggahan sekecil apa pun yang wajar
+   * ditolak body-parser sebelum sampai ke controller, dan yang terlihat
+   * pengguna hanya "Terjadi kesalahan pada server" tanpa petunjuk apa pun.
+   *
+   * Angkanya DITURUNKAN dari batas yang sudah kita umumkan ke pengguna, bukan
+   * ditulis lepas: base64 membengkak sekitar sepertiga, ditambah ruang untuk
+   * kolom lain dalam JSON yang sama. Dengan begitu batas di layar dan batas di
+   * server tidak bisa menyimpang diam-diam.
+   */
+  const batasBody = Math.ceil((Math.max(MAKS_UKURAN_IMPOR, MAKS_UKURAN_FOTO) * 4) / 3) + 1024 * 1024;
+  app.use(json({ limit: batasBody }));
+  app.use(urlencoded({ limit: batasBody, extended: true }));
 
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableCors({

@@ -83,7 +83,23 @@ export const STOP_REASON_CATEGORY_LABELS: Record<StopReasonCategory, string> = {
   LAINNYA: 'Lainnya',
 };
 
-export type FieldKind = 'text' | 'number' | 'decimal' | 'date' | 'boolean' | 'select' | 'reference';
+export type FieldKind =
+  | 'text'
+  | 'number'
+  | 'decimal'
+  | 'date'
+  | 'boolean'
+  | 'select'
+  | 'reference'
+  /**
+   * Berkas gambar yang diunggah dan disimpan aplikasi.
+   *
+   * Yang tersimpan di kolom tetap teks — nama berkas di penyimpanan, atau
+   * alamat penuh bila gambarnya memang sudah ada di server lain. Yang berubah
+   * hanya cara mengisinya: orang memilih berkas, bukan mengetik nama yang
+   * harus ia cocokkan sendiri dengan isi folder.
+   */
+  | 'image';
 
 export interface FieldDef {
   name: string;
@@ -294,6 +310,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint: 'SERIAL untuk part berbarcode satuan. LOT untuk raw material dan komponen beli yang datang per batch.',
       },
       { name: 'uom', label: 'Satuan', kind: 'text', max: 16, hint: 'pcs, kg, liter, …' },
+      {
+        name: 'photoPath',
+        label: 'Foto Part',
+        kind: 'image',
+        max: 255,
+        hint:
+          'Ditampilkan besar di layar scan saat master sample part ini discan — operator ' +
+          'mencocokkan barang di tangannya dengan gambar. Pilih berkas dari komputer; ' +
+          'gambarnya disimpan di aplikasi.',
+      },
       {
         name: 'qtyPerKanban',
         label: 'Qty per Kanban',
