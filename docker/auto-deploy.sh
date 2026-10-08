@@ -23,7 +23,11 @@ TAG="[auto-deploy]"
 
 cd "$REPO" || { echo "$TAG GAGAL: tidak bisa masuk $REPO"; exit 1; }
 
-git fetch origin "$BRANCH" >/dev/null 2>&1 || { echo "$TAG GAGAL: fetch origin/$BRANCH"; exit 1; }
+# Tanpa refspec eksplisit dengan sengaja: `git fetch origin main` HANYA
+# menulis FETCH_HEAD dan TIDAK memajukan origin/main (git 1.8 di server),
+# sehingga perbandingan di bawah selalu "sama" dan deploy tidak pernah jalan.
+# Tanpa argumen, fetch memakai refspec repo dan origin/main ikut maju.
+git fetch origin >/dev/null 2>&1 || { echo "$TAG GAGAL: fetch origin"; exit 1; }
 
 LOKAL=$(git rev-parse HEAD)
 JAUH=$(git rev-parse "origin/$BRANCH")
