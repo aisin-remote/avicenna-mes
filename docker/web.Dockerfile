@@ -59,6 +59,12 @@ RUN pnpm --filter @avicenna/contracts --filter @avicenna/db --filter @avicenna/d
 # jalan. Menanamnya berarti satu image hanya sah untuk satu server, dan image
 # yang sama tidak bisa dipakai di staging maupun produksi. Yang menghubungi API
 # dari sisi server memakai API_URL yang disuntik compose saat runtime.
+#
+# SATU pengecualian: NEXT_PUBLIC_API_URL dibaca komponen Server per-request
+# lalu DITERUSKAN sebagai prop ke klien (live-monitor butuh URL SSE yang bisa
+# dijangkau browser). Ia masuk lewat ARG build dari compose, bukan nilai mati
+# di sini — nilai mati akan mengunci image ke satu hostname.
+ARG NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @avicenna/web build
 

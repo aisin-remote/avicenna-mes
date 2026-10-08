@@ -104,8 +104,9 @@ services:
       STAGING_PASSWORD: ${STAGING_PASSWORD:-}
       MSSQL_SYNC_ENABLED: ${MSSQL_SYNC_ENABLED:-false}
     ports:
-      # Tidak dibuka ke jaringan pabrik. Browser tidak pernah memanggil API
-      # langsung — web yang memanggilnya dari sisi server, lewat jaringan Docker.
+      # Hanya localhost server. Browser TIDAK memanggil API langsung, KECUALI
+      # aliran SSE monitor (EventSource dari live-monitor.tsx) yang lewat
+      # reverse proxy di https://<host>/realtime/ — lihat vhost nginx.
       - "127.0.0.1:${API_PORT:-3001}:3001"
     networks: [avicenna]
     healthcheck:
@@ -120,6 +121,12 @@ services:
     build:
       context: ..
       dockerfile: docker/web.Dockerfile
+      args:
+        # Ditaman ke bundel saat build (sifat NEXT_PUBLIC_*). Layar monitor
+        # membaca ini untuk EventSource SSE langsung ke API lewat /realtime/
+        # di host yang sama — tanpa ini browser mencoba localhost:3001
+        # miliknya sendiri dan monitor tidak pernah terhubung.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:3001}
     container_name: avicenna-web
     restart: unless-stopped
     depends_on:
