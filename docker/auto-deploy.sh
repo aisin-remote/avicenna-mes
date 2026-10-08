@@ -11,6 +11,10 @@
 # Kalau riwayat ditulis ulang (bukan fast-forward), deploy BERHENTI dan
 # mencatat — tidak pernah memaksa, supaya tidak menimpa keadaan yang tidak
 # dikenal. flock mencegah dua deploy tumpang tindih (build bisa >5 menit).
+#
+# Catatan: cron SELALU menjalankan script dari branch main, bukan branch
+# fitur. Cara merilis: merge branch fitur ke main lalu push — dalam
+# beberapa menit server menjemputnya sendiri.
 # ─────────────────────────────────────────────────────────────────────────────
 set -u
 REPO=/home/avicenna
