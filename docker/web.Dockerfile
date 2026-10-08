@@ -9,7 +9,15 @@
 # Konteks build = akar repo: web mengimpor @avicenna/db, @avicenna/contracts,
 # dan @avicenna/domain yang ada di luar apps/web.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS base
+# Debian-slim, BUKAN alpine — dan ini disengaja, jangan "dioptimasi" kembali.
+#
+# Server produksi berkernel 3.10 (CentOS 7). Node 22 di atas musl (alpine)
+# gagal di tengah `pnpm install` dengan "EPERM: operation not permitted,
+# write" pada penulisan .modules.yaml dan pnpm-state.json — padahal tidak
+# satu pun syscall tulis yang gagal di kernel. IMAGE YANG SAMA di atas
+# glibc (node:22-slim) lolos bersih. Selama server masih kernel 3.10,
+# seluruh image Node di sini memakai slim.
+FROM node:22-slim AS base
 
 # Jaringan kantor memblokir registry.npmjs.org (403 dari proxy) — lihat README
 # dan .npmrc. Corepack punya registry sendiri yang TIDAK membaca .npmrc, jadi
