@@ -74,6 +74,35 @@ daripada melayani di atas skema yang belum lengkap.
 
 Tumpukan data tidak disentuh.
 
+## Rilis otomatis (CI/CD)
+
+Server tidak bisa dihubungi GitHub dari internet (IP privat), jadi arusnya
+dibalik: **server yang menjemput**. Cron root tiap 5 menit menjalankan
+`docker/auto-deploy.sh` — fetch `origin/main`, dan kalau HEAD tertinggal ia
+merge `--ff-only`, rebuild tumpukan aplikasi, lalu cek `/health/ready`.
+Jejaknya di `/var/log/avicenna-deploy.log` (rotasi mingguan).
+
+```bash
+# /etc/cron.d atau crontab root:
+*/5 * * * * flock -n /tmp/avicenna-deploy.lock /home/avicenna/docker/auto-deploy.sh >> /var/log/avicenna-deploy.log 2>&1
+```
+
+Cara merilis: kerjakan di branch fitur → merge ke `main` → `git push
+origin main`. Dalam beberapa menit server menjemput sendiri (+ waktu build).
+
+Yang dijaga script, supaya tidak perlu diingat:
+
+- Hanya `main` yang memicu. Push ke branch lain diabaikan.
+- Hanya fast-forward yang diterima. Riwayat yang ditulis ulang membuat
+  deploy BERHENTI dan mencatat — tidak pernah `--force`.
+- `flock` mencegah dua deploy tumpang tindih (build bisa lebih lama dari
+  interval cron).
+- Tumpukan data, seed, dan `.env` tidak pernah disentuh.
+
+Akses GitHub server memakai deploy key read-only lewat SSH port 443
+(`ssh.github.com`) — port 22 keluar diblokir firewall kantor. Kalau fetch
+gagal, yang pertama dicek adalah konektivitas itu, bukan key-nya.
+
 ## Yang boleh dan tidak boleh
 
 | perintah | akibat |
