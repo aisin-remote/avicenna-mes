@@ -20,7 +20,7 @@ export default async function NgOutlinePage({
   const sp = await searchParams;
 
   return (
-    <div className="min-h-screen px-4 py-5">
+    <div className="scroll-slim h-dvh overflow-y-auto px-4 py-5">
       <header className="mb-5 flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <AlertTriangle className="size-7 text-ng" strokeWidth={1.8} aria-hidden />

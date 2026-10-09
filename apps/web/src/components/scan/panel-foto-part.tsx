@@ -44,14 +44,14 @@ export function PanelFotoPart({
         ) : null}
       </header>
 
-      <div className="mt-3 flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-2xl bg-surface p-3">
+      <div className="mt-2 flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-2xl bg-surface p-2">
         {foto ? (
           /* Sebesar yang muat: dilihat sambil tangan memegang barang. */
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={foto}
             alt={`Foto ${sample?.partNumber ?? 'part'}`}
-            className="max-h-full w-auto rounded-xl object-contain"
+            className="max-h-full max-w-full rounded-xl object-contain"
           />
         ) : sample ? (
           <div className="flex flex-col items-center gap-2 text-center">
@@ -73,7 +73,7 @@ export function PanelFotoPart({
       </div>
 
       {sample ? (
-        <p className="mt-3 shrink-0 truncate text-[13px] text-ink-soft">
+        <p className="mt-2 shrink-0 truncate text-[13px] text-ink-soft">
           {sample.partName}
           {sample.qtyPerKanban ? ` · ${sample.qtyPerKanban} pcs per kanban` : ''}
         </p>

@@ -36,7 +36,7 @@ export default async function PickingStationPage({
   const terbuka = doc.status === 'DRAFT' || doc.status === 'PICKING';
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-dvh flex-col overflow-hidden">
       <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-card px-6 py-4">
         <Link
           href={`/delivery/${doc.id}`}
@@ -66,7 +66,7 @@ export default async function PickingStationPage({
         </div>
       </header>
 
-      <main className="flex-1 p-6">
+      <main className="scroll-slim min-h-0 flex-1 overflow-y-auto p-4">
         {!terbuka ? (
           <p className="rounded-card border border-ok/40 bg-ok/10 px-5 py-4 text-[15px] font-semibold text-ok">
             Pulling untuk dokumen ini sudah ditutup. Lanjutkan ke layar muat.

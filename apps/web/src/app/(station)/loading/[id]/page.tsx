@@ -29,7 +29,7 @@ export default async function LoadingStationPage({ params }: { params: Promise<{
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-dvh flex-col overflow-hidden">
       <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-card/95 px-3 py-3 backdrop-blur sm:flex-wrap sm:gap-x-6 sm:gap-y-3 sm:px-6 sm:py-4">
         <Link
           href="/delivery-scan"
@@ -64,7 +64,7 @@ export default async function LoadingStationPage({ params }: { params: Promise<{
         </div>
       </header>
 
-      <main className="flex-1 p-3 sm:p-6">
+      <main className="scroll-slim min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
         {doc.status === 'SHIPPED' || doc.status === 'RECEIVED' ? (
           <p className="rounded-card border border-ok/40 bg-ok/10 px-5 py-4 text-[15px] font-semibold text-ok">
             Loading list ini sudah berangkat. Tidak ada lagi yang perlu discan.

@@ -3,14 +3,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  ScanLine, CheckCircle2, XCircle, CopyX, Volume2, VolumeX, AlertTriangle, LogOut, Tag, RefreshCw,
-  PackageCheck, X,
+  ScanLine,
+  CheckCircle2,
+  XCircle,
+  CopyX,
+  Volume2,
+  VolumeX,
+  AlertTriangle,
+  LogOut,
+  Tag,
+  RefreshCw,
+  PackageCheck,
+  X,
 } from 'lucide-react';
 import type {
-  BerhentiLini, KanbanOwner, SampleCheck, StationResult, StationSummary, ProcessType,
+  BerhentiLini,
+  KanbanOwner,
+  SampleCheck,
+  StationResult,
+  StationSummary,
+  ProcessType,
 } from '@avicenna/contracts';
 import {
-  grupProses, sepertiKanban, sepertiKartuLogin, sepertiNomorPartPolos,
+  grupProses,
+  sepertiKanban,
+  sepertiKartuLogin,
+  sepertiNomorPartPolos,
 } from '@avicenna/domain';
 import { periksaSampleAction, periksaScanAction, submitScanAction } from '@/app/(app)/scan/actions';
 import { PanelBerhenti } from './panel-berhenti';
@@ -147,7 +165,6 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
   // layar ini tanpa mengubah pengaturan perangkat.
   const { prefs } = usePreferences();
   const [soundOn, setSoundOn] = useState(prefs.scanSound);
-
 
   /*
    * Preferensi tersimpan baru terbaca setelah komponen terpasang — membaca
@@ -572,15 +589,16 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
     await keluarStasiunAction();
   }
 
-  const tone = sampleBaru || ditahanBaru || boxSelesai
-    ? 'ok'
-    : !result
-    ? 'idle'
-    : result.status === 'ACCEPTED'
+  const tone =
+    sampleBaru || ditahanBaru || boxSelesai
       ? 'ok'
-      : result.status === 'DUPLICATE'
-        ? 'dup'
-        : 'bad';
+      : !result
+        ? 'idle'
+        : result.status === 'ACCEPTED'
+          ? 'ok'
+          : result.status === 'DUPLICATE'
+            ? 'dup'
+            : 'bad';
 
   const tab = (
     <div className="flex gap-1.5" role="tablist" aria-label="Mode scan">
@@ -639,19 +657,47 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
 
       <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,260px)]">
         {/* ── Input ─────────────────────────────────────────────────────── */}
-        <section className="scroll-slim max-h-[46vh] overflow-y-auto rounded-card border border-line bg-card p-5">
-          <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-            {perKanban
-              ? sample
-                ? 'Scan Kanban'
-                : 'Scan Master Sample'
-              : fg
-                ? isiBox !== null && ditahan.length >= isiBox
+        {/*
+          Di lini berfoto, panel ini sengaja diringkas: yang dipandangi operator
+          sepanjang shift adalah GAMBARNYA, bukan keterangan cara scan yang
+          sudah ia hafal setelah setengah jam. Ruang yang dihemat di sini
+          langsung menjadi tinggi foto.
+        */}
+        <section className="scroll-slim max-h-[34vh] overflow-y-auto rounded-card border border-line bg-card p-4">
+          {/*
+            Judul berbagi baris dengan tombol suara: tombol itu disentuh sekali
+            seumur shift, dan satu baris sendiri untuknya berarti satu baris
+            tinggi yang hilang dari bagian layar yang dipakai bekerja.
+          */}
+          <header className="flex items-center justify-between gap-3">
+            <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
+              {perKanban
+                ? sample
                   ? 'Scan Kanban'
-                  : 'Scan Part'
-                : 'Scan Part'}
-          </h2>
-          <p className="mt-2 text-[13px] leading-snug text-ink-muted">
+                  : 'Scan Master Sample'
+                : fg
+                  ? isiBox !== null && ditahan.length >= isiBox
+                    ? 'Scan Kanban'
+                    : 'Scan Part'
+                  : 'Scan Part'}
+            </h2>
+            <button
+              type="button"
+              onClick={() => {
+                setSoundOn((v) => !v);
+                focusInput();
+              }}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[12px] font-medium text-ink-soft transition-colors hover:bg-surface"
+            >
+              {soundOn ? (
+                <Volume2 className="size-3.5" strokeWidth={1.8} aria-hidden />
+              ) : (
+                <VolumeX className="size-3.5" strokeWidth={1.8} aria-hidden />
+              )}
+              Suara {soundOn ? 'aktif' : 'mati'}
+            </button>
+          </header>
+          <p className="mt-1 text-[12px] leading-snug text-ink-muted">
             {perKanban
               ? sample
                 ? 'Satu scan kanban = satu box. Ganti part? Scan master sample yang baru.'
@@ -667,11 +713,7 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
               <Tag className="mt-0.5 size-4 shrink-0 text-ok" strokeWidth={1.8} aria-hidden />
               {fotoSample ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={fotoSample}
-                  alt=""
-                  className="size-12 shrink-0 rounded-lg object-cover"
-                />
+                <img src={fotoSample} alt="" className="size-12 shrink-0 rounded-lg object-cover" />
               ) : null}
               <div className="min-w-0 flex-1">
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
@@ -708,16 +750,15 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
           {/* Disebutkan di layar, bukan disimpan sebagai pengetahuan orang
               dalam: operator berikutnya harus tahu kartunya discan ke kotak
               yang sama, bukan lewat tombol keluar. */}
-          <p className="mt-1.5 text-[13px] leading-snug text-ink-muted">
-            Ganti shift? Scan kartu login di kotak ini untuk keluar, lalu masuk
-            lagi di halaman login.
+          <p className="mt-1 text-[12px] leading-snug text-ink-muted">
+            Ganti shift? Scan kartu login di kotak ini untuk keluar.
           </p>
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void submit(code);
             }}
-            className="mt-4"
+            className="mt-3"
           >
             <input
               ref={inputRef}
@@ -746,25 +787,9 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
                       : 'Scan part'
                     : 'Fokus di sini lalu scan'
               }
-              className="tabular h-14 w-full rounded-2xl border-2 border-line bg-surface px-4 text-[18px] font-semibold outline-none transition-colors duration-200 placeholder:text-[15px] placeholder:font-normal placeholder:text-ink-muted focus:border-ink focus:bg-card"
+              className="tabular h-12 w-full rounded-2xl border-2 border-line bg-surface px-4 text-[16px] font-semibold outline-none transition-colors duration-200 placeholder:text-[14px] placeholder:font-normal placeholder:text-ink-muted focus:border-ink focus:bg-card"
             />
           </form>
-
-          <button
-            type="button"
-            onClick={() => {
-              setSoundOn((v) => !v);
-              focusInput();
-            }}
-            className="mt-4 inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-2 text-[13px] font-medium text-ink-soft transition-colors hover:bg-surface"
-          >
-            {soundOn ? (
-              <Volume2 className="size-4" strokeWidth={1.8} aria-hidden />
-            ) : (
-              <VolumeX className="size-4" strokeWidth={1.8} aria-hidden />
-            )}
-            Suara {soundOn ? 'aktif' : 'mati'}
-          </button>
         </section>
 
         {/* ── Status besar ──────────────────────────────────────────────── */}
@@ -772,7 +797,8 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
           id="scan-status"
           aria-live="assertive"
           className={cn(
-            'flex min-h-[180px] flex-col items-center justify-center rounded-card border-2 p-6 text-center transition-colors duration-300',
+            'flex flex-col items-center justify-center rounded-card border-2 text-center transition-colors duration-300',
+            'min-h-[120px] p-4',
             tone === 'idle' && 'border-line bg-card',
             tone === 'ok' && 'border-ok/30 bg-ok/8',
             tone === 'dup' && 'border-warn/30 bg-warn/8',
@@ -818,7 +844,9 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
                     {boxSelesai.partNumber} — {boxSelesai.partName}
                   </div>
                   {boxSelesai.catatan ? (
-                    <p className="max-w-md text-[14px] font-semibold text-warn">{boxSelesai.catatan}</p>
+                    <p className="max-w-md text-[14px] font-semibold text-warn">
+                      {boxSelesai.catatan}
+                    </p>
                   ) : null}
                 </>
               ) : ditahanBaru ? (
@@ -856,8 +884,17 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
                 </>
               ) : !result ? (
                 <>
-                  <ScanLine className="size-12 text-ink-muted" strokeWidth={1.4} aria-hidden />
-                  <div className="text-[26px] font-extrabold leading-tight text-ink-muted">
+                  <ScanLine
+                    className={cn('text-ink-muted', perKanban ? 'size-8' : 'size-12')}
+                    strokeWidth={1.4}
+                    aria-hidden
+                  />
+                  <div
+                    className={cn(
+                      'font-extrabold leading-tight text-ink-muted',
+                      perKanban ? 'text-[18px]' : 'text-[26px]',
+                    )}
+                  >
                     {perKanban && !sample
                       ? 'SCAN MASTER SAMPLE'
                       : fg
@@ -924,7 +961,10 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
             initial={{ scale: 1.18 }}
             animate={{ scale: 1 }}
             transition={{ duration: durations.slow, ease: easeSoft }}
-            className="tabular mt-3 text-[56px] font-extrabold leading-none tracking-tight"
+            className={cn(
+              'tabular mt-2 font-extrabold leading-none tracking-tight',
+              perKanban ? 'text-[44px]' : 'text-[56px]',
+            )}
           >
             {perKanban ? pcs : counter}
           </motion.div>
@@ -943,188 +983,202 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
         sendiri.
       */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-      {/* ── Lini per-kanban (BODY): foto part yang sedang dikerjakan ─────
+        {/* ── Lini per-kanban (BODY): foto part yang sedang dikerjakan ─────
           Slotnya selalu ada, juga saat sample atau fotonya belum ada, supaya
           kekosongannya terlihat sebagai sesuatu yang harus dibereskan. */}
-      {perKanban ? <PanelFotoPart sample={sample} className="min-h-0 flex-1" /> : null}
+        {perKanban ? <PanelFotoPart sample={sample} className="min-h-0 flex-1" /> : null}
 
-      {/* ── Lini FG: isi box (kiri) dan detail loading list (kanan) ──────
+        {/* ── Lini FG: isi box (kiri) dan detail loading list (kanan) ──────
           Susunannya mengikuti layar D98E lama: PART SCANNED di kiri, LOADING
           LIST INFORMATION di kanan. Jumlah kotak part mengikuti isi box
           menurut master part yang pertama discan. */}
-      {fg ? (
-        <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-2">
-          <section className="scroll-slim flex min-h-0 flex-col overflow-y-auto rounded-card border border-line bg-card p-5">
-            <header className="flex shrink-0 items-baseline justify-between">
-              <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-                Part discan
-              </h2>
-              <span className="tabular text-[13px] font-bold">
-                {ditahan.length}/{isiBox ?? '?'}
-              </span>
-            </header>
-            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-              {Array.from({ length: Math.max(isiBox ?? 1, ditahan.length) }).map((_, i) => {
-                const u = ditahan[i];
-                return (
-                  <li
-                    key={u ? u.rawCode : `kosong-${i}`}
-                    className={cn(
-                      'flex min-h-[64px] items-center gap-3 rounded-2xl border px-4 text-[15px]',
-                      u ? 'border-ok/30 bg-ok/8 font-bold' : 'border-dashed border-line text-ink-muted',
-                    )}
-                  >
-                    <span className="tabular w-5 shrink-0 text-[12px] font-semibold text-ink-muted">
-                      {i + 1}
-                    </span>
-                    <span className="tabular min-w-0 flex-1 truncate">
-                      {u ? (u.serialNumber ?? u.rawCode) : 'Belum discan'}
-                    </span>
-                    {u ? (
-                      <button
-                        type="button"
-                        onClick={() => lepasUnit(u.rawCode)}
-                        aria-label={`Lepas ${u.serialNumber ?? u.rawCode}`}
-                        title="Lepas dari box"
-                        className="rounded-full p-1.5 text-ink-muted transition-colors hover:bg-card hover:text-ng"
-                      >
-                        <X className="size-4" strokeWidth={2} aria-hidden />
-                      </button>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-            <p className="mt-3 text-[13px] text-ink-muted">
-              {ditahan[0]?.partNumber
-                ? `${ditahan[0].partNumber} — ${ditahan[0].partName}`
-                : 'Jumlah kotak mengikuti isi box part yang discan pertama.'}
-            </p>
-          </section>
-
-          <section className="rounded-card border border-line bg-card p-5">
-            <header className="flex items-baseline justify-between gap-3">
-              <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-                Detail loading list
-              </h2>
-              {daftarMuat ? (
-                <span className="tabular truncate text-[13px] font-bold">
-                  {daftarMuat.documentNumber}
-                  {daftarMuat.pdsNumber ? ` · ${daftarMuat.pdsNumber}` : ''}
+        {fg ? (
+          <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-2">
+            <section className="scroll-slim flex min-h-0 flex-col overflow-y-auto rounded-card border border-line bg-card p-5">
+              <header className="flex shrink-0 items-baseline justify-between">
+                <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
+                  Part discan
+                </h2>
+                <span className="tabular text-[13px] font-bold">
+                  {ditahan.length}/{isiBox ?? '?'}
                 </span>
-              ) : null}
-            </header>
-            {!daftarMuat ? (
+              </header>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {Array.from({ length: Math.max(isiBox ?? 1, ditahan.length) }).map((_, i) => {
+                  const u = ditahan[i];
+                  return (
+                    <li
+                      key={u ? u.rawCode : `kosong-${i}`}
+                      className={cn(
+                        'flex min-h-[64px] items-center gap-3 rounded-2xl border px-4 text-[15px]',
+                        u
+                          ? 'border-ok/30 bg-ok/8 font-bold'
+                          : 'border-dashed border-line text-ink-muted',
+                      )}
+                    >
+                      <span className="tabular w-5 shrink-0 text-[12px] font-semibold text-ink-muted">
+                        {i + 1}
+                      </span>
+                      <span className="tabular min-w-0 flex-1 truncate">
+                        {u ? (u.serialNumber ?? u.rawCode) : 'Belum discan'}
+                      </span>
+                      {u ? (
+                        <button
+                          type="button"
+                          onClick={() => lepasUnit(u.rawCode)}
+                          aria-label={`Lepas ${u.serialNumber ?? u.rawCode}`}
+                          title="Lepas dari box"
+                          className="rounded-full p-1.5 text-ink-muted transition-colors hover:bg-card hover:text-ng"
+                        >
+                          <X className="size-4" strokeWidth={2} aria-hidden />
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
               <p className="mt-3 text-[13px] text-ink-muted">
-                Terisi setelah box ditutup dengan label DN (direct pulling). Kartu kanban internal
-                tidak mengisi panel ini.
+                {ditahan[0]?.partNumber
+                  ? `${ditahan[0].partNumber} — ${ditahan[0].partName}`
+                  : 'Jumlah kotak mengikuti isi box part yang discan pertama.'}
               </p>
-            ) : (
-              <>
-                {daftarMuat.customerName ? (
-                  <p className="mt-1 text-[13px] text-ink-soft">{daftarMuat.customerName}</p>
-                ) : null}
-                <table className="mt-3 w-full text-[14px]">
-                  <thead>
-                    <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                      <th className="pb-2 font-semibold">Part</th>
-                      <th className="pb-2 text-right font-semibold">Progres</th>
-                      <th className="pb-2 text-right font-semibold">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line">
-                    {daftarMuat.items.map((it) => {
-                      const selesai = it.plannedKanban > 0 && it.pickedKanban >= it.plannedKanban;
-                      return (
-                        <tr key={`${it.partNumber}-${it.customerPartNumber}`}>
-                          <td className="py-2">
-                            <div className="tabular font-semibold">{it.customerPartNumber ?? it.partNumber}</div>
-                            {it.customerPartNumber && it.partNumber ? (
-                              <div className="text-[12px] text-ink-muted">{it.partNumber}</div>
-                            ) : null}
-                          </td>
-                          <td
-                            className={cn(
-                              'tabular py-2 text-right font-bold',
-                              selesai ? 'text-ok' : it.pickedKanban > it.plannedKanban ? 'text-warn' : '',
-                            )}
-                          >
-                            {it.pickedKanban}
-                          </td>
-                          <td className="tabular py-2 text-right text-ink-soft">{it.plannedKanban}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <p className="mt-2 text-[12px] text-ink-muted">Box terambil dari rencana, per part.</p>
-              </>
-            )}
-          </section>
-        </div>
-      ) : null}
+            </section>
 
-      {/* ── Riwayat ──────────────────────────────────────────────────────
+            <section className="rounded-card border border-line bg-card p-5">
+              <header className="flex items-baseline justify-between gap-3">
+                <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
+                  Detail loading list
+                </h2>
+                {daftarMuat ? (
+                  <span className="tabular truncate text-[13px] font-bold">
+                    {daftarMuat.documentNumber}
+                    {daftarMuat.pdsNumber ? ` · ${daftarMuat.pdsNumber}` : ''}
+                  </span>
+                ) : null}
+              </header>
+              {!daftarMuat ? (
+                <p className="mt-3 text-[13px] text-ink-muted">
+                  Terisi setelah box ditutup dengan label DN (direct pulling). Kartu kanban internal
+                  tidak mengisi panel ini.
+                </p>
+              ) : (
+                <>
+                  {daftarMuat.customerName ? (
+                    <p className="mt-1 text-[13px] text-ink-soft">{daftarMuat.customerName}</p>
+                  ) : null}
+                  <table className="mt-3 w-full text-[14px]">
+                    <thead>
+                      <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                        <th className="pb-2 font-semibold">Part</th>
+                        <th className="pb-2 text-right font-semibold">Progres</th>
+                        <th className="pb-2 text-right font-semibold">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {daftarMuat.items.map((it) => {
+                        const selesai = it.plannedKanban > 0 && it.pickedKanban >= it.plannedKanban;
+                        return (
+                          <tr key={`${it.partNumber}-${it.customerPartNumber}`}>
+                            <td className="py-2">
+                              <div className="tabular font-semibold">
+                                {it.customerPartNumber ?? it.partNumber}
+                              </div>
+                              {it.customerPartNumber && it.partNumber ? (
+                                <div className="text-[12px] text-ink-muted">{it.partNumber}</div>
+                              ) : null}
+                            </td>
+                            <td
+                              className={cn(
+                                'tabular py-2 text-right font-bold',
+                                selesai
+                                  ? 'text-ok'
+                                  : it.pickedKanban > it.plannedKanban
+                                    ? 'text-warn'
+                                    : '',
+                              )}
+                            >
+                              {it.pickedKanban}
+                            </td>
+                            <td className="tabular py-2 text-right text-ink-soft">
+                              {it.plannedKanban}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <p className="mt-2 text-[12px] text-ink-muted">
+                    Box terambil dari rencana, per part.
+                  </p>
+                </>
+              )}
+            </section>
+          </div>
+        ) : null}
+
+        {/* ── Riwayat ──────────────────────────────────────────────────────
           Paling tidak mendesak, jadi ia yang mengalah: kolom sempit di lini
           yang punya panel utama, dan menggulir di dalam dirinya sendiri supaya
           tidak pernah mendorong apa pun keluar layar. */}
-      <section
-        className={cn(
-          'flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-card',
-          perKanban || fg ? 'lg:w-[360px] lg:shrink-0' : 'flex-1',
-        )}
-      >
-        <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4">
-          <h2 className="text-[15px] font-bold">{perKanban ? 'Kanban terakhir' : 'Scan terakhir'}</h2>
-          <span className="text-[13px] text-ink-muted">{recent.length} terbaru</span>
-        </header>
+        <section
+          className={cn(
+            'flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-card',
+            perKanban || fg ? 'lg:w-[360px] lg:shrink-0' : 'flex-1',
+          )}
+        >
+          <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4">
+            <h2 className="text-[15px] font-bold">
+              {perKanban ? 'Kanban terakhir' : 'Scan terakhir'}
+            </h2>
+            <span className="text-[13px] text-ink-muted">{recent.length} terbaru</span>
+          </header>
 
-        {recent.length === 0 ? (
-          <p className="px-5 py-12 text-center text-[14px] text-ink-muted">
-            Belum ada scan pada line ini hari ini.
-          </p>
-        ) : (
-          <ul className="scroll-slim min-h-0 flex-1 divide-y divide-line overflow-y-auto">
-            <AnimatePresence initial={false}>
-              {recent.map((r) => (
-                <motion.li
-                  key={`${r.id}-${r.rawCode}`}
-                  layout
-                  initial={{ opacity: 0, height: 0, backgroundColor: 'rgba(22,163,74,0.10)' }}
-                  animate={{ opacity: 1, height: 'auto', backgroundColor: 'rgba(22,163,74,0)' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{
-                    layout: springSoft,
-                    height: { duration: durations.base, ease: easeSoft },
-                    opacity: { duration: durations.base, ease: easeSoft },
-                    backgroundColor: { duration: 1.4, ease: easeSoft },
-                  }}
-                  className="overflow-hidden"
-                >
-                  <div className="flex items-center gap-4 px-5 py-3 text-[14px]">
-                    <span className="tabular w-20 shrink-0 text-[13px] font-medium text-ink-muted">
-                      {new Date(r.scannedAt).toLocaleTimeString('id-ID', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      })}
-                    </span>
-                    <span className="tabular min-w-0 flex-1 truncate font-semibold">
-                      {perKanban ? `Kanban ${r.serialNumber ?? '—'} · ${r.rawCode}` : r.rawCode}
-                    </span>
-                    <span className="hidden min-w-0 flex-1 truncate text-ink-soft sm:block">
-                      {r.partName ?? '—'}
-                    </span>
-                    <span className="tabular w-16 shrink-0 text-right font-semibold">
-                      {r.qty} pcs
-                    </span>
-                  </div>
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
-        )}
-      </section>
+          {recent.length === 0 ? (
+            <p className="px-5 py-12 text-center text-[14px] text-ink-muted">
+              Belum ada scan pada line ini hari ini.
+            </p>
+          ) : (
+            <ul className="scroll-slim min-h-0 flex-1 divide-y divide-line overflow-y-auto">
+              <AnimatePresence initial={false}>
+                {recent.map((r) => (
+                  <motion.li
+                    key={`${r.id}-${r.rawCode}`}
+                    layout
+                    initial={{ opacity: 0, height: 0, backgroundColor: 'rgba(22,163,74,0.10)' }}
+                    animate={{ opacity: 1, height: 'auto', backgroundColor: 'rgba(22,163,74,0)' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{
+                      layout: springSoft,
+                      height: { duration: durations.base, ease: easeSoft },
+                      opacity: { duration: durations.base, ease: easeSoft },
+                      backgroundColor: { duration: 1.4, ease: easeSoft },
+                    }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex items-center gap-4 px-5 py-3 text-[14px]">
+                      <span className="tabular w-20 shrink-0 text-[13px] font-medium text-ink-muted">
+                        {new Date(r.scannedAt).toLocaleTimeString('id-ID', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
+                      </span>
+                      <span className="tabular min-w-0 flex-1 truncate font-semibold">
+                        {perKanban ? `Kanban ${r.serialNumber ?? '—'} · ${r.rawCode}` : r.rawCode}
+                      </span>
+                      <span className="hidden min-w-0 flex-1 truncate text-ink-soft sm:block">
+                        {r.partName ?? '—'}
+                      </span>
+                      <span className="tabular w-16 shrink-0 text-right font-semibold">
+                        {r.qty} pcs
+                      </span>
+                    </div>
+                  </motion.li>
+                ))}
+              </AnimatePresence>
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );
