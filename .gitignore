@@ -9,6 +9,11 @@ out/
 .env
 .env.*
 !.env.example
+# Contoh untuk server — isinya placeholder, tidak ada satu pun kredensial.
+# Dikecualikan karena docs/deploy.md menyuruh menyalinnya saat pemasangan
+# pertama: kalau tidak ikut ter-commit, langkah pertama di server gagal pada
+# berkas yang tidak pernah ada di sana.
+!.env.production.example
 .DS_Store
 *.log
 npm-debug.log*

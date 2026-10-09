@@ -9,6 +9,18 @@
 # ─────────────────────────────────────────────────────────────────────────────
 name: avicenna-app
 
+# Batas ukuran log, dipasang di SETIAP wadah.
+#
+# Driver json-file bawaan Docker tumbuh tanpa batas. Aplikasi ini mencatat tiap
+# scan, jadi yang pertama kehabisan disk bukan log-nya sendiri melainkan MySQL,
+# yang lalu berhenti menerima tulisan — dan lantai produksi berhenti bersamanya.
+# 10 MB x 5 berkas = paling banyak 50 MB per wadah.
+x-log: &log
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 x-app-env: &app-env
   NODE_ENV: production
   TZ: ${TZ:-Asia/Jakarta}
@@ -29,6 +41,7 @@ services:
       context: ..
       dockerfile: docker/api.Dockerfile
     container_name: avicenna-migrate
+    logging: *log
     command: ["node", "migrate.cjs"]
     environment: *app-env
     networks: [avicenna]
@@ -58,6 +71,7 @@ services:
       context: ..
       dockerfile: docker/api.Dockerfile
     container_name: avicenna-seed
+    logging: *log
     profiles: [tools]
     command: ["node", "node_modules/@avicenna/db/dist/seed.js"]
     environment: *app-env
@@ -70,6 +84,7 @@ services:
       context: ..
       dockerfile: docker/api.Dockerfile
     container_name: avicenna-api
+    logging: *log
     restart: unless-stopped
     depends_on:
       # API menolak menyala kalau migrasi gagal. Lebih baik tidak melayani sama
@@ -128,6 +143,7 @@ services:
         # miliknya sendiri dan monitor tidak pernah terhubung.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:3001}
     container_name: avicenna-web
+    logging: *log
     restart: unless-stopped
     depends_on:
       api:

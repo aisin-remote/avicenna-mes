@@ -110,6 +110,21 @@ WORKDIR /app
 # Berjalan sebagai bukan-root. Wadah yang berjalan sebagai root dan menembus
 # batasnya berarti root di host — dan wadah ini menghadap jaringan pabrik.
 COPY --from=build --chown=node:node /repo/out ./
+
+# Titik pasang volume foto dibuat DI SINI, bukan dibiarkan Docker membuatnya.
+#
+# Volume bernama yang dipasang ke jalur yang TIDAK ADA di dalam image dibuat
+# Docker sebagai milik root — sedangkan proses ini berjalan sebagai `node`.
+# Akibatnya unggah foto gagal dengan EACCES di server, sementara di laptop
+# (yang menulis ke folder biasa milik pengguna) tidak pernah terlihat. Dengan
+# foldernya sudah ada beserta pemiliknya, Docker menyalin kepemilikan itu ke
+# volume yang masih kosong.
+#
+# Volume yang terlanjur dibuat root TIDAK ikut terbetulkan oleh baris ini —
+# sekali saja di server: docker run --rm -v avicenna-foto:/data/foto busybox \
+#   chown -R 1000:1000 /data/foto
+RUN mkdir -p /data/foto && chown node:node /data/foto
+
 USER node
 
 EXPOSE 3001

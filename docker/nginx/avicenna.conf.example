@@ -1,0 +1,96 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Reverse proxy TLS untuk Avicenna MES.
+#
+# Contoh, bukan berkas yang langsung dipakai: ganti nama host dan jalur
+# sertifikat, lalu salin ke /etc/nginx/conf.d/avicenna.conf di server.
+#
+# Ada di repo karena ini satu-satunya bagian penerapan yang tadinya hanya hidup
+# di server, padahal justru yang paling mudah salah: tanpa setelan SSE di
+# bawah, monitor realtime tersendat lalu putus tanpa satu pun pesan — di layar
+# maupun di log.
+# ─────────────────────────────────────────────────────────────────────────────
+
+server {
+    listen 80;
+    server_name avicenna-next.aiia.co.id;
+
+    # Satu-satunya tugas: mengantar ke https. Kartu login berisi NPK|sandi, dan
+    # di http ia lewat sebagai teks biasa yang terbaca siapa pun di jaringan.
+    return 301 https://$host$request_uri;
+}
+
+server {
+    # Bentuk lama dengan sengaja: `http2 on;` baru ada di nginx 1.25.1, dan di
+    # versi yang biasa terpasang di CentOS 7 ia gagal sebagai "unknown
+    # directive" — nginx menolak menyala, bukan sekadar mengabaikannya.
+    listen 443 ssl http2;
+    server_name avicenna-next.aiia.co.id;
+
+    ssl_certificate     /etc/nginx/ssl/avicenna.crt;
+    ssl_certificate_key /etc/nginx/ssl/avicenna.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL:10m;
+
+    # Unggahan terbesar yang sah: impor Excel 5 MB (lihat MAKS_UKURAN_IMPOR di
+    # packages/contracts). Bawaan nginx 1 MB akan menolaknya dengan 413 dari
+    # proxy — sebelum permintaannya sampai ke aplikasi, jadi pesan yang muncul
+    # bukan pesan aplikasi dan tidak menyebut ukuran sama sekali.
+    client_max_body_size 8m;
+
+    access_log /var/log/nginx/avicenna-access.log;
+    error_log  /var/log/nginx/avicenna-error.log;
+
+    # ── Aliran SSE monitor ───────────────────────────────────────────────────
+    #
+    # SATU-SATUNYA jalur API yang dibuka keluar. Sisa endpoint API tetap hanya
+    # di 127.0.0.1 server: yang memanggilnya adalah web (dari dalam jaringan
+    # Docker), bukan browser.
+    #
+    # Browser menyambung ke https://<host>/realtime/line:DC-01 — satu origin
+    # dengan web, jadi cookie sesi ikut terkirim sendiri. Itu yang dipakai API
+    # untuk mengenali penggunanya (EventSource tidak bisa memasang header).
+    location /realtime/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+
+        # Empat baris yang menentukan hidup-matinya SSE:
+        #
+        #   proxy_buffering off   — tanpa ini nginx menahan aliran di penyangga
+        #                           dan melepasnya ketika penuh; scan yang baru
+        #                           terjadi baru muncul di layar menit-menit
+        #                           kemudian, atau tidak sama sekali.
+        #   Connection ''         — koneksi tetap terbuka; nilai bawaan
+        #                           "close"/"upgrade" memutusnya tiap pesan.
+        #   read_timeout 1h       — aliran yang sepi (lini sedang berhenti)
+        #                           tidak ikut diputus setelah 60 detik.
+        #   X-Accel-Buffering no  — pengaman kedua kalau ada proxy lain lagi
+        #                           di depan.
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_set_header Connection '';
+        proxy_read_timeout 3600s;
+        proxy_set_header X-Accel-Buffering no;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # ── Aplikasi web ─────────────────────────────────────────────────────────
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        # Next memakai websocket untuk sebagian fiturnya; Upgrade harus lewat.
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 120s;
+    }
+}

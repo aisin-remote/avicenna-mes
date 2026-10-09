@@ -43,18 +43,25 @@ menyala kalau kosong, bukan diam-diam memakai string kosong.
 
 ```bash
 # 1. Tumpukan data. Membuat jaringan avicenna-net yang dipakai aplikasi.
-docker compose -f docker/compose.data.yml up -d
+docker compose --env-file .env -f docker/compose.data.yml up -d
 
 # 2. Tunggu MySQL sehat (pertama kali bisa >1 menit — InnoDB dibangun).
-docker compose -f docker/compose.data.yml ps
+docker compose --env-file .env -f docker/compose.data.yml ps
 
 # 3. Tumpukan aplikasi. Migrasi jalan lebih dulu, otomatis.
-docker compose -f docker/compose.app.yml up -d --build
+docker compose --env-file .env -f docker/compose.app.yml up -d --build
 
 # 4. Seed — SEKALI SAJA, dan wajib.
 #    Tanpa ini tidak ada satu pun akun yang bisa masuk.
-docker compose -f docker/compose.app.yml --profile tools run --rm seed
+docker compose --env-file .env -f docker/compose.app.yml --profile tools run --rm seed
 ```
+
+**`--env-file .env` bukan hiasan.** Tanpa itu, tempat yang dicari compose
+bergantung versinya: ada yang membaca `.env` dari direktori kerja, ada yang
+dari folder berkas compose (di sini `docker/`). Yang salah tempat tidak
+menghasilkan galat yang jelas — variabel yang punya nilai bawaan diam-diam
+memakai bawaannya, dan aplikasi menyala menunjuk database yang salah.
+Menunjuknya sendiri membuat perilakunya sama di versi compose mana pun.
 
 Buka `http://<server>:3000`, masuk dengan NPK `ADMIN` / `admin123`.
 
@@ -65,7 +72,7 @@ tertulis di repo dan di dokumen ini.
 
 ```bash
 git pull
-docker compose -f docker/compose.app.yml up -d --build
+docker compose --env-file .env -f docker/compose.app.yml up -d --build
 ```
 
 Itu saja. Migrasi baru ikut jalan sendiri lewat wadah `migrate`, dan API
@@ -98,10 +105,41 @@ Yang dijaga script, supaya tidak perlu diingat:
 - `flock` mencegah dua deploy tumpang tindih (build bisa lebih lama dari
   interval cron).
 - Tumpukan data, seed, dan `.env` tidak pernah disentuh.
+- **Build yang gagal mengembalikan HEAD ke commit sebelumnya.** Tanpa itu HEAD
+  terlanjur maju ke commit yang gagal dibangun, perbandingan di awal script
+  berikutnya berbunyi "sudah sama", dan rilisnya tidak pernah dicoba lagi:
+  server menjalankan kode lama sementara git di server bilang semuanya
+  mutakhir. Commit yang gagal dicatat di `/var/tmp/avicenna-deploy-gagal` dan
+  dicoba ulang sejam sekali — cukup untuk menjemput gangguan sesaat (jaringan
+  kantor putus saat `pnpm install`), tidak cukup untuk membuat server sibuk
+  membangun kegagalan yang sama sepanjang hari.
+- Setelah deploy berhasil, `docker image prune -f` membuang image tanpa tag
+  dari rilis sebelumnya. Tanpa itu disk server habis dalam hitungan bulan, dan
+  yang pertama berhenti menulis adalah MySQL.
 
 Akses GitHub server memakai deploy key read-only lewat SSH port 443
 (`ssh.github.com`) — port 22 keluar diblokir firewall kantor. Kalau fetch
 gagal, yang pertama dicek adalah konektivitas itu, bukan key-nya.
+
+## Untuk pemasangan yang sudah berjalan
+
+Tiga hal di bawah tidak ikut terbawa oleh `git pull` + rebuild, karena
+menyangkut keadaan di server, bukan isi repo.
+
+**1. Kepemilikan volume foto.** Volume `avicenna-foto` yang dibuat sebelum
+image menyediakan `/data/foto` menjadi milik root, sedangkan API berjalan
+sebagai `node` — unggah foto gagal dengan EACCES. Sekali saja:
+
+```bash
+docker run --rm -v avicenna-foto:/data/foto busybox chown -R 1000:1000 /data/foto
+```
+
+**2. `WEB_BIND` di `.env` server.** Masih `0.0.0.0` dari pemasangan pertama.
+Ubah ke `127.0.0.1` begitu nginx berdiri, lalu `up -d` ulang tumpukan aplikasi.
+
+**3. Letak `.env`.** Pastikan ada di akar repo (`/home/avicenna/.env`).
+`auto-deploy.sh` menerima keduanya — akar repo lebih dulu, lalu `docker/.env` —
+tetapi perintah di dokumen ini menganggapnya di akar.
 
 ## Yang boleh dan tidak boleh
 
@@ -121,9 +159,29 @@ Tanpa awalan `127.0.0.1`, Docker membuka port ke semua antarmuka dan
 **melewati aturan firewall host**: database jadi terjangkau dari mana pun di
 jaringan, dan itu tidak terlihat di `ufw status`.
 
-Untuk TLS, taruh reverse proxy (nginx/traefik) di depan web, lalu ubah
-`WEB_BIND=127.0.0.1` di `.env`. Tanpa TLS, kartu login `NPK|sandi` lewat
-sebagai teks polos di jaringan.
+Untuk TLS, taruh reverse proxy di depan web, lalu ubah `WEB_BIND=127.0.0.1`
+di `.env`. Selama `WEB_BIND=0.0.0.0`, port 3000 yang polos TETAP terbuka ke
+seluruh jaringan pabrik di samping yang https — dan TLS-nya bisa dilewati
+hanya dengan mengetik `http://<server>:3000`, lengkap dengan kartu login
+`NPK|sandi` yang lewat sebagai teks biasa.
+
+Contoh vhost ada di [`docker/nginx/avicenna.conf.example`](../docker/nginx/avicenna.conf.example).
+Yang penting di sana bukan TLS-nya, melainkan blok `/realtime/`: tanpa
+`proxy_buffering off` dan `proxy_read_timeout` panjang, monitor realtime
+tersendat lalu putus tanpa satu pun pesan — di layar maupun di log. Jalankan
+`nginx -t` di server sebelum reload; berkas itu belum pernah diuji nginx mana
+pun.
+
+## Log dan setelan MySQL
+
+Setiap wadah dibatasi 10 MB x 5 berkas log (`x-log` di kedua compose). Driver
+json-file bawaan Docker tumbuh tanpa batas; aplikasi ini mencatat tiap scan,
+jadi yang pertama kehabisan disk bukan log-nya sendiri melainkan MySQL.
+
+`MYSQL_BUFFER_POOL` di `.env` masih 128 MB (bawaan MySQL). Tabel scan tumbuh
+belasan juta baris per tahun; begitu ia lebih besar dari buffer pool, tiap
+pembacaan laporan memukul disk. Patokan: sekitar setengah RAM server yang tidak
+dipakai hal lain. Berlaku setelah tumpukan data dijalankan ulang.
 
 ## Cadangan
 

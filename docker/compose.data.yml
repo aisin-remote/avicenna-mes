@@ -14,10 +14,23 @@
 # ─────────────────────────────────────────────────────────────────────────────
 name: avicenna-data
 
+# Batas ukuran log, dipasang di SETIAP wadah.
+#
+# Driver json-file bawaan Docker tumbuh tanpa batas. Aplikasi ini mencatat tiap
+# scan, jadi yang pertama kehabisan disk bukan log-nya sendiri melainkan MySQL,
+# yang lalu berhenti menerima tulisan — dan lantai produksi berhenti bersamanya.
+# 10 MB x 5 berkas = paling banyak 50 MB per wadah.
+x-log: &log
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   mysql:
     image: mysql:8.4
     container_name: avicenna-mysql
+    logging: *log
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?wajib diisi di .env}
@@ -35,6 +48,11 @@ services:
       # YANG SAMA bisa selisih tujuh jam — dan laporan per shift ikut salah
       # tanpa ada satu pun galat yang muncul.
       - --default-time-zone=+07:00
+      # Bawaan MySQL 128 MB — ditulis di sini supaya TERLIHAT, bukan supaya
+      # berubah. Tabel scan tumbuh belasan juta baris per tahun; begitu ia
+      # lebih besar dari buffer pool, tiap pembacaan laporan memukul disk.
+      # Patokan: sekitar setengah RAM server yang tidak dipakai hal lain.
+      - --innodb-buffer-pool-size=${MYSQL_BUFFER_POOL:-128M}
     ports:
       # Hanya ke localhost server, TIDAK ke seluruh jaringan pabrik.
       #
@@ -60,6 +78,7 @@ services:
   valkey:
     image: valkey/valkey:9-alpine
     container_name: avicenna-valkey
+    logging: *log
     restart: unless-stopped
     # appendonly: antrean yang belum sempat dikerjakan selamat dari restart.
     # Tanpa itu, backflush dan hitung-ulang saldo yang tertunda hilang diam-diam
@@ -79,6 +98,7 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: avicenna-mqtt
+    logging: *log
     restart: unless-stopped
     ports:
       - "${MQTT_BIND:-127.0.0.1}:${MQTT_PORT:-1883}:1883"
