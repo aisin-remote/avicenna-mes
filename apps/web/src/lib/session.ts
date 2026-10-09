@@ -1,7 +1,8 @@
 import 'server-only';
 import { cookies } from 'next/headers';
+import { NAMA_COOKIE_SESI } from '@avicenna/contracts';
 
-const COOKIE = 'avicenna_token';
+const COOKIE = NAMA_COOKIE_SESI;
 
 export interface SessionUser {
   id: number;

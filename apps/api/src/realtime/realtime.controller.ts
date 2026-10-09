@@ -1,7 +1,16 @@
 import { Controller, Sse, Param, Query, MessageEvent } from '@nestjs/common';
 import { Observable, map } from 'rxjs';
 import { RealtimeService } from './realtime.service';
+import { TokenDariCookie } from '../auth/jwt-auth.guard';
 
+/*
+ * Aliran SSE dibaca EventSource, yang TIDAK BISA memasang header Authorization.
+ * Satu-satunya kredensial yang ikut terkirim sendiri adalah cookie sesi — dan
+ * di produksi itu memang satu origin dengan web (nginx meneruskan /realtime/ ke
+ * API). Tanpa izin ini monitor menjawab 401 selamanya, dan EventSource mencoba
+ * ulang tiap beberapa detik tanpa satu pun pesan yang terlihat di layar.
+ */
+@TokenDariCookie()
 @Controller('realtime')
 export class RealtimeController {
   constructor(private readonly realtime: RealtimeService) {}

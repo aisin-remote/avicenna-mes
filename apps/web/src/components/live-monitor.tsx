@@ -36,7 +36,12 @@ export function LiveMonitor({ lineCode, apiUrl }: { lineCode: string; apiUrl: st
 
   useEffect(() => {
     const url = `${apiUrl}/realtime/line:${encodeURIComponent(lineCode)}`;
-    const source = new EventSource(url);
+    /*
+     * withCredentials: cookie sesi ikut terkirim — itulah satu-satunya cara
+     * EventSource membuktikan diri, karena ia tidak bisa memasang header.
+     * Tanpa ini API menjawab 401 dan monitor diam di "menyambung ulang".
+     */
+    const source = new EventSource(url, { withCredentials: true });
 
     source.onopen = () => setStatus('live');
     source.onerror = () => setStatus('reconnecting');

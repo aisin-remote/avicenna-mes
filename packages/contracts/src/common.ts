@@ -122,6 +122,17 @@ export const ROLE_KINDS = ['SCANNING', 'VIEW', 'ADMIN'] as const;
 export type RoleKind = (typeof ROLE_KINDS)[number];
 
 /**
+ * Nama cookie sesi.
+ *
+ * Ditaruh di contracts karena DUA sisi membacanya: web yang menuliskannya saat
+ * login, dan API yang menerimanya pada aliran SSE (EventSource di browser tidak
+ * bisa mengirim header Authorization). Ditulis dua kali sebagai teks di dua
+ * paket yang berbeda, satu hari salah satunya berganti nama dan monitor berhenti
+ * menerima data tanpa satu pun galat yang menyebut sebabnya.
+ */
+export const NAMA_COOKIE_SESI = 'avicenna_token';
+
+/**
  * ─── METODE SCAN sebuah proses ──────────────────────────────────────────────
  *
  * Satu kolom di TM_ROUTE_PROCESS (per pabrik per proses) yang menentukan
