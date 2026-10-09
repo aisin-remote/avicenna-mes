@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { MAKS_UKURAN_FOTO, MAKS_UKURAN_IMPOR } from '@avicenna/contracts';
 
 // .env tunggal ada di root repo; Next hanya membaca apps/web/.env. Dimuat di
 // sini supaya API_URL dkk. sudah ada sebelum modul server mana pun dievaluasi.
@@ -26,6 +27,27 @@ const config: NextConfig = {
    * Gejalanya menyesatkan, jadi host-host ini diizinkan sejak awal.
    */
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
+  experimental: {
+    serverActions: {
+      /*
+       * Batas bawaan Server Action adalah 1 MB — lebih kecil dari dua berkas
+       * yang memang dikirim lewatnya.
+       *
+       * Foto part (maks 2 MB) dan impor Excel (maks 5 MB) sama-sama dikirim
+       * sebagai FormData ke Server Action. Dengan batas bawaan, berkas di atas
+       * 1 MB ditolak Next SEBELUM pemeriksaan ukuran milik aplikasi sempat
+       * berjalan — jadi pesan yang muncul bukan "gambar lebih dari 2 MB",
+       * melainkan galat server yang tidak menyebut ukuran sama sekali. Persis
+       * kelas kesalahan yang sama dengan batas body Express di API.
+       *
+       * Diturunkan dari konstanta yang sama dengan yang dipakai validasi,
+       * supaya menaikkan batas foto tidak menuntut mengingat berkas ini.
+       * Tambahan 256 KB untuk pembungkus multipart (batas bagian, header,
+       * nama kolom).
+       */
+      bodySizeLimit: Math.max(MAKS_UKURAN_IMPOR, MAKS_UKURAN_FOTO) + 256 * 1024,
+    },
+  },
 };
 
 export default config;
