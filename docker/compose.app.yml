@@ -80,6 +80,33 @@ services:
     environment: *app-env
     networks: [avicenna]
     restart: "no"
+  # ── Pindah master dari MySQL lama — SEKALI, saat pindah database ──────────
+  #
+  #     docker compose -f docker/compose.app.yml --profile tools run --rm pindah-master
+  #         (uji coba: melaporkan berapa baris yang akan pindah, tanpa menulis)
+  #
+  #     docker compose -f docker/compose.app.yml --profile tools run --rm \
+  #       pindah-master node node_modules/@avicenna/db/dist/pindah-master.js --tulis
+  #
+  # Di profil `tools`, jadi `up -d` biasa tidak pernah menyentuhnya. Hanya tabel
+  # TM_ (master) yang dipindah; riwayat transaksi ditinggal.
+  pindah-master:
+    image: avicenna-api:${TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    container_name: avicenna-pindah-master
+    profiles: [tools]
+    command: ["node", "node_modules/@avicenna/db/dist/pindah-master.js"]
+    environment:
+      <<: *app-env
+      # Database LAMA. Wadah mysql masih berjalan di jaringan yang sama selama
+      # volumenya belum dibuang — karena itu ia tidak boleh dimatikan sampai
+      # pemindahan ini selesai dan hasilnya diperiksa.
+      MYSQL_SOURCE_URL: mysql://${MYSQL_USER:-avicenna}:${MYSQL_PASSWORD:-}@mysql:3306/${MYSQL_DATABASE:-avicenna}
+    networks: [avicenna]
+    restart: "no"
+
 
   api:
     image: avicenna-api:${TAG:-latest}

@@ -8,7 +8,11 @@ export default defineConfig((options) => ({
   // Tanpa ini ia hanya bisa lewat tsx, yang sengaja tidak ikut ke image —
   // dan database yang baru dipasang tidak punya satu pun akun untuk masuk,
   // sehingga aplikasinya menyala tetapi tidak bisa dipakai siapa pun.
-  entry: ['src/index.ts', 'src/load-env.ts', 'src/seed.ts'],
+  //
+  // pindah-master ikut dibangun dengan alasan yang sama: ia dijalankan
+  // SEKALI di server, dari dalam jaringan Docker, karena hanya dari sana
+  // MySQL lama dan Postgres baru sama-sama terjangkau.
+  entry: ['src/index.ts', 'src/load-env.ts', 'src/seed.ts', 'src/pindah-master.ts'],
   format: ['cjs', 'esm'],
   dts: true,
   sourcemap: true,
