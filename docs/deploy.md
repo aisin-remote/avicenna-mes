@@ -9,7 +9,7 @@ Dua tumpukan compose terpisah, disambung satu jaringan Docker:
 
 ```
 compose.data.yml                    compose.app.yml
-  mysql      (volume: mysql_data)     migrate  sekali jalan, lalu mati
+  postgres   (volume: pg_data)        migrate  sekali jalan, lalu mati
   valkey     (volume: valkey_data)    api      menunggu migrate sukses
   mosquitto                           web      menunggu api sehat
             └──────── jaringan avicenna-net ────────┘
@@ -38,14 +38,20 @@ Lalu isi `.env`. Dua yang wajib diganti:
 openssl rand -base64 48     # tempel hasilnya ke JWT_SECRET
 ```
 
-`MYSQL_PASSWORD` dan `MYSQL_ROOT_PASSWORD` juga wajib — compose menolak
-menyala kalau kosong, bukan diam-diam memakai string kosong.
+`POSTGRES_PASSWORD` juga wajib — compose menolak menyala kalau kosong, bukan
+diam-diam memakai string kosong.
+
+Satu jebakan pada sandi: compose menyusun `DATABASE_URL` dari nilai itu apa
+adanya, jadi karakter `@ : / ? #` di dalam sandi harus di-encode (`@` menjadi
+`%40`). Tanpa itu pemisah host pada URL salah dibaca dan aplikasi menyambung ke
+tempat lain — tanpa satu pun pesan yang menyebut soal sandi. Paling aman: huruf,
+angka, dan tanda hubung saja.
 
 ```bash
 # 1. Tumpukan data. Membuat jaringan avicenna-net yang dipakai aplikasi.
 docker compose --env-file .env -f docker/compose.data.yml up -d
 
-# 2. Tunggu MySQL sehat (pertama kali bisa >1 menit — InnoDB dibangun).
+# 2. Tunggu Postgres sehat (pertama kali lebih lama — initdb berjalan).
 docker compose --env-file .env -f docker/compose.data.yml ps
 
 # 3. Tumpukan aplikasi. Migrasi jalan lebih dulu, otomatis.
@@ -115,7 +121,7 @@ Yang dijaga script, supaya tidak perlu diingat:
   membangun kegagalan yang sama sepanjang hari.
 - Setelah deploy berhasil, `docker image prune -f` membuang image tanpa tag
   dari rilis sebelumnya. Tanpa itu disk server habis dalam hitungan bulan, dan
-  yang pertama berhenti menulis adalah MySQL.
+  yang pertama berhenti menulis adalah Postgres.
 
 Akses GitHub server memakai deploy key read-only lewat SSH port 443
 (`ssh.github.com`) — port 22 keluar diblokir firewall kantor. Kalau fetch
@@ -141,6 +147,39 @@ Ubah ke `127.0.0.1` begitu nginx berdiri, lalu `up -d` ulang tumpukan aplikasi.
 `auto-deploy.sh` menerima keduanya — akar repo lebih dulu, lalu `docker/.env` —
 tetapi perintah di dokumen ini menganggapnya di akar.
 
+## Pindah dari MySQL (sekali, saat rilis Postgres pertama)
+
+Database aplikasi pindah dari MySQL ke PostgreSQL, dengan satu skema per modul
+(`org`, `master`, `production`, `kanban`, `inventory`, `logistics`, `quality`,
+`machine`, `sap`). Keputusannya: **mulai dari bersih** — data lama TIDAK
+dipindahkan, master diisi ulang lewat seed dan tarik master.
+
+Yang harus dikerjakan di server, berurutan:
+
+```bash
+# 1. Cadangkan MySQL lama dan SIMPAN, meski tidak dipakai lagi.
+#    Ini satu-satunya jejak scan yang pernah terjadi sebelum pindah.
+docker exec avicenna-mysql mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" \
+  --single-transaction --routines avicenna | gzip > avicenna-mysql-terakhir.sql.gz
+
+# 2. Hentikan tumpukan data lama, lalu isi POSTGRES_* di .env
+#    (MYSQL_* sudah tidak dibaca siapa pun).
+docker compose --env-file .env -f docker/compose.data.yml down
+
+# 3. Nyalakan tumpukan data baru. Wadah postgres membuat database kosong.
+docker compose --env-file .env -f docker/compose.data.yml up -d
+
+# 4. Aplikasi: migrasi jalan sendiri lewat wadah `migrate`.
+docker compose --env-file .env -f docker/compose.app.yml up -d --build
+
+# 5. Seed — wajib, sama seperti pemasangan pertama.
+docker compose --env-file .env -f docker/compose.app.yml --profile tools run --rm seed
+```
+
+Volume `mysql_data` sengaja TIDAK dihapus oleh langkah mana pun di atas. Hapus
+sendiri setelah beberapa minggu berjalan tanpa keluhan, bukan di hari rilis —
+dan hanya setelah cadangan di langkah 1 terbukti bisa dibuka.
+
 ## Yang boleh dan tidak boleh
 
 | perintah | akibat |
@@ -152,7 +191,7 @@ tetapi perintah di dokumen ini menganggapnya di akar.
 
 ## Port
 
-Hanya `web` (3000) yang menghadap jaringan pabrik. MySQL, Valkey, dan API
+Hanya `web` (3000) yang menghadap jaringan pabrik. Postgres, Valkey, dan API
 diikat ke `127.0.0.1` server — tidak terjangkau dari komputer lain.
 
 Tanpa awalan `127.0.0.1`, Docker membuka port ke semua antarmuka dan
@@ -172,28 +211,38 @@ tersendat lalu putus tanpa satu pun pesan — di layar maupun di log. Jalankan
 `nginx -t` di server sebelum reload; berkas itu belum pernah diuji nginx mana
 pun.
 
-## Log dan setelan MySQL
+## Log dan setelan Postgres
 
 Setiap wadah dibatasi 10 MB x 5 berkas log (`x-log` di kedua compose). Driver
 json-file bawaan Docker tumbuh tanpa batas; aplikasi ini mencatat tiap scan,
-jadi yang pertama kehabisan disk bukan log-nya sendiri melainkan MySQL.
+jadi yang pertama kehabisan disk bukan log-nya sendiri melainkan Postgres.
 
-`MYSQL_BUFFER_POOL` di `.env` masih 128 MB (bawaan MySQL). Tabel scan tumbuh
-belasan juta baris per tahun; begitu ia lebih besar dari buffer pool, tiap
-pembacaan laporan memukul disk. Patokan: sekitar setengah RAM server yang tidak
-dipakai hal lain. Berlaku setelah tumpukan data dijalankan ulang.
+`POSTGRES_SHARED_BUFFERS` di `.env` masih 128 MB (bawaan Postgres). Tabel scan
+tumbuh belasan juta baris per tahun; begitu ia lebih besar dari shared_buffers,
+tiap pembacaan laporan memukul disk. Patokan: sekitar seperempat RAM server yang
+tidak dipakai hal lain. Berlaku setelah tumpukan data dijalankan ulang.
 
 ## Cadangan
 
 Belum ada otomatisasi. Minimal yang harus berjalan sebelum dipakai produksi:
 
 ```bash
-docker exec avicenna-mysql mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" \
-  --single-transaction --routines avicenna | gzip > backup-$(date +%F).sql.gz
+docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" avicenna-postgres \
+  pg_dump -U "$POSTGRES_USER" -d avicenna --format=custom \
+  > backup-$(date +%F).dump
 ```
 
-`--single-transaction` penting: tanpa itu mysqldump mengunci tabel dan scan di
-lantai produksi berhenti selama pencadangan berjalan.
+`pg_dump` berjalan di dalam satu snapshot transaksi dan TIDAK mengunci tabel,
+jadi scan di lantai produksi tetap jalan selama pencadangan. Format `custom`
+dipilih karena bisa dipulihkan sebagian — satu skema atau satu tabel saja —
+lewat `pg_restore`, sesuatu yang tidak bisa dilakukan berkas SQL polos.
+
+Memulihkan seluruhnya:
+
+```bash
+docker exec -i -e PGPASSWORD="$POSTGRES_PASSWORD" avicenna-postgres \
+  pg_restore -U "$POSTGRES_USER" -d avicenna --clean --if-exists < backup-2026-10-13.dump
+```
 
 ## Jaringan kantor
 

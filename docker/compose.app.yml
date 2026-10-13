@@ -26,7 +26,10 @@ x-app-env: &app-env
   TZ: ${TZ:-Asia/Jakarta}
   # Nama host wadah, bukan IP. Docker yang menerjemahkannya; IP wadah berganti
   # setiap kali ia dibuat ulang.
-  DATABASE_URL: mysql://${MYSQL_USER:-avicenna}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-avicenna}
+  # Nama host wadah `postgres`, bukan IP. Sandi yang memuat karakter khusus
+  # (@ : / ?) harus sudah ter-encode di .env — bukan di sini — sebab compose
+  # menyalin nilainya apa adanya.
+  DATABASE_URL: postgresql://${POSTGRES_USER:-avicenna}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-avicenna}
   REDIS_URL: redis://valkey:6379
 
 services:

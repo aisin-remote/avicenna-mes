@@ -27,51 +27,59 @@ x-log: &log
     max-file: "5"
 
 services:
-  mysql:
-    image: mysql:8.4
-    container_name: avicenna-mysql
+  postgres:
+    # Varian bullseye dengan SENGAJA, bukan bookworm (bawaan tag :16).
+    #
+    # Server produksi masih CentOS 7 berkernel 3.10 dengan libseccomp lama.
+    # Image berbasis Debian 12 memakai syscall yang diblokir profil seccomp
+    # lama (clone3) dan gagal dengan "Operation not permitted" yang tidak
+    # menyebut seccomp sama sekali — kelas kegagalan yang sama dengan EPERM
+    # pada image alpine yang sudah pernah kita alami. Bullseye (Debian 11)
+    # lolos tanpa melonggarkan seccomp.
+    image: postgres:16-bullseye
+    container_name: avicenna-postgres
     logging: *log
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?wajib diisi di .env}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-avicenna}
-      MYSQL_USER: ${MYSQL_USER:-avicenna}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?wajib diisi di .env}
+      POSTGRES_DB: ${POSTGRES_DB:-avicenna}
+      POSTGRES_USER: ${POSTGRES_USER:-avicenna}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?wajib diisi di .env}
       TZ: ${TZ:-Asia/Jakarta}
+      # Zona waktu SESI database. Kolom waktu bertipe timestamptz sehingga
+      # momennya tidak ambigu, tetapi CURRENT_DATE dan ::date — yang dipakai
+      # laporan per shift — mengikuti zona ini. Harus jam dinding pabrik.
+      PGTZ: ${TZ:-Asia/Jakarta}
     command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      # Zona waktu server disamakan dengan TZ aplikasi.
-      #
-      # Kolom yang diisi Node dan kolom ber-DEFAULT CURRENT_TIMESTAMP ditulis
-      # dua pihak yang berbeda. Kalau zonanya beda, dua kolom waktu di BARIS
-      # YANG SAMA bisa selisih tujuh jam — dan laporan per shift ikut salah
-      # tanpa ada satu pun galat yang muncul.
-      - --default-time-zone=+07:00
-      # Bawaan MySQL 128 MB — ditulis di sini supaya TERLIHAT, bukan supaya
-      # berubah. Tabel scan tumbuh belasan juta baris per tahun; begitu ia
-      # lebih besar dari buffer pool, tiap pembacaan laporan memukul disk.
-      # Patokan: sekitar setengah RAM server yang tidak dipakai hal lain.
-      - --innodb-buffer-pool-size=${MYSQL_BUFFER_POOL:-128M}
+      - postgres
+      # Bawaan Postgres 128 MB — ditulis di sini supaya TERLIHAT, bukan supaya
+      # berubah. Tabel scan tumbuh belasan juta baris per tahun; begitu lebih
+      # besar dari shared_buffers, tiap pembacaan laporan memukul disk.
+      # Patokan: sekitar seperempat RAM server yang tidak dipakai hal lain.
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-128MB}
+      - -c
+      - timezone=${TZ:-Asia/Jakarta}
     ports:
       # Hanya ke localhost server, TIDAK ke seluruh jaringan pabrik.
       #
-      # Tanpa awalan 127.0.0.1, Docker membuka 3306 ke semua antarmuka dan
+      # Tanpa awalan 127.0.0.1, Docker membuka 5432 ke semua antarmuka dan
       # melewati aturan firewall host — database jadi terjangkau dari mana pun
       # di jaringan, dan itu tidak terlihat di `ufw status`.
-      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      # Subdirektori PGDATA, bukan akar volume: direktori data Postgres harus
+      # kosong saat initdb, sedangkan akar volume bisa berisi lost+found.
+      - pg_data:/var/lib/postgresql/data
     networks: [avicenna]
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-avicenna} -d ${POSTGRES_DB:-avicenna}"]
       interval: 10s
       timeout: 5s
       retries: 12
-      # Jendela longgar: MySQL membangun ulang InnoDB saat pertama kali menyala,
-      # dan pada disk lambat itu bisa lebih dari semenit. Terlalu pendek membuat
-      # wadah ditandai tidak sehat lalu di-restart di tengah inisialisasi.
-      start_period: 90s
+      # Jendela longgar: initdb pada pemasangan pertama memakan waktu, dan
+      # wadah yang ditandai tidak sehat lalu di-restart di tengah inisialisasi
+      # meninggalkan direktori data yang separuh jadi.
+      start_period: 60s
 
   # Valkey: fork Redis berlisensi BSD (Linux Foundation), protokol sama persis.
   # BullMQ dan ioredis jalan tanpa perubahan kode apa pun.
@@ -108,7 +116,7 @@ services:
     networks: [avicenna]
 
 volumes:
-  mysql_data:
+  pg_data:
   valkey_data:
   mosquitto_data:
 

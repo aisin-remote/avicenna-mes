@@ -47,13 +47,18 @@ controller PHP dulu. Aturan yang dipegang di repo ini:
 
 ### Prasyarat
 
-Node 20+, pnpm 9, **MySQL 8.4**, **Valkey 8+**. Docker opsional
+Node 20+, pnpm 9, **PostgreSQL 16**, **Valkey 8+**. Docker opsional
 (`docker-compose.yml` menyediakan ketiganya untuk development).
 
-Versi MySQL sengaja dipatok 8.4 agar sama dengan server 172.18.3.75 (8.4.9).
-Di macOS: `brew install mysql@8.4` lalu `brew services start mysql@8.4`.
-Jangan memasang beberapa versi MySQL sekaligus sebagai layanan — semuanya
-memakai datadir default yang sama dan akan saling merusak.
+Versi Postgres dipatok 16 agar sama dengan server. Di macOS:
+`brew install postgresql@16` lalu `brew services start postgresql@16`.
+
+Skemanya dibagi per modul — `org`, `master`, `production`, `kanban`,
+`inventory`, `logistics`, `quality`, `machine`, `sap` — mengikuti pembagian
+berkas di `packages/db/src/schema`. Nama tabel tetap `TM_`/`TT_` huruf besar
+supaya padanannya dengan database staging SAP tidak putus; konsekuensinya SQL
+mentah WAJIB mengutip identifier dan menyebut skemanya:
+`SELECT ... FROM master."TM_PARTS"`.
 
 **Valkey, bukan Redis.** Valkey adalah fork Redis berlisensi BSD di bawah
 Linux Foundation, dibuat setelah Redis mengubah lisensinya pada 2024 — jalur
@@ -87,7 +92,7 @@ publik pihak ketiga bukan pilihan yang sehat untuk jangka panjang.
 ```bash
 cp .env.example .env          # lalu isi DATABASE_URL & JWT_SECRET
 pnpm install
-docker compose up -d          # atau pakai MySQL & Redis yang sudah ada
+docker compose up -d          # atau pakai Postgres & Valkey yang sudah ada
 
 pnpm build                    # packages harus di-build sebelum apps
 pnpm db:migrate
@@ -102,7 +107,7 @@ pnpm dev                      # web :3000, api :3001
 pnpm test                     # test unit domain
 pnpm typecheck
 pnpm db:generate              # buat migration dari perubahan skema
-pnpm db:check-names           # cegah identifier > 64 karakter (batas MySQL)
+pnpm db:check-names           # cegah identifier > 63 karakter (batas Postgres)
 pnpm db:studio                # penjelajah database
 ```
 
@@ -156,7 +161,7 @@ kehilangan type safety, tepat di tempat kontrol paling dibutuhkan.
 **Tabel event bersifat append-only.** `scan_events`, `kanban_events`,
 `mutations`, `machine_events` tidak pernah di-UPDATE atau DELETE. Koreksi
 dicatat sebagai baris baru. Ini menjaga jejak audit untuk customer tetap utuh —
-dan membuat angka yang salah bisa ditelusuri, tidak seperti trigger MySQL yang
+dan membuat angka yang salah bisa ditelusuri, tidak seperti trigger database yang
 memperbarui `production_stocks` di bella.
 
 **Saldo adalah turunan.** `stock_balances` hanya cache; sumber kebenarannya
@@ -166,7 +171,7 @@ memperbarui `production_stocks` di bella.
 job dan siaran yang hilang bisa. Karena itu enqueue dan publish dibatasi waktu
 dan kegagalannya hanya dicatat. Lihat `apps/api/src/common/with-timeout.ts`.
 
-**Batas identifier MySQL 64 karakter.** Drizzle menyusun nama constraint FK dari
+**Batas identifier Postgres 63 karakter.** Drizzle menyusun nama constraint FK dari
 nama tabel + kolom, jadi tabel bernama panjang menembus batas itu — dan baru
 ketahuan saat migration dijalankan. `pnpm db:check-names` menangkapnya lebih awal.
 

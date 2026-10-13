@@ -1,26 +1,24 @@
 # Infrastruktur untuk development lokal.
-# Produksi on-prem: pakai MySQL & Redis yang sudah ada, bukan file ini.
+# Produksi on-prem: pakai docker/compose.data.yml, bukan berkas ini.
 services:
-  mysql:
-    image: mysql:8.4  # samakan dengan server 172.18.3.75
-    container_name: avicenna-mysql
+  postgres:
+    image: postgres:16-bullseye  # samakan mayor dengan server
+    container_name: avicenna-postgres
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: avicenna
-      MYSQL_USER: avicenna
-      MYSQL_PASSWORD: avicenna
+      POSTGRES_DB: avicenna
+      POSTGRES_USER: avicenna
+      POSTGRES_PASSWORD: avicenna
       TZ: Asia/Jakarta
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --default-time-zone=+07:00
+      # Laporan per shift memotong waktu memakai CURRENT_DATE dan ::date, dan
+      # keduanya mengikuti zona sesi — harus jam dinding pabrik, bukan UTC.
+      PGTZ: Asia/Jakarta
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      test: ["CMD-SHELL", "pg_isready -U avicenna -d avicenna"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -52,5 +50,5 @@ services:
       - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
 volumes:
-  mysql_data:
+  pg_data:
   valkey_data:
