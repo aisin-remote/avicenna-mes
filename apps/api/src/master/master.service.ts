@@ -1,6 +1,12 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { and, or, like, eq, asc, desc, count, sql, type Database } from '@avicenna/db';
 import { getMasterTable } from '@avicenna/db';
+import { sebabGalatDb } from '@avicenna/db';
 import {
   getEntityDef,
   buildCreateSchema,
@@ -9,13 +15,6 @@ import {
 } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
 import { validationError } from '../common/validation-error';
-
-/** Kode galat MySQL yang perlu diterjemahkan jadi pesan yang bisa dipahami pengguna. */
-const MYSQL = {
-  DUP_ENTRY: 1062,
-  ROW_IS_REFERENCED: 1451,
-  NO_REFERENCED_ROW: 1452,
-} as const;
 
 export interface ListParams {
   page: number;
@@ -97,7 +96,9 @@ export class MasterService {
     const rows = await this.db.select().from(table).where(eq(table.id, id)).limit(1);
     const row = rows[0];
     if (!row) {
-      throw new NotFoundException(`${getEntityDef(entity).singular} dengan id ${id} tidak ditemukan`);
+      throw new NotFoundException(
+        `${getEntityDef(entity).singular} dengan id ${id} tidak ditemukan`,
+      );
     }
     return row;
   }
@@ -210,7 +211,7 @@ export class MasterService {
   ) {
     if (entity !== 'route-processes') return;
 
-    const nilai = <T,>(nama: string): T | null | undefined =>
+    const nilai = <T>(nama: string): T | null | undefined =>
       (values[nama] !== undefined ? values[nama] : barisLama?.[nama]) as T | null | undefined;
 
     const keluar = nilai<number>('outputLocationId') ?? null;
@@ -260,9 +261,8 @@ export class MasterService {
 
     const table = this.table(entity);
     try {
-      const result = await this.db.insert(table).values(parsed.data);
-      // mysql2 mengembalikan insertId pada elemen pertama.
-      const insertId = Number((result as unknown as Array<{ insertId: number }>)[0]?.insertId);
+      const result = await this.db.insert(table).values(parsed.data).returning({ id: table.id });
+      const insertId = Number(result[0]?.id);
       return this.findOne(entity, insertId);
     } catch (err) {
       throw translateDbError(err, entity);
@@ -367,21 +367,20 @@ function shortLabelOf(row: Record<string, unknown>): string {
  * tentang apa yang harus dilakukan.
  */
 function translateDbError(err: unknown, entity: MasterEntity): Error {
-  const e = err as { errno?: number; cause?: { errno?: number } };
-  const errno = e?.errno ?? e?.cause?.errno;
+  const sebab = sebabGalatDb(err);
   const def = getEntityDef(entity);
 
-  if (errno === MYSQL.DUP_ENTRY) {
+  if (sebab === 'DUPLIKAT') {
     return new ConflictException(
       `${def.singular} dengan kode tersebut sudah ada. Gunakan kode lain.`,
     );
   }
-  if (errno === MYSQL.ROW_IS_REFERENCED) {
+  if (sebab === 'MASIH_DIRUJUK') {
     return new ConflictException(
       `${def.singular} ini masih dipakai data lain sehingga tidak bisa dihapus. Nonaktifkan saja agar riwayatnya tetap utuh.`,
     );
   }
-  if (errno === MYSQL.NO_REFERENCED_ROW) {
+  if (sebab === 'RUJUKAN_HILANG') {
     return new BadRequestException(
       `Referensi yang dipilih tidak ditemukan. Muat ulang halaman lalu coba lagi.`,
     );

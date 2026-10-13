@@ -1,15 +1,6 @@
-import {
-  mysqlTable,
-  varchar,
-  int,
-  timestamp,
-  mysqlEnum,
-  uniqueIndex,
-  index,
-  json,
-} from 'drizzle-orm/mysql-core';
+import { index, integer, jsonb, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { pk, fk, timestamps, PROCESS_TYPES } from './_shared';
+import { PROCESS_TYPES, daftarNilai, enumCol, fk, pk, qualitySchema, timestamps } from './_shared';
 import { PROCESS_GROUPS } from '@avicenna/contracts';
 import { parts, lines, machines } from './master';
 import { kanbans } from './kanban';
@@ -27,7 +18,7 @@ import { plants, users } from './org';
  *
  * Kosong berarti berlaku di semua proses — padanan "DLL" di layar lama.
  */
-export const ngMasters = mysqlTable(
+export const ngMasters = qualitySchema.table(
   'TM_NG',
   {
     id: pk(),
@@ -36,20 +27,23 @@ export const ngMasters = mysqlTable(
       .references(() => plants.id),
     code: varchar('CHR_CODE', { length: 32 }).notNull(),
     name: varchar('CHR_NAME', { length: 128 }).notNull(),
-    processGroup: mysqlEnum('CHR_PROCESS_GROUP', PROCESS_GROUPS),
+    processGroup: enumCol('CHR_PROCESS_GROUP', PROCESS_GROUPS),
     category: varchar('CHR_CATEGORY', { length: 64 }),
-    sortOrder: int('INT_SORT_ORDER').notNull().default(0),
-    isActive: mysqlEnum('CHR_IS_ACTIVE', ['0', '1']).notNull().default('1'),
+    sortOrder: integer('INT_SORT_ORDER').notNull().default(0),
+    isActive: enumCol('CHR_IS_ACTIVE', ['0', '1']).notNull().default('1'),
     ...timestamps,
   },
   (t) => [
     uniqueIndex('TM_NG_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
     index('TM_NG_GROUP_IDX').on(t.plantId, t.processGroup, t.sortOrder),
+  
+    daftarNilai('TM_NG_CHR_PROCESS_GROUP_CHK', t.processGroup, PROCESS_GROUPS),
+    daftarNilai('TM_NG_CHR_IS_ACTIVE_CHK', t.isActive, ['0', '1']),
   ],
 );
 
 /** Header pemeriksaan kualitas: satu sesi inspeksi. */
-export const qualityInspections = mysqlTable(
+export const qualityInspections = qualitySchema.table(
   'TT_INSPECTION_H',
   {
     id: pk(),
@@ -61,12 +55,12 @@ export const qualityInspections = mysqlTable(
       .references(() => parts.id),
     lineId: fk('INT_LINE_ID').references(() => lines.id),
     machineId: fk('INT_MACHINE_ID').references(() => machines.id),
-    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
-    inspectedAt: timestamp('DTM_INSPECTED_AT').notNull(),
-    shift: mysqlEnum('CHR_SHIFT', ['1', '2', '3']),
-    checkedQty: int('INT_CHECKED_QTY').notNull().default(0),
-    okQty: int('INT_OK_QTY').notNull().default(0),
-    ngQty: int('INT_NG_QTY').notNull().default(0),
+    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    inspectedAt: timestamp('DTM_INSPECTED_AT', { withTimezone: true, mode: 'date' }).notNull(),
+    shift: enumCol('CHR_SHIFT', ['1', '2', '3']),
+    checkedQty: integer('INT_CHECKED_QTY').notNull().default(0),
+    okQty: integer('INT_OK_QTY').notNull().default(0),
+    ngQty: integer('INT_NG_QTY').notNull().default(0),
     inspectorId: fk('INT_INSPECTOR_ID').references(() => users.id),
     note: varchar('CHR_NOTE', { length: 255 }),
     ...timestamps,
@@ -74,6 +68,9 @@ export const qualityInspections = mysqlTable(
   (t) => [
     index('TT_INSPECTION_H_PART_TIME_IDX').on(t.partId, t.inspectedAt),
     index('TT_INSPECTION_H_LINE_TIME_IDX').on(t.lineId, t.inspectedAt),
+  
+    daftarNilai('TT_INSPECTION_H_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
+    daftarNilai('TT_INSPECTION_H_CHR_SHIFT_CHK', t.shift, ['1', '2', '3']),
   ],
 );
 
@@ -85,7 +82,7 @@ export const qualityInspections = mysqlTable(
  * dibangkitkan Drizzle dari nama panjang itu menembus batas tersebut.
  * Jalankan `pnpm db:check-names` setelah menambah tabel baru.
  */
-export const inspectionDetails = mysqlTable(
+export const inspectionDetails = qualitySchema.table(
   'TT_INSPECTION_L',
   {
     id: pk(),
@@ -95,8 +92,8 @@ export const inspectionDetails = mysqlTable(
     ngMasterId: fk('INT_NG_MASTER_ID')
       .notNull()
       .references(() => ngMasters.id),
-    qty: int('INT_QTY').notNull().default(0),
-    meta: json('CHR_META'),
+    qty: integer('INT_QTY').notNull().default(0),
+    meta: jsonb('CHR_META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [index('TT_INSPECTION_L_INSPECTION_IDX').on(t.inspectionId)],
@@ -161,7 +158,7 @@ export const NG_SOURCES = ['PART_CODE', 'KANBAN'] as const;
  *
  * Panjangnya 320 supaya muat CHR_RAW_CODE terpanjang (255) + pemisah + id.
  */
-export const ngRecords = mysqlTable(
+export const ngRecords = qualitySchema.table(
   'TT_NG',
   {
     id: pk(),
@@ -172,12 +169,12 @@ export const ngRecords = mysqlTable(
       .notNull()
       .references(() => parts.id),
     lineId: fk('INT_LINE_ID').references(() => lines.id),
-    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES),
+    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES),
     ngMasterId: fk('INT_NG_MASTER_ID')
       .notNull()
       .references(() => ngMasters.id),
-    origin: mysqlEnum('CHR_ORIGIN', NG_ORIGINS).notNull(),
-    source: mysqlEnum('CHR_SOURCE', NG_SOURCES).notNull(),
+    origin: enumCol('CHR_ORIGIN', NG_ORIGINS).notNull(),
+    source: enumCol('CHR_SOURCE', NG_SOURCES).notNull(),
     /** Isi barcode yang discan, apa adanya — part code atau kartu kanban. */
     rawCode: varchar('CHR_RAW_CODE', { length: 255 }).notNull(),
     /** Identitas barangnya. Untuk NG lewat kanban, ini seri unit yang menempel. */
@@ -193,17 +190,17 @@ export const ngRecords = mysqlTable(
      * dikurangi dari stok.
      */
     scanEventId: fk('INT_SCAN_EVENT_ID').references(() => scanEvents.id),
-    qty: int('INT_QTY').notNull().default(1),
-    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
+    qty: integer('INT_QTY').notNull().default(1),
+    occurredAt: timestamp('DTM_OCCURRED_AT', { withTimezone: true, mode: 'date' }).notNull(),
     npk: varchar('CHR_NPK', { length: 32 }),
     userId: fk('INT_USER_ID').references(() => users.id),
 
-    cancelledAt: timestamp('DTM_CANCELLED_AT'),
+    cancelledAt: timestamp('DTM_CANCELLED_AT', { withTimezone: true, mode: 'date' }),
     cancelledById: fk('INT_CANCELLED_BY_ID').references(() => users.id),
     cancelReason: varchar('CHR_CANCEL_REASON', { length: 255 }),
 
     activeKey: varchar('CHR_ACTIVE_KEY', { length: 320 }),
-    meta: json('CHR_META'),
+    meta: jsonb('CHR_META'),
     ...timestamps,
   },
   (t) => [
@@ -213,6 +210,10 @@ export const ngRecords = mysqlTable(
     index('TT_NG_LINE_TIME_IDX').on(t.lineId, t.occurredAt),
     index('TT_NG_SERIAL_IDX').on(t.serialNumber),
     index('TT_NG_KANBAN_IDX').on(t.kanbanId),
+  
+    daftarNilai('TT_NG_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
+    daftarNilai('TT_NG_CHR_ORIGIN_CHK', t.origin, NG_ORIGINS),
+    daftarNilai('TT_NG_CHR_SOURCE_CHK', t.source, NG_SOURCES),
   ],
 );
 

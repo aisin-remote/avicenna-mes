@@ -57,17 +57,20 @@ async function main() {
       petaCustomer.set(kode, ada.id);
       continue;
     }
-    const hasil = await db.insert(customers).values({
-      code: kode,
-      name: kode,
-      /*
-       * Format barcode customer menentukan bagaimana barcode saat muat
-       * dicocokkan ke master. TMMIN punya formatnya sendiri dan namanya sudah
-       * ada di daftar PART_NUMBER_FORMATS.
-       */
-      partNumberFormat: kode === 'TMMIN' ? 'TMMIN' : 'NONE',
-    });
-    const id = Number((hasil as unknown as Array<{ insertId: number }>)[0]?.insertId);
+    const hasil = await db
+      .insert(customers)
+      .values({
+        code: kode,
+        name: kode,
+        /*
+         * Format barcode customer menentukan bagaimana barcode saat muat
+         * dicocokkan ke master. TMMIN punya formatnya sendiri dan namanya sudah
+         * ada di daftar PART_NUMBER_FORMATS.
+         */
+        partNumberFormat: kode === 'TMMIN' ? 'TMMIN' : 'NONE',
+      })
+      .returning({ id: customers.id });
+    const id = Number(hasil[0]?.id);
     petaCustomer.set(kode, id);
     console.log(`[impor]   + customer ${kode}`);
   }
@@ -114,26 +117,29 @@ async function main() {
       continue;
     }
 
-    const hasil = await db.insert(parts).values({
-      plantId: pabrik.id,
-      partNumber: p.partNumber,
-      backNumber: p.backNumber,
-      name: p.name,
-      /*
-       * CHR_PROCESS_TYPE adalah peninggalan dari masa satu part = satu proses,
-       * dan sejak rute jadi data ia hanya dipakai sebagai cadangan terakhir
-       * ketika scan datang TANPA lini (mis. dari alat genggam).
-       *
-       * Diisi CASTING_WIP karena seluruh part di daftar ini — TCC, CSH, OPN —
-       * adalah hasil die casting aluminium, dan casting memang langkah
-       * pertamanya. Yang menentukan sesungguhnya tetap TM_PROCESS_PARTS.
-       */
-      processType: 'CASTING_WIP',
-      partType: 'FINISHED_GOOD',
-      sourceType: 'MANUFACTURED',
-      trackingMode: 'SERIAL',
-    });
-    const id = Number((hasil as unknown as Array<{ insertId: number }>)[0]?.insertId);
+    const hasil = await db
+      .insert(parts)
+      .values({
+        plantId: pabrik.id,
+        partNumber: p.partNumber,
+        backNumber: p.backNumber,
+        name: p.name,
+        /*
+         * CHR_PROCESS_TYPE adalah peninggalan dari masa satu part = satu proses,
+         * dan sejak rute jadi data ia hanya dipakai sebagai cadangan terakhir
+         * ketika scan datang TANPA lini (mis. dari alat genggam).
+         *
+         * Diisi CASTING_WIP karena seluruh part di daftar ini — TCC, CSH, OPN —
+         * adalah hasil die casting aluminium, dan casting memang langkah
+         * pertamanya. Yang menentukan sesungguhnya tetap TM_PROCESS_PARTS.
+         */
+        processType: 'CASTING_WIP',
+        partType: 'FINISHED_GOOD',
+        sourceType: 'MANUFACTURED',
+        trackingMode: 'SERIAL',
+      })
+      .returning({ id: parts.id });
+    const id = Number(hasil[0]?.id);
     petaPart.set(kunci, id);
     partBaru += 1;
   }
@@ -146,7 +152,9 @@ async function main() {
   for (const pn of PROGRAM_NUMBERS_AIIA) {
     const partId = petaPart.get(`${pn.partNumber}|${pn.backNumber}`);
     if (!partId) {
-      console.warn(`[impor]   ! kode ${pn.code}: part ${pn.partNumber}/${pn.backNumber} tidak ketemu`);
+      console.warn(
+        `[impor]   ! kode ${pn.code}: part ${pn.partNumber}/${pn.backNumber} tidak ketemu`,
+      );
       continue;
     }
 
@@ -167,7 +175,9 @@ async function main() {
        * berkode itu mendarat di part yang belum tentu benar.
        */
       if (ada.partId !== partId) {
-        bentrok.push(`${pn.code} -> sudah menunjuk part lain (${pn.product}/${pn.backNumber} dilewati)`);
+        bentrok.push(
+          `${pn.code} -> sudah menunjuk part lain (${pn.product}/${pn.backNumber} dilewati)`,
+        );
       }
       continue;
     }
@@ -182,7 +192,9 @@ async function main() {
     });
     pnBaru += 1;
   }
-  console.log(`[impor]   + ${pnBaru} program number baru (${PROGRAM_NUMBERS_AIIA.length} di daftar)`);
+  console.log(
+    `[impor]   + ${pnBaru} program number baru (${PROGRAM_NUMBERS_AIIA.length} di daftar)`,
+  );
 
   if (backNumberLain.length > 0) {
     console.warn('');

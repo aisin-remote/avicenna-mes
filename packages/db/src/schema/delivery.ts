@@ -1,17 +1,6 @@
-import {
-  mysqlTable,
-  varchar,
-  int,
-  date,
-  time,
-  timestamp,
-  mysqlEnum,
-  json,
-  uniqueIndex,
-  index,
-} from 'drizzle-orm/mysql-core';
+import { date, index, integer, jsonb, time, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { pk, fk, timestamps } from './_shared';
+import { daftarNilai, enumCol, fk, logisticsSchema, pk, timestamps } from './_shared';
 import { parts, customers } from './master';
 import { plants, users } from './org';
 import { locations } from './inventory';
@@ -28,7 +17,7 @@ import { locations } from './inventory';
  * Selisih rencana dan aktual sengaja disimpan berdampingan — itulah yang
  * ditanya pertama kali ketika kiriman tidak sesuai.
  */
-export const deliveries = mysqlTable(
+export const deliveries = logisticsSchema.table(
   'TT_DELIVERY',
   {
     id: pk(),
@@ -59,11 +48,11 @@ export const deliveries = mysqlTable(
     sapReceiveDate: date('DTM_DATE_RECEIVE', { mode: 'string' }),
     sapReceiveTime: time('DTM_TIME_RECEIVE'),
     deliveryDate: date('DTM_DEL_DATE', { mode: 'string' }).notNull(),
-    cycle: int('INT_CYCLE').notNull().default(1),
+    cycle: integer('INT_CYCLE').notNull().default(1),
     dock: varchar('CHR_CUS_DEST', { length: 32 }),
     planTime: time('DTM_PLAN_TIME'),
-    departedAt: timestamp('DTM_DEPARTED_AT'),
-    arrivedAt: timestamp('DTM_ARRIVED_AT'),
+    departedAt: timestamp('DTM_DEPARTED_AT', { withTimezone: true, mode: 'date' }),
+    arrivedAt: timestamp('DTM_ARRIVED_AT', { withTimezone: true, mode: 'date' }),
     /*
      * Tahapan dokumen, mengikuti rantai SLOC:
      *
@@ -76,7 +65,7 @@ export const deliveries = mysqlTable(
      * 'LOADED' dari versi sebelumnya dihapus: tidak pernah dipakai, dan
      * perannya kini diisi PICKED yang punya arti stok yang jelas.
      */
-    status: mysqlEnum('CHR_STATUS', [
+    status: enumCol('CHR_STATUS', [
       'DRAFT',
       'PICKING',
       'PICKED',
@@ -107,10 +96,10 @@ export const deliveries = mysqlTable(
     truckNumber: varchar('CHR_TRUCK_NUMBER', { length: 32 }),
     driverName: varchar('CHR_DRIVER_NAME', { length: 128 }),
     /** Status truk terpisah dari status dokumen — truk bisa datang sebelum muat. */
-    truckStatus: mysqlEnum('CHR_TRUCK_STATUS', ['PENDING', 'ARRIVED', 'LOADING', 'DEPARTED'])
+    truckStatus: enumCol('CHR_TRUCK_STATUS', ['PENDING', 'ARRIVED', 'LOADING', 'DEPARTED'])
       .notNull()
       .default('PENDING'),
-    truckPickedAt: timestamp('DTM_TRUCK_PICKED_AT'),
+    truckPickedAt: timestamp('DTM_TRUCK_PICKED_AT', { withTimezone: true, mode: 'date' }),
     truckPickedById: fk('INT_TRUCK_PICKED_BY_ID').references(() => users.id),
     createdById: fk('INT_CREATED_BY_ID').references(() => users.id),
     ...timestamps,
@@ -119,6 +108,17 @@ export const deliveries = mysqlTable(
     uniqueIndex('TT_DELIVERY_PLANT_DOCUMENT_UNIQUE').on(t.plantId, t.documentNumber),
     index('TT_DELIVERY_DATE_CUSTOMER_IDX').on(t.deliveryDate, t.customerId),
     index('TT_DELIVERY_STATUS_IDX').on(t.status),
+  
+    daftarNilai('TT_DELIVERY_CHR_STATUS_CHK', t.status, [
+      'DRAFT',
+      'PICKING',
+      'PICKED',
+      'LOADING',
+      'SHIPPED',
+      'RECEIVED',
+      'CANCELLED',
+    ]),
+    daftarNilai('TT_DELIVERY_CHR_TRUCK_STATUS_CHK', t.truckStatus, ['PENDING', 'ARRIVED', 'LOADING', 'DEPARTED']),
   ],
 );
 
@@ -133,7 +133,7 @@ export const deliveries = mysqlTable(
  * menghitung. Master bisa berubah sewaktu-waktu, dan dokumen yang sudah
  * dikirim tidak boleh ikut berubah angkanya.
  */
-export const deliveryLines = mysqlTable(
+export const deliveryLines = logisticsSchema.table(
   'TT_DELIVERY_ITEM',
   {
     id: pk(),
@@ -149,18 +149,18 @@ export const deliveryLines = mysqlTable(
     /** Nomor baris asli SAP. Part yang sama boleh muncul pada lebih dari satu item. */
     sapItemNumber: varchar('CHR_DEL_ITEM', { length: 16 }),
     /** Qty yang disediakan sumber, disimpan berdampingan dengan rencana MES. */
-    sapDeliveryQty: int('INT_DEL_QTY').notNull().default(0),
+    sapDeliveryQty: integer('INT_DEL_QTY').notNull().default(0),
     itemType: varchar('CHR_ITEM_TYPE', { length: 16 }),
     /** Rencana: berapa kanban yang harus dimuat. */
-    plannedKanban: int('INT_PLANNED_KANBAN').notNull().default(0),
-    plannedQty: int('INT_TOTAL_QTY').notNull().default(0),
-    qtyPerKanban: int('INT_QTY_PER_BOX').notNull().default(0),
+    plannedKanban: integer('INT_PLANNED_KANBAN').notNull().default(0),
+    plannedQty: integer('INT_TOTAL_QTY').notNull().default(0),
+    qtyPerKanban: integer('INT_QTY_PER_BOX').notNull().default(0),
     /** Pulling: berapa kanban yang diambil dari PP02 ke PP04. */
-    pickedKanban: int('INT_PICKED_KANBAN').notNull().default(0),
-    pickedQty: int('INT_SCAN_QTY').notNull().default(0),
+    pickedKanban: integer('INT_PICKED_KANBAN').notNull().default(0),
+    pickedQty: integer('INT_SCAN_QTY').notNull().default(0),
     /** Aktual: berapa kanban yang benar-benar naik truk. */
-    actualKanban: int('INT_ACTUAL_KANBAN').notNull().default(0),
-    actualQty: int('INT_ACTUAL_DEL').notNull().default(0),
+    actualKanban: integer('INT_ACTUAL_KANBAN').notNull().default(0),
+    actualQty: integer('INT_ACTUAL_DEL').notNull().default(0),
     ...timestamps,
   },
   (t) => [
@@ -182,13 +182,13 @@ export const deliveryLinesRelations = relations(deliveryLines, ({ one }) => ({
 }));
 
 /** Hasil refresh terakhir per hari, termasuk dokumen yang belum bisa diimpor. */
-export const deliverySyncs = mysqlTable(
+export const deliverySyncs = logisticsSchema.table(
   'TT_DELIVERY_SYNC',
   {
     id: pk(),
     operationalDate: date('DTM_OPERATIONAL_DATE', { mode: 'string' }).notNull(),
-    syncedAt: timestamp('DTM_SYNCED_AT').notNull(),
-    result: json('CHR_RESULT').notNull(),
+    syncedAt: timestamp('DTM_SYNCED_AT', { withTimezone: true, mode: 'date' }).notNull(),
+    result: jsonb('CHR_RESULT').notNull(),
   },
   (t) => [uniqueIndex('TT_DELIVERY_SYNC_DATE_UNIQUE').on(t.operationalDate)],
 );

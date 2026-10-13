@@ -18,6 +18,7 @@ import {
   sapOutbox,
   users,
 } from '@avicenna/db';
+import { galatDuplikat } from '@avicenna/db';
 import {
   convertCustomerPartNumber,
   allocateFifo,
@@ -42,7 +43,6 @@ import { InjectDb } from '../db/db.module';
 import type { Principal } from '../auth/auth.types';
 
 /** Pelanggaran unique index MySQL, dipakai mengenali retry scan idempoten. */
-const MYSQL_DUP_ENTRY = 1062;
 
 @Injectable()
 export class LoadingService {
@@ -139,7 +139,7 @@ export class LoadingService {
       });
     } catch (err) {
       const e = err as { errno?: number; cause?: { errno?: number } };
-      if ((e?.errno ?? e?.cause?.errno) !== MYSQL_DUP_ENTRY) throw err;
+      if (!galatDuplikat(err)) throw err;
       const [current] = await this.db
         .select({ arrivedAt: deliveries.arrivedAt })
         .from(deliveries)
@@ -513,7 +513,7 @@ export class LoadingService {
             .from(scanEvents)
             .innerJoin(
               deliveries,
-              sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.deliveryId')) = ${deliveries.id}`,
+              sql`${scanEvents.meta}->>'deliveryId' = ${deliveries.id}`,
             )
             .where(
               and(
@@ -522,13 +522,13 @@ export class LoadingService {
                 or(
                   eq(scanEvents.serialNumber, scanSerial),
                   customerSerial
-                    ? sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.customerSerial')) = ${customerSerial}`
+                    ? sql`${scanEvents.meta}->>'customerSerial' = ${customerSerial}`
                     : undefined,
                   internalSerial
-                    ? sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.internalSerial')) = ${internalSerial}`
+                    ? sql`${scanEvents.meta}->>'internalSerial' = ${internalSerial}`
                     : undefined,
                 ),
-                sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.phase')) = ${phase}`,
+                sql`${scanEvents.meta}->>'phase' = ${phase}`,
                 sql`${deliveries.status} NOT IN ('SHIPPED', 'RECEIVED', 'CANCELLED')`,
               ),
             );
@@ -632,7 +632,7 @@ export class LoadingService {
          * saat itulah muncul hitungan ganda yang sesungguhnya.
          */
         const e = err as { errno?: number; cause?: { errno?: number } };
-        if ((e?.errno ?? e?.cause?.errno) !== MYSQL_DUP_ENTRY) {
+        if (!galatDuplikat(err)) {
           if (err instanceof BadRequestException)
             await this.recordRejected(input, err.message, principal);
           throw err;
@@ -790,8 +790,8 @@ export class LoadingService {
         .where(
           and(
             eq(scanEvents.kind, 'DELIVERY'),
-            sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.deliveryLineId')) = ${String(lineId)}`,
-            sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.phase')) = ${phase}`,
+            sql`${scanEvents.meta}->>'deliveryLineId' = ${String(lineId)}`,
+            sql`${scanEvents.meta}->>'phase' = ${phase}`,
           ),
         )
         .orderBy(scanEvents.id);
@@ -1344,7 +1344,7 @@ export class LoadingService {
         .where(
           and(
             eq(scanEvents.kind, 'DELIVERY'),
-            sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.deliveryId')) = ${String(id)}`,
+            sql`${scanEvents.meta}->>'deliveryId' = ${String(id)}`,
           ),
         )
         .orderBy(desc(scanEvents.id))

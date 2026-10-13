@@ -13,6 +13,7 @@ import {
   lines,
   users,
 } from '@avicenna/db';
+import { galatDuplikat } from '@avicenna/db';
 import { sapMovementFor, siapDikirim, slocKurang, bolehKirimDokumenRute } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 
@@ -58,23 +59,23 @@ export class SapOutboxService {
     // Jeda memberi waktu transaksi scan selesai. Dokumen produksi juga
     // menunggu penanda backflushCompleted sebelum dibuat di bawah.
     const kandidat = await this.db.execute(sql`
-      SELECT m.CHR_SOURCE_TABLE AS sourceTable,
-             m.INT_SOURCE_ID  AS sourceId
+      SELECT m."CHR_SOURCE_TABLE" AS sourceTable,
+             m."INT_SOURCE_ID"  AS sourceId
       FROM ${mutations} m
       LEFT JOIN ${scanEvents} s
-        ON m.CHR_SOURCE_TABLE = 'TT_HISTORY_SCAN' AND s.INT_ID = m.INT_SOURCE_ID
-      WHERE m.CHR_SOURCE_TABLE IS NOT NULL
-        AND m.INT_SOURCE_ID IS NOT NULL
+        ON m."CHR_SOURCE_TABLE" = 'TT_HISTORY_SCAN' AND s."INT_ID" = m."INT_SOURCE_ID"
+      WHERE m."CHR_SOURCE_TABLE" IS NOT NULL
+        AND m."INT_SOURCE_ID" IS NOT NULL
         AND (
-          m.CHR_SOURCE_TABLE <> 'TT_HISTORY_SCAN'
-          OR m.CHR_TYPE NOT IN ('PRODUCTION_IN', 'CONSUMPTION_OUT')
-          OR JSON_UNQUOTE(JSON_EXTRACT(s.CHR_META, '$.backflushCompleted')) = 'true'
+          m."CHR_SOURCE_TABLE" <> 'TT_HISTORY_SCAN'
+          OR m."CHR_TYPE" NOT IN ('PRODUCTION_IN', 'CONSUMPTION_OUT')
+          OR s."CHR_META"->>'backflushCompleted' = 'true'
         )
         AND NOT EXISTS (
           SELECT 1 FROM ${sapOutbox} o
-          WHERE o.CHR_SOURCE_TABLE = m.CHR_SOURCE_TABLE
-            AND o.INT_SOURCE_ID = m.INT_SOURCE_ID
-            AND o.CHR_DOC_TYPE = CASE m.CHR_TYPE
+          WHERE o."CHR_SOURCE_TABLE" = m."CHR_SOURCE_TABLE"
+            AND o."INT_SOURCE_ID" = m."INT_SOURCE_ID"
+            AND o."CHR_DOC_TYPE" = CASE m."CHR_TYPE"
               WHEN 'PRODUCTION_IN' THEN 'PRODUCTION'
               WHEN 'CONSUMPTION_OUT' THEN 'PRODUCTION'
               WHEN 'TRANSFER_OUT' THEN 'TRANSFER'
@@ -86,9 +87,9 @@ export class SapOutboxService {
               WHEN 'STOCK_TAKE' THEN 'ADJUSTMENT'
             END
         )
-      GROUP BY m.CHR_SOURCE_TABLE, m.INT_SOURCE_ID
-      HAVING MAX(m.DTM_CREATED_AT) < (NOW() - INTERVAL ${sql.raw(String(SETTLE_SECONDS))} SECOND)
-      ORDER BY MIN(m.DTM_OCCURRED_AT)
+      GROUP BY m."CHR_SOURCE_TABLE", m."INT_SOURCE_ID"
+      HAVING MAX(m."DTM_CREATED_AT") < (NOW() - make_interval(secs => ${SETTLE_SECONDS}))
+      ORDER BY MIN(m."DTM_OCCURRED_AT")
       LIMIT ${sql.raw(String(BATCH))}
     `);
 
@@ -467,7 +468,7 @@ export class SapOutboxService {
       // entah pada putaran sebelumnya, entah oleh pengumpul lain yang berjalan
       // bersamaan. Itu justru yang diinginkan.
       const e = err as { errno?: number; cause?: { errno?: number } };
-      if ((e?.errno ?? e?.cause?.errno) !== 1062) throw err;
+      if (!galatDuplikat(err)) throw err;
       return false;
     }
   }

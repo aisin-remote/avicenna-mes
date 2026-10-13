@@ -1,21 +1,10 @@
-import {
-  mysqlTable,
-  varchar,
-  int,
-  decimal,
-  date,
-  timestamp,
-  mysqlEnum,
-  uniqueIndex,
-  index,
-  json,
-} from 'drizzle-orm/mysql-core';
+import { date, decimal, index, integer, jsonb, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { pk, fk, timestamps } from './_shared';
+import { daftarNilai, enumCol, fk, inventorySchema, pk, timestamps } from './_shared';
 import { parts, lines } from './master';
 import { plants, users } from './org';
 
-export const locations = mysqlTable(
+export const locations = inventorySchema.table(
   'TM_LOCATION',
   {
     id: pk(),
@@ -32,7 +21,7 @@ export const locations = mysqlTable(
      *   STAGING    sudah dipick, menunggu truk     (PP04)
      * CHUTE, NG, dan TRANSIT tidak punya padanan SLOC dan tidak dikirim ke SAP.
      */
-    kind: mysqlEnum('CHR_KIND', [
+    kind: enumCol('CHR_KIND', [
       'WAREHOUSE',
       'WIP',
       'FINISH_GOOD',
@@ -43,7 +32,17 @@ export const locations = mysqlTable(
     ]).notNull(),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_LOCATION_PLANT_CODE_UNIQUE').on(t.plantId, t.code)],
+  (t) => [uniqueIndex('TM_LOCATION_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
+    daftarNilai('TM_LOCATION_CHR_KIND_CHK', t.kind, [
+      'WAREHOUSE',
+      'WIP',
+      'FINISH_GOOD',
+      'STAGING',
+      'CHUTE',
+      'NG',
+      'TRANSIT',
+    ]),
+  ],
 );
 
 export const MUTATION_TYPES = [
@@ -66,7 +65,7 @@ export const MUTATION_TYPES = [
  * di-UPDATE di sini; koreksi dicatat sebagai baris ADJUSTMENT baru sehingga
  * jejak audit untuk customer tetap utuh.
  */
-export const mutations = mysqlTable(
+export const mutations = inventorySchema.table(
   'TT_STOCK_MUTATION',
   {
     id: pk(),
@@ -86,7 +85,7 @@ export const mutations = mysqlTable(
      * saat backflush jadi mustahil dilakukan dengan benar.
      */
     lotId: fk('INT_LOT_ID'),
-    type: mysqlEnum('CHR_TYPE', MUTATION_TYPES).notNull(),
+    type: enumCol('CHR_TYPE', MUTATION_TYPES).notNull(),
     /**
      * Bertanda: + masuk, - keluar.
      *
@@ -101,9 +100,9 @@ export const mutations = mysqlTable(
     sourceId: fk('INT_SOURCE_ID'),
     npk: varchar('CHR_NPK', { length: 32 }),
     userId: fk('INT_USER_ID').references(() => users.id),
-    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
+    occurredAt: timestamp('DTM_OCCURRED_AT', { withTimezone: true, mode: 'date' }).notNull(),
     note: varchar('CHR_NOTE', { length: 255 }),
-    meta: json('CHR_META'),
+    meta: jsonb('CHR_META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [
@@ -111,6 +110,8 @@ export const mutations = mysqlTable(
     index('TT_STOCK_MUTATION_TYPE_TIME_IDX').on(t.type, t.occurredAt),
     index('TT_STOCK_MUTATION_SOURCE_IDX').on(t.sourceTable, t.sourceId),
     index('TT_STOCK_MUTATION_LOT_IDX').on(t.lotId, t.occurredAt),
+  
+    daftarNilai('TT_STOCK_MUTATION_CHR_TYPE_CHK', t.type, MUTATION_TYPES),
   ],
 );
 
@@ -118,7 +119,7 @@ export const mutations = mysqlTable(
  * Saldo stok harian — turunan (cache) dari `mutations`, bukan sumber kebenaran.
  * Bisa dibangun ulang kapan saja dari ledger. Diperbarui worker, bukan request web.
  */
-export const stockBalances = mysqlTable(
+export const stockBalances = inventorySchema.table(
   'TT_STOCK_BALANCE',
   {
     id: pk(),

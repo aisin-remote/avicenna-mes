@@ -17,7 +17,7 @@
  * dan yang kalah balapan gagal dengan galat yang tidak menyebut sebabnya.
  * Satu wadah sekali-jalan menjamin tepat satu yang mengerjakannya.
  */
-const { migrate } = require('drizzle-orm/mysql2/migrator');
+const { migrate } = require('drizzle-orm/node-postgres/migrator');
 const { getDb, closeDb } = require('@avicenna/db');
 
 /*

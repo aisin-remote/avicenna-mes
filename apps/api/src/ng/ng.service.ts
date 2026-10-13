@@ -1,11 +1,29 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import {
-  eq, and, isNull, isNotNull, desc, gte, lt, count, inArray, type Database,
+  eq,
+  and,
+  isNull,
+  isNotNull,
+  desc,
+  gte,
+  lt,
+  count,
+  inArray,
+  type Database,
 } from '@avicenna/db';
 import {
-  ngMasters, ngRecords, scanEvents, lines, parts, plants, mutations,
-  kanbans, kanbanItems, kanbanEvents,
+  ngMasters,
+  ngRecords,
+  scanEvents,
+  lines,
+  parts,
+  plants,
+  mutations,
+  kanbans,
+  kanbanItems,
+  kanbanEvents,
 } from '@avicenna/db';
+import { galatDuplikat } from '@avicenna/db';
 import {
   bacaBarcode,
   BarcodeTidakDikenali,
@@ -24,7 +42,13 @@ import {
   type NgRejectReason,
 } from '@avicenna/domain';
 import type {
-  NgInlineInput, NgOutlineInput, NgCancelInput, NgResult, NgOnUnit, NgOrigin, NgSource,
+  NgInlineInput,
+  NgOutlineInput,
+  NgCancelInput,
+  NgResult,
+  NgOnUnit,
+  NgOrigin,
+  NgSource,
   ProcessType,
 } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
@@ -43,8 +67,6 @@ export class NgRejected extends Error {
 }
 
 /** MySQL: pelanggaran UNIQUE index. */
-const ER_DUP_ENTRY = 'ER_DUP_ENTRY';
-const ER_DUP_ENTRY_ERRNO = 1062;
 
 /** Satu barang yang akan dicatat NG. */
 interface Sasaran {
@@ -119,7 +141,10 @@ export class NgService {
 
     const line = await this.line(input.lineCode);
     if (!line) {
-      throw new NgRejected('LINE_NOT_FOUND', `${NG_REJECT_MESSAGES.LINE_NOT_FOUND} (${input.lineCode})`);
+      throw new NgRejected(
+        'LINE_NOT_FOUND',
+        `${NG_REJECT_MESSAGES.LINE_NOT_FOUND} (${input.lineCode})`,
+      );
     }
 
     const jenisNg = await this.jenisNg(input.ngMasterId, line.plantId, line.processType);
@@ -163,7 +188,10 @@ export class NgService {
 
     const line = input.lineCode ? await this.line(input.lineCode) : undefined;
     if (input.lineCode && !line) {
-      throw new NgRejected('LINE_NOT_FOUND', `${NG_REJECT_MESSAGES.LINE_NOT_FOUND} (${input.lineCode})`);
+      throw new NgRejected(
+        'LINE_NOT_FOUND',
+        `${NG_REJECT_MESSAGES.LINE_NOT_FOUND} (${input.lineCode})`,
+      );
     }
 
     const plantAwal = line?.plantId ?? principal?.plantId ?? undefined;
@@ -376,28 +404,31 @@ export class NgService {
 
         let ngId: number;
         try {
-          const hasil = await tx.insert(ngRecords).values({
-            plantId: k.plantId,
-            partId: k.part.id,
-            lineId: k.lineId,
-            processType: s.processType ?? k.processType,
-            ngMasterId: k.jenisNg.id,
-            origin: k.origin,
-            source: k.source,
-            rawCode: s.rawCode,
-            serialNumber: s.serialNumber,
-            kanbanId: k.kanban?.id ?? null,
-            // Hanya diisi bila produksinya benar-benar dibalik di sini —
-            // kolom ini yang dibaca sebagai "sudah pernah dibalik".
-            scanEventId: balik ? s.scanEventId : null,
-            qty: k.qtyPerUnit,
-            occurredAt: k.waktu,
-            npk,
-            userId,
-            activeKey: kunci,
-            meta: { jenisNg: k.jenisNg.code },
-          });
-          ngId = Number((hasil as unknown as Array<{ insertId: number }>)[0]?.insertId);
+          const hasil = await tx
+            .insert(ngRecords)
+            .values({
+              plantId: k.plantId,
+              partId: k.part.id,
+              lineId: k.lineId,
+              processType: s.processType ?? k.processType,
+              ngMasterId: k.jenisNg.id,
+              origin: k.origin,
+              source: k.source,
+              rawCode: s.rawCode,
+              serialNumber: s.serialNumber,
+              kanbanId: k.kanban?.id ?? null,
+              // Hanya diisi bila produksinya benar-benar dibalik di sini —
+              // kolom ini yang dibaca sebagai "sudah pernah dibalik".
+              scanEventId: balik ? s.scanEventId : null,
+              qty: k.qtyPerUnit,
+              occurredAt: k.waktu,
+              npk,
+              userId,
+              activeKey: kunci,
+              meta: { jenisNg: k.jenisNg.code },
+            })
+            .returning({ id: ngRecords.id });
+          ngId = Number(hasil[0]?.id);
         } catch (err) {
           if (isDuplicateKey(err)) {
             /*
@@ -413,9 +444,7 @@ export class NgService {
                 `${NG_REJECT_MESSAGES.ALREADY_NG} (${k.jenisNg.name})`,
               );
             }
-            this.logger.warn(
-              `unit ${s.serialNumber} sudah bercap NG ${k.jenisNg.code} — dilewati`,
-            );
+            this.logger.warn(`unit ${s.serialNumber} sudah bercap NG ${k.jenisNg.code} — dilewati`);
             continue;
           }
           throw err;
@@ -511,11 +540,7 @@ export class NgService {
    * bukan dengan menghapus mutasi lama — buku besar tidak pernah dihapus.
    */
   async batal(input: NgCancelInput, principal?: Principal) {
-    const [row] = await this.db
-      .select()
-      .from(ngRecords)
-      .where(eq(ngRecords.id, input.id))
-      .limit(1);
+    const [row] = await this.db.select().from(ngRecords).where(eq(ngRecords.id, input.id)).limit(1);
 
     if (!row) throw new NotFoundException(NG_REJECT_MESSAGES.NOT_FOUND);
     if (row.cancelledAt) {
@@ -605,11 +630,7 @@ export class NgService {
     const line = lineCode ? await this.line(lineCode) : undefined;
     const plantId = line?.plantId ?? principal?.plantId ?? undefined;
 
-    const { part, sasaran } = await this.dariPartCode(
-      rawCode,
-      plantId,
-      line?.processType ?? null,
-    );
+    const { part, sasaran } = await this.dariPartCode(rawCode, plantId, line?.processType ?? null);
 
     return {
       rawCode,
@@ -790,11 +811,19 @@ export class NgService {
     lineId: number | null,
   ): Promise<number | null> {
     if (scanEventId) {
-      const [scan] = await tx.select({ meta: scanEvents.meta }).from(scanEvents)
-        .where(eq(scanEvents.id, scanEventId)).limit(1);
-      const rute = (scan?.meta as { sapRoute?: {
-        transferLocationId?: number | null; outputLocationId?: number | null;
-      } } | null)?.sapRoute;
+      const [scan] = await tx
+        .select({ meta: scanEvents.meta })
+        .from(scanEvents)
+        .where(eq(scanEvents.id, scanEventId))
+        .limit(1);
+      const rute = (
+        scan?.meta as {
+          sapRoute?: {
+            transferLocationId?: number | null;
+            outputLocationId?: number | null;
+          };
+        } | null
+      )?.sapRoute;
       const lokasi = rute?.transferLocationId ?? rute?.outputLocationId;
       if (lokasi) return lokasi;
     }
@@ -808,11 +837,7 @@ export class NgService {
   }
 
   private async line(code: string) {
-    const [row] = await this.db
-      .select()
-      .from(lines)
-      .where(eq(lines.code, code.trim()))
-      .limit(1);
+    const [row] = await this.db.select().from(lines).where(eq(lines.code, code.trim())).limit(1);
     return row;
   }
 
@@ -849,7 +874,7 @@ function isDuplicateKey(err: unknown): boolean {
   for (let depth = 0; depth < 5 && current; depth += 1) {
     if (typeof current === 'object' && current !== null) {
       const e = current as { code?: string; errno?: number; cause?: unknown };
-      if (e.code === ER_DUP_ENTRY || e.errno === ER_DUP_ENTRY_ERRNO) return true;
+      if (galatDuplikat(err)) return true;
       current = e.cause;
     } else {
       return false;

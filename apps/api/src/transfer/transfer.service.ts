@@ -109,21 +109,22 @@ export class TransferService {
     return this.db.transaction(async (tx) => {
       const documentNumber = buildTransferNumber(movedAt, seqBase + 1);
 
-      const inserted = await tx.insert(transfers).values({
-        plantId: input.plantId,
-        documentNumber,
-        fromLineId: input.fromLineId ?? null,
-        toLineId: input.toLineId ?? null,
-        fromLocationId: input.fromLocationId ?? null,
-        toLocationId: input.toLocationId ?? null,
-        movedAt,
-        status: 'MOVED',
-        userId: principal?.kind === 'user' ? principal.sub : null,
-        note: input.note ?? null,
-      });
-      const transferId = Number(
-        (inserted as unknown as Array<{ insertId: number }>)[0]?.insertId,
-      );
+      const inserted = await tx
+        .insert(transfers)
+        .values({
+          plantId: input.plantId,
+          documentNumber,
+          fromLineId: input.fromLineId ?? null,
+          toLineId: input.toLineId ?? null,
+          fromLocationId: input.fromLocationId ?? null,
+          toLocationId: input.toLocationId ?? null,
+          movedAt,
+          status: 'MOVED',
+          userId: principal?.kind === 'user' ? principal.sub : null,
+          note: input.note ?? null,
+        })
+        .returning({ id: transfers.id });
+      const transferId = Number(inserted[0]?.id);
 
       for (const line of input.lines) {
         await tx.insert(transferLines).values({
@@ -190,10 +191,10 @@ export class TransferService {
     // Nama tabel ditulis langsung karena subquery berkorelasi belum bisa
     // dibentuk lewat pembangun query Drizzle. Ikut berubah bila tabelnya
     // diganti nama — tidak ada yang mengingatkan, jadi dicatat di sini.
-    const fromLine = sql<string>`(SELECT l.CHR_NAME FROM TM_LINE l WHERE l.INT_ID = ${transfers.fromLineId})`;
-    const toLine = sql<string>`(SELECT l.CHR_NAME FROM TM_LINE l WHERE l.INT_ID = ${transfers.toLineId})`;
-    const fromLoc = sql<string>`(SELECT lo.CHR_NAME FROM TM_LOCATION lo WHERE lo.INT_ID = ${transfers.fromLocationId})`;
-    const toLoc = sql<string>`(SELECT lo.CHR_NAME FROM TM_LOCATION lo WHERE lo.INT_ID = ${transfers.toLocationId})`;
+    const fromLine = sql<string>`(SELECT l."CHR_NAME" FROM master."TM_LINE" l WHERE l."INT_ID" = ${transfers.fromLineId})`;
+    const toLine = sql<string>`(SELECT l."CHR_NAME" FROM master."TM_LINE" l WHERE l."INT_ID" = ${transfers.toLineId})`;
+    const fromLoc = sql<string>`(SELECT lo."CHR_NAME" FROM inventory."TM_LOCATION" lo WHERE lo."INT_ID" = ${transfers.fromLocationId})`;
+    const toLoc = sql<string>`(SELECT lo."CHR_NAME" FROM inventory."TM_LOCATION" lo WHERE lo."INT_ID" = ${transfers.toLocationId})`;
 
     const [rows, totalRows] = await Promise.all([
       this.db
@@ -204,8 +205,8 @@ export class TransferService {
           toName: sql<string>`COALESCE(${toLine}, ${toLoc})`,
           movedAt: transfers.movedAt,
           status: transfers.status,
-          lineCount: sql<number>`(SELECT COUNT(*) FROM TT_GOODS_MOVEMENT_L tl WHERE tl.INT_TRANSFER_ID = ${transfers.id})`,
-          totalQty: sql<string>`(SELECT COALESCE(SUM(tl.FLT_TOTAL_QTY), 0) FROM TT_GOODS_MOVEMENT_L tl WHERE tl.INT_TRANSFER_ID = ${transfers.id})`,
+          lineCount: sql<number>`(SELECT COUNT(*) FROM logistics."TT_GOODS_MOVEMENT_L" tl WHERE tl."INT_TRANSFER_ID" = ${transfers.id})`,
+          totalQty: sql<string>`(SELECT COALESCE(SUM(tl."FLT_TOTAL_QTY"), 0) FROM logistics."TT_GOODS_MOVEMENT_L" tl WHERE tl."INT_TRANSFER_ID" = ${transfers.id})`,
         })
         .from(transfers)
         .orderBy(desc(transfers.movedAt))
@@ -267,7 +268,11 @@ export class TransferService {
 
   private async nameOfLine(id: number | null) {
     if (!id) return null;
-    const rows = await this.db.select({ name: lines.name }).from(lines).where(eq(lines.id, id)).limit(1);
+    const rows = await this.db
+      .select({ name: lines.name })
+      .from(lines)
+      .where(eq(lines.id, id))
+      .limit(1);
     return rows[0]?.name ?? null;
   }
 
@@ -285,5 +290,8 @@ export class TransferService {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function inIds(column: any, values: number[]) {
   if (values.length === 0) return sql`1 = 0`;
-  return sql`${column} IN (${sql.join(values.map((v) => sql`${v}`), sql`, `)})`;
+  return sql`${column} IN (${sql.join(
+    values.map((v) => sql`${v}`),
+    sql`, `,
+  )})`;
 }

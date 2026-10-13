@@ -1,27 +1,11 @@
-import {
-  mysqlTable,
-  varchar,
-  int,
-  boolean,
-  mysqlEnum,
-  uniqueIndex,
-  index,
-} from 'drizzle-orm/mysql-core';
+import { boolean, index, integer, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import {
-  pk,
-  fk,
-  timestamps,
-  PROCESS_TYPES,
-  PART_TYPES,
-  SOURCE_TYPES,
-  TRACKING_MODES,
-} from './_shared';
+import { PART_TYPES, PROCESS_TYPES, SOURCE_TYPES, TRACKING_MODES, daftarNilai, enumCol, fk, masterSchema, pk, timestamps } from './_shared';
 import { SCAN_MODE_ENUM } from '@avicenna/contracts';
 import { plants } from './org';
 
 /** Line produksi. Satu line terikat pada satu pabrik dan satu jenis proses. */
-export const lines = mysqlTable(
+export const lines = masterSchema.table(
   'TM_LINE',
   {
     id: pk(),
@@ -30,7 +14,7 @@ export const lines = mysqlTable(
       .references(() => plants.id),
     code: varchar('CHR_CODE', { length: 32 }).notNull(),
     name: varchar('CHR_NAME', { length: 128 }).notNull(),
-    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
     /**
      * Penimpa METODE SCAN untuk lini ini. Kosong = ikut master Rute Proses.
      *
@@ -39,7 +23,7 @@ export const lines = mysqlTable(
      * Tanpa penimpa per lini, keduanya terpaksa berbagi satu metode yang tidak
      * cocok untuk salah satunya.
      */
-    scanMode: mysqlEnum('CHR_SCAN_MODE', SCAN_MODE_ENUM),
+    scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM),
     /*
      * SLOC asal dan tujuan line ini.
      *
@@ -60,17 +44,20 @@ export const lines = mysqlTable(
      */
     inputLocationId: fk('INT_INPUT_LOCATION_ID'),
     outputLocationId: fk('INT_OUTPUT_LOCATION_ID'),
-    sortOrder: int('INT_SORT_ORDER').notNull().default(0),
+    sortOrder: integer('INT_SORT_ORDER').notNull().default(0),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
     uniqueIndex('TM_LINE_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
     index('TM_LINE_PROCESS_IDX').on(t.processType),
+  
+    daftarNilai('TM_LINE_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
+    daftarNilai('TM_LINE_CHR_SCAN_MODE_CHK', t.scanMode, SCAN_MODE_ENUM),
   ],
 );
 
-export const customers = mysqlTable(
+export const customers = masterSchema.table(
   'TM_CUST',
   {
     id: pk(),
@@ -86,7 +73,7 @@ export const customers = mysqlTable(
      * setelah data dipindah, dan aturan yang bergantung pada nomor baris
      * database akan diam-diam salah begitu urutannya berubah.
      */
-    partNumberFormat: mysqlEnum('CHR_PART_NUMBER_FORMAT', [
+    partNumberFormat: enumCol('CHR_PART_NUMBER_FORMAT', [
       'TMMIN',
       'SUZUKI',
       'MMKI',
@@ -109,10 +96,18 @@ export const customers = mysqlTable(
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_CUST_CODE_UNIQUE').on(t.code)],
+  (t) => [uniqueIndex('TM_CUST_CODE_UNIQUE').on(t.code),
+    daftarNilai('TM_CUST_CHR_PART_NUMBER_FORMAT_CHK', t.partNumberFormat, [
+      'TMMIN',
+      'SUZUKI',
+      'MMKI',
+      'TBINA',
+      'NONE',
+    ]),
+  ],
 );
 
-export const suppliers = mysqlTable(
+export const suppliers = masterSchema.table(
   'TM_VENDOR',
   {
     id: pk(),
@@ -128,7 +123,7 @@ export const suppliers = mysqlTable(
  * Part versi internal — penggabungan `internal_parts` (bella) dan `avi_parts` (avicenna).
  * `back_number` dipertahankan karena dipakai di seluruh proses scan kedua pabrik.
  */
-export const parts = mysqlTable(
+export const parts = masterSchema.table(
   'TM_PARTS',
   {
     id: pk(),
@@ -150,22 +145,22 @@ export const parts = mysqlTable(
      */
     project: varchar('CHR_PROJECT', { length: 32 }),
     name: varchar('CHR_PART_NAME', { length: 191 }).notNull(),
-    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
     /** Posisi part di rantai pasok — menentukan aturan apa yang berlaku baginya. */
-    partType: mysqlEnum('CHR_PART_TYPE', PART_TYPES).notNull().default('FINISHED_GOOD'),
+    partType: enumCol('CHR_PART_TYPE', PART_TYPES).notNull().default('FINISHED_GOOD'),
     /** Dibeli atau diproduksi sendiri. */
-    sourceType: mysqlEnum('CHR_SOURCE_TYPE', SOURCE_TYPES).notNull().default('MANUFACTURED'),
+    sourceType: enumCol('CHR_SOURCE_TYPE', SOURCE_TYPES).notNull().default('MANUFACTURED'),
     /**
      * Cara part ini ditelusuri. Lihat docs/traceability-model.md.
      * Raw material yang dilebur tidak mungkin berseri; part casting justru
      * sudah discan satu per satu.
      */
-    trackingMode: mysqlEnum('CHR_TRACKING_MODE', TRACKING_MODES).notNull().default('SERIAL'),
+    trackingMode: enumCol('CHR_TRACKING_MODE', TRACKING_MODES).notNull().default('SERIAL'),
     /** Satuan. Raw material sering kilogram, bukan pcs. */
     uom: varchar('CHR_PART_UOM', { length: 16 }).notNull().default('pcs'),
     /** Jumlah pcs per kanban standar (bisa dioverride per customer di customer_parts). */
-    qtyPerKanban: int('INT_QTY_PER_BOX'),
-    standardStock: int('INT_STANDARD_STOCK').notNull().default(0),
+    qtyPerKanban: integer('INT_QTY_PER_BOX'),
+    standardStock: integer('INT_STANDARD_STOCK').notNull().default(0),
     photoPath: varchar('CHR_PHOTO_PATH', { length: 255 }),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
@@ -174,6 +169,11 @@ export const parts = mysqlTable(
     uniqueIndex('TM_PARTS_PLANT_PARTNUMBER_UNIQUE').on(t.plantId, t.partNumber),
     index('TM_PARTS_BACK_NUMBER_IDX').on(t.backNumber),
     index('TM_PARTS_LINE_IDX').on(t.lineId),
+  
+    daftarNilai('TM_PARTS_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
+    daftarNilai('TM_PARTS_CHR_PART_TYPE_CHK', t.partType, PART_TYPES),
+    daftarNilai('TM_PARTS_CHR_SOURCE_TYPE_CHK', t.sourceType, SOURCE_TYPES),
+    daftarNilai('TM_PARTS_CHR_TRACKING_MODE_CHK', t.trackingMode, TRACKING_MODES),
   ],
 );
 
@@ -203,7 +203,7 @@ export const parts = mysqlTable(
  * tidak melewati Painting sedangkan HANDLE melewatinya. Mengikat rute ke proyek
  * akan membuat salah satunya selalu keliru.
  */
-export const partProcesses = mysqlTable(
+export const partProcesses = masterSchema.table(
   'TM_PROCESS_PARTS',
   {
     id: pk(),
@@ -213,7 +213,7 @@ export const partProcesses = mysqlTable(
     partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
     /**
      * Urutan dalam rute part ini. Bukan urutan global.
      *
@@ -221,7 +221,7 @@ export const partProcesses = mysqlTable(
      * adalah seqNo terbesar yang lebih kecil dari seqNo proses sekarang, DI
      * DALAM rute part itu sendiri.
      */
-    seqNo: int('INT_SEQ_NO').notNull(),
+    seqNo: integer('INT_SEQ_NO').notNull(),
     /**
      * Lini yang mengerjakannya, bila sudah pasti satu.
      *
@@ -239,6 +239,8 @@ export const partProcesses = mysqlTable(
     uniqueIndex('TM_PROCESS_PARTS_PART_PROCESS_UNIQUE').on(t.partId, t.processType),
     uniqueIndex('TM_PROCESS_PARTS_PART_SEQ_UNIQUE').on(t.partId, t.seqNo),
     index('TM_PROCESS_PARTS_PLANT_PROCESS_IDX').on(t.plantId, t.processType),
+  
+    daftarNilai('TM_PROCESS_PARTS_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
   ],
 );
 
@@ -259,14 +261,14 @@ export const partProcesses = mysqlTable(
  * Kosong berarti memakai SLOC milik lini saat scan. TM_PROCESS_PARTS kini
  * murni menjawab "part ini lewat proses apa, urutan ke berapa".
  */
-export const routeProcesses = mysqlTable(
+export const routeProcesses = masterSchema.table(
   'TM_ROUTE_PROCESS',
   {
     id: pk(),
     plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
     /**
      * METODE SCAN lini ini — lihat SCAN_MODES di contracts.
      *
@@ -275,7 +277,7 @@ export const routeProcesses = mysqlTable(
      * (PER_PIECE/PER_KANBAN) supaya baris dan snapshot yang sudah ada tetap
      * sah; nilai itu tidak pernah ditawarkan lagi di formulir.
      */
-    scanMode: mysqlEnum('CHR_SCAN_MODE', SCAN_MODE_ENUM).notNull().default('PART_SAJA'),
+    scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM).notNull().default('PART_SAJA'),
     /** Kosong = pakai SLOC asal lini. */
     inputLocationId: fk('INT_INPUT_LOCATION_ID'),
     /** Kosong = pakai SLOC tujuan lini. */
@@ -291,7 +293,10 @@ export const routeProcesses = mysqlTable(
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_ROUTE_PROCESS_PLANT_PROCESS_UNIQUE').on(t.plantId, t.processType)],
+  (t) => [uniqueIndex('TM_ROUTE_PROCESS_PLANT_PROCESS_UNIQUE').on(t.plantId, t.processType),
+    daftarNilai('TM_ROUTE_PROCESS_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
+    daftarNilai('TM_ROUTE_PROCESS_CHR_SCAN_MODE_CHK', t.scanMode, SCAN_MODE_ENUM),
+  ],
 );
 
 export const routeProcessesRelations = relations(routeProcesses, ({ one }) => ({
@@ -324,7 +329,7 @@ export const partProcessesRelations = relations(partProcesses, ({ one }) => ({
  * 2. Mencocokkan model part dengan kanban — kartu kanban terikat pada back
  *    number, dan back number itu datang dari sini.
  */
-export const programNumbers = mysqlTable(
+export const programNumbers = masterSchema.table(
   'TM_PROGRAM_NUMBER',
   {
     id: pk(),
@@ -357,7 +362,7 @@ export const programNumbersRelations = relations(programNumbers, ({ one }) => ({
 }));
 
 /** Pemetaan part internal -> penomoran milik customer. */
-export const customerParts = mysqlTable(
+export const customerParts = masterSchema.table(
   'TM_SHIPPING_PARTS',
   {
     id: pk(),
@@ -369,7 +374,7 @@ export const customerParts = mysqlTable(
       .references(() => customers.id, { onDelete: 'cascade' }),
     customerPartNumber: varchar('CHR_CUS_PART_NO', { length: 64 }).notNull(),
     customerBackNumber: varchar('CHR_CUS_BACK_NO', { length: 64 }),
-    qtyPerKanban: int('INT_QTY_PER_BOX'),
+    qtyPerKanban: integer('INT_QTY_PER_BOX'),
     ...timestamps,
   },
   (t) => [
@@ -379,7 +384,7 @@ export const customerParts = mysqlTable(
 );
 
 /** Mesin produksi. `externalRef` menautkan ke ID mesin di SQL Server J922. */
-export const machines = mysqlTable(
+export const machines = masterSchema.table(
   'TM_MACHINE',
   {
     id: pk(),
@@ -400,7 +405,7 @@ export const machines = mysqlTable(
 );
 
 /** Tooling: mold (injection) dan dies (casting) disatukan di sini. */
-export const toolings = mysqlTable(
+export const toolings = masterSchema.table(
   'TM_TOOLING',
   {
     id: pk(),
@@ -409,15 +414,17 @@ export const toolings = mysqlTable(
       .references(() => plants.id),
     code: varchar('CHR_CODE', { length: 32 }).notNull(),
     name: varchar('CHR_NAME', { length: 128 }).notNull(),
-    kind: mysqlEnum('CHR_KIND', ['MOLD', 'DIES', 'JIG']).notNull(),
-    cavity: int('INT_CAVITY').notNull().default(1),
+    kind: enumCol('CHR_KIND', ['MOLD', 'DIES', 'JIG']).notNull(),
+    cavity: integer('INT_CAVITY').notNull().default(1),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_TOOLING_PLANT_CODE_UNIQUE').on(t.plantId, t.code)],
+  (t) => [uniqueIndex('TM_TOOLING_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
+    daftarNilai('TM_TOOLING_CHR_KIND_CHK', t.kind, ['MOLD', 'DIES', 'JIG']),
+  ],
 );
 
-export const toolingParts = mysqlTable(
+export const toolingParts = masterSchema.table(
   'TM_TOOLING_PARTS',
   {
     id: pk(),

@@ -1,6 +1,12 @@
 export * as schema from './schema/index';
 export * from './schema/index';
 export { getDb, getPool, closeDb, type Database } from './client';
+export {
+  sebabGalatDb,
+  galatDuplikat,
+  constraintGalat,
+  type SebabGalatDb,
+} from './db-error';
 export { readAresOrderSheet } from './ares-source';
 export { MASTER_TABLES, getMasterTable, type MasterTable } from './master-tables';
 

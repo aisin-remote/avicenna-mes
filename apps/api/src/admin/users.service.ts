@@ -7,6 +7,7 @@ import {
 import bcrypt from 'bcryptjs';
 import { eq, and, or, like, ne, asc, count, isNull, type Database } from '@avicenna/db';
 import { users, roles, plants } from '@avicenna/db';
+import { galatDuplikat } from '@avicenna/db';
 import {
   userCreateSchema,
   userUpdateSchema,
@@ -17,7 +18,6 @@ import { InjectDb } from '../db/db.module';
 import { parseOrThrow } from '../common/validation-error';
 import type { Principal } from '../auth/auth.types';
 
-const MYSQL_DUP_ENTRY = 1062;
 
 /**
  * Biaya bcrypt.
@@ -122,16 +122,19 @@ export class UsersService {
     await this.pastikanRoleAda(input.roleId);
 
     try {
-      const hasil = await this.db.insert(users).values({
-        npk: input.npk,
-        name: input.name,
-        email: input.email ?? null,
-        passwordHash: await bcrypt.hash(input.password, BCRYPT_ROUNDS),
-        roleId: input.roleId,
-        plantId: input.plantId ?? null,
-        isActive: input.isActive,
-      });
-      const id = Number((hasil as unknown as Array<{ insertId: number }>)[0]?.insertId);
+      const hasil = await this.db
+        .insert(users)
+        .values({
+          npk: input.npk,
+          name: input.name,
+          email: input.email ?? null,
+          passwordHash: await bcrypt.hash(input.password, BCRYPT_ROUNDS),
+          roleId: input.roleId,
+          plantId: input.plantId ?? null,
+          isActive: input.isActive,
+        })
+        .returning({ id: users.id });
+      const id = Number(hasil[0]?.id);
       return this.findOne(id);
     } catch (err) {
       throw this.terjemahkan(err, input.npk, input.email);
@@ -267,9 +270,12 @@ export class UsersService {
   }
 
   private terjemahkan(err: unknown, npk: string, email?: string | null): Error {
-    const e = err as { errno?: number; message?: string; cause?: { errno?: number; message?: string } };
-    const errno = e?.errno ?? e?.cause?.errno;
-    if (errno === MYSQL_DUP_ENTRY) {
+    const e = err as {
+      errno?: number;
+      message?: string;
+      cause?: { errno?: number; message?: string };
+    };
+    if (galatDuplikat(err)) {
       const pesan = String(e?.message ?? e?.cause?.message ?? '');
       // Dibedakan: NPK dan email punya unique index masing-masing, dan
       // "sudah ada" tanpa menyebut yang mana membuat orang mengubah yang salah.
@@ -283,10 +289,7 @@ export class UsersService {
 }
 
 /** Membuang hash sandi dari hasil, dan menandai akun yang tidak bisa masuk. */
-function bersihkan(row: {
-  passwordHash: string | null;
-  [k: string]: unknown;
-}): UserRow {
+function bersihkan(row: { passwordHash: string | null; [k: string]: unknown }): UserRow {
   const { passwordHash, ...sisa } = row;
   return { ...(sisa as unknown as Omit<UserRow, 'tanpaSandi'>), tanpaSandi: !passwordHash };
 }

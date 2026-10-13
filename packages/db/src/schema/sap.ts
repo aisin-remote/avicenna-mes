@@ -1,17 +1,6 @@
-import {
-  mysqlTable,
-  bigint,
-  boolean,
-  varchar,
-  int,
-  mysqlEnum,
-  timestamp,
-  json,
-  uniqueIndex,
-  index,
-} from 'drizzle-orm/mysql-core';
+import { bigint, boolean, index, integer, jsonb, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { pk, fk, timestamps } from './_shared';
+import { daftarNilai, enumCol, fk, pk, sapSchema, timestamps } from './_shared';
 import { plants } from './org';
 
 export const SAP_OUTBOX_STATUSES = [
@@ -53,7 +42,7 @@ export const SAP_OUTBOX_STATUSES = [
  * sendiri: itu penolakan dari SAP, bukan gangguan jaringan, dan mencobanya lagi
  * tanpa memperbaiki datanya hanya akan ditolak lagi.
  */
-export const sapOutbox = mysqlTable(
+export const sapOutbox = sapSchema.table(
   'TT_SAP_OUTBOX',
   {
     id: pk(),
@@ -89,11 +78,11 @@ export const sapOutbox = mysqlTable(
     idempotencyKey: varchar('CHR_IDEMPOTENCY_KEY', { length: 128 }).notNull(),
 
     /** Isi dokumen: kepala beserta barisnya, dalam bentuk yang dibaca SAP. */
-    payload: json('CHR_PAYLOAD').notNull(),
+    payload: jsonb('CHR_PAYLOAD').notNull(),
 
-    status: mysqlEnum('CHR_STATUS', SAP_OUTBOX_STATUSES).notNull().default('PENDING'),
+    status: enumCol('CHR_STATUS', SAP_OUTBOX_STATUSES).notNull().default('PENDING'),
     isSimulation: boolean('FLG_SIMULATION').notNull().default(false),
-    attempts: int('INT_ATTEMPTS').notNull().default(0),
+    attempts: integer('INT_ATTEMPTS').notNull().default(0),
     lastError: varchar('CHR_LAST_ERROR', { length: 1000 }),
     /** Nomor dokumen material yang dikembalikan SAP, bila ada. */
     sapDocNumber: varchar('CHR_SAP_DOC_NUMBER', { length: 32 }),
@@ -110,10 +99,10 @@ export const sapOutbox = mysqlTable(
     stagingNumber: bigint('INT_STAGING_NUMBER', { mode: 'number' }),
 
     /** Kapan perpindahan barangnya terjadi — bukan kapan barisnya dibuat. */
-    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
+    occurredAt: timestamp('DTM_OCCURRED_AT', { withTimezone: true, mode: 'date' }).notNull(),
 
     /** Kapan barisnya mendarat di staging. Belum tentu sudah diproses SAP. */
-    sentAt: timestamp('DTM_SENT_AT'),
+    sentAt: timestamp('DTM_SENT_AT', { withTimezone: true, mode: 'date' }),
 
     /**
      * Kapan SAP menutup barisnya — diisi dari flag yang dibaca balik dari
@@ -121,7 +110,7 @@ export const sapOutbox = mysqlTable(
      * berapa lama dokumen menunggu di jembatan, dan itu satu-satunya cara
      * melihat SAP mulai tertinggal sebelum tunggakannya menumpuk.
      */
-    confirmedAt: timestamp('DTM_CONFIRMED_AT'),
+    confirmedAt: timestamp('DTM_CONFIRMED_AT', { withTimezone: true, mode: 'date' }),
     ...timestamps,
   },
   (t) => [
@@ -130,6 +119,8 @@ export const sapOutbox = mysqlTable(
     uniqueIndex('TT_SAP_OUTBOX_SOURCE_UNIQUE').on(t.sourceTable, t.sourceId, t.docType),
     uniqueIndex('TT_SAP_OUTBOX_IDEMPOTENCY_UNIQUE').on(t.idempotencyKey),
     index('TT_SAP_OUTBOX_STATUS_IDX').on(t.status, t.occurredAt),
+  
+    daftarNilai('TT_SAP_OUTBOX_CHR_STATUS_CHK', t.status, SAP_OUTBOX_STATUSES),
   ],
 );
 

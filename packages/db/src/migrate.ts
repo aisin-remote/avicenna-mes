@@ -1,5 +1,5 @@
 import './load-env';
-import { migrate } from 'drizzle-orm/mysql2/migrator';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { getDb, closeDb } from './client';
 
 /** Menjalankan file SQL hasil `pnpm db:generate` terhadap DATABASE_URL. */

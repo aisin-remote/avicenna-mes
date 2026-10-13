@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { eq, and, inArray, asc, count, type Database } from '@avicenna/db';
 import { roles, users, menus, roleMenus } from '@avicenna/db';
+import { galatDuplikat } from '@avicenna/db';
 import {
   roleCreateSchema,
   roleUpdateSchema,
@@ -18,7 +19,6 @@ import { InjectDb } from '../db/db.module';
 import { parseOrThrow } from '../common/validation-error';
 import { MenuService } from './menu.service';
 
-const MYSQL_DUP_ENTRY = 1062;
 
 @Injectable()
 export class RolesService {
@@ -79,14 +79,17 @@ export class RolesService {
 
     let id: number;
     try {
-      const hasil = await this.db.insert(roles).values({
-        name: input.name,
-        label: input.label ?? null,
-        kind: input.kind,
-        processGroup: input.processGroup ?? null,
-        isActive: input.isActive,
-      });
-      id = Number((hasil as unknown as Array<{ insertId: number }>)[0]?.insertId);
+      const hasil = await this.db
+        .insert(roles)
+        .values({
+          name: input.name,
+          label: input.label ?? null,
+          kind: input.kind,
+          processGroup: input.processGroup ?? null,
+          isActive: input.isActive,
+        })
+        .returning({ id: roles.id });
+      id = Number(hasil[0]?.id);
     } catch (err) {
       throw this.terjemahkan(err, input.name);
     }
@@ -138,7 +141,11 @@ export class RolesService {
   /** Mengganti SELURUH daftar menu sebuah role. */
   async setMenus(id: number, body: unknown): Promise<RoleRow> {
     const { menuKeys } = parseOrThrow(roleMenusSchema, body);
-    const [ada] = await this.db.select({ id: roles.id }).from(roles).where(eq(roles.id, id)).limit(1);
+    const [ada] = await this.db
+      .select({ id: roles.id })
+      .from(roles)
+      .where(eq(roles.id, id))
+      .limit(1);
     if (!ada) throw new NotFoundException(`Role #${id} tidak ditemukan`);
 
     this.periksaKunciMenu(menuKeys);
@@ -158,10 +165,7 @@ export class RolesService {
      * yang menjelaskan apa yang terjadi. Yang benar adalah memindahkan mereka
      * lebih dulu, atau menonaktifkan rolenya.
      */
-    const [dipakai] = await this.db
-      .select({ n: count() })
-      .from(users)
-      .where(eq(users.roleId, id));
+    const [dipakai] = await this.db.select({ n: count() }).from(users).where(eq(users.roleId, id));
 
     if (Number(dipakai?.n ?? 0) > 0) {
       throw new ConflictException(
@@ -212,9 +216,7 @@ export class RolesService {
         .where(and(inArray(menus.key, keys), eq(menus.isActive, true)));
 
       if (baris.length === 0) return;
-      await tx
-        .insert(roleMenus)
-        .values(baris.map((m) => ({ roleId, menuId: m.id })));
+      await tx.insert(roleMenus).values(baris.map((m) => ({ roleId, menuId: m.id })));
     });
   }
 
@@ -235,7 +237,7 @@ export class RolesService {
 
   private terjemahkan(err: unknown, name: string): Error {
     const e = err as { errno?: number; cause?: { errno?: number } };
-    if (e?.errno === MYSQL_DUP_ENTRY || e?.cause?.errno === MYSQL_DUP_ENTRY) {
+    if (galatDuplikat(err)) {
       return new ConflictException(`Role "${name}" sudah ada.`);
     }
     return err as Error;

@@ -416,12 +416,15 @@ export class StagingPullService {
           await tx.update(deliveries).set(headerValues).where(eq(deliveries.id, deliveryId));
           hasil.diperbarui++;
         } else {
-          const inserted = await tx.insert(deliveries).values({
-            plantId,
-            documentNumber,
-            ...headerValues,
-          });
-          deliveryId = Number((inserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
+          const inserted = await tx
+            .insert(deliveries)
+            .values({
+              plantId,
+              documentNumber,
+              ...headerValues,
+            })
+            .returning({ id: deliveries.id });
+          deliveryId = Number(inserted[0]?.id);
           hasil.baru++;
         }
 
@@ -536,7 +539,10 @@ export class StagingPullService {
       await this.db
         .insert(deliverySyncs)
         .values({ operationalDate, syncedAt, result: hasil })
-        .onDuplicateKeyUpdate({ set: { syncedAt, result: hasil } });
+        .onConflictDoUpdate({
+          target: deliverySyncs.operationalDate,
+          set: { syncedAt, result: hasil },
+        });
     }
     return hasil;
   }

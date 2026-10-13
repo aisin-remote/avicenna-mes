@@ -1,6 +1,17 @@
 import { Injectable, Logger, BadRequestException, ForbiddenException } from '@nestjs/common';
 import {
-  eq, and, or, isNull, desc, asc, gte, lt, count, sum, inArray, type Database,
+  eq,
+  and,
+  or,
+  isNull,
+  desc,
+  asc,
+  gte,
+  lt,
+  count,
+  sum,
+  inArray,
+  type Database,
 } from '@avicenna/db';
 import {
   scanEvents,
@@ -25,6 +36,7 @@ import {
   customers,
   customerParts,
 } from '@avicenna/db';
+import { galatDuplikat } from '@avicenna/db';
 import {
   normalizeScan,
   bacaBarcode,
@@ -90,8 +102,6 @@ export class ScanRejected extends Error {
 }
 
 /** MySQL: pelanggaran UNIQUE index. */
-const ER_DUP_ENTRY = 'ER_DUP_ENTRY';
-const ER_DUP_ENTRY_ERRNO = 1062;
 
 /** Pilihan jalannya satu scan. */
 interface OpsiIngest {
@@ -465,7 +475,9 @@ export class ScanService {
             'pindah ke gudang yang sama bukan perpindahan; kosongkan SLOC Transfer',
         );
       }
-      const salahPabrik = ids.filter((id) => !daftar.some((l) => l.id === id && l.plantId === plantId));
+      const salahPabrik = ids.filter(
+        (id) => !daftar.some((l) => l.id === id && l.plantId === plantId),
+      );
       if (salahPabrik.length > 0) {
         tolakSloc(`SLOC ${salahPabrik.map(kode).join(', ')} bukan milik pabrik lini ini`);
       }
@@ -699,9 +711,13 @@ export class ScanService {
      * seri = barcode barangnya.
      */
     const qtyScan =
-      syarat?.qtyDariKartu && kanbanTerpilih ? kanbanTerpilih.qtyPerBox : (parsed.qty ?? normalized.qty);
+      syarat?.qtyDariKartu && kanbanTerpilih
+        ? kanbanTerpilih.qtyPerBox
+        : (parsed.qty ?? normalized.qty);
     const seriScan =
-      syarat?.qtyDariKartu && kanbanTerpilih ? kanbanTerpilih.serial : (parsed.serialNumber ?? null);
+      syarat?.qtyDariKartu && kanbanTerpilih
+        ? kanbanTerpilih.serial
+        : (parsed.serialNumber ?? null);
 
     const hasilDasar: HasilIngest = {
       duplicated: false,
@@ -739,7 +755,10 @@ export class ScanService {
           if (syarat?.tolakKartuTerproduksi && terkunci?.status === 'PRODUCED') {
             // Diperiksa ulang DI BAWAH KUNCI: dua scanner mengirim kartu yang
             // sama dalam selisih milidetik, keduanya lolos pemeriksaan di atas.
-            throw new ScanRejected('KANBAN_ALREADY_PRODUCED', REJECT_MESSAGES.KANBAN_ALREADY_PRODUCED);
+            throw new ScanRejected(
+              'KANBAN_ALREADY_PRODUCED',
+              REJECT_MESSAGES.KANBAN_ALREADY_PRODUCED,
+            );
           }
 
           if (syarat?.tempelUnitKeKartu) {
@@ -755,34 +774,36 @@ export class ScanService {
             isiSetelahScan = Number(isi?.n ?? 0) + 1;
           }
         }
-        const inserted = await tx.insert(scanEvents).values({
-          plantId,
-          kind: normalized.kind,
-          processType,
-          lineId: line?.id ?? null,
-          partId: part?.id ?? null,
-          machineId: machine?.id ?? null,
-          rawCode: normalized.rawCode,
-          serialNumber: seriScan,
-          qty: qtyScan,
-          userId: principal?.kind === 'user' ? principal.sub : null,
-          deviceId: principal?.kind === 'device' ? principal.sub : null,
-          scannedAt: normalized.scannedAt,
-          dedupeKey: normalized.dedupeKey,
-          // Aturan baca ikut dicatat: saat sebuah barcode terbaca keliru,
-          // pertanyaan pertama selalu "dibaca pakai aturan mana".
-          meta: {
-            ...(normalized.meta ?? {}),
-            aturanBarcode: parsed.aturan,
-            ...(parsed.programCode ? { programNumber: parsed.programCode } : {}),
-            ...(programModel ? { model: programModel } : {}),
-            sapRoute,
-            scanMode: modeScan,
-            ...(kanbanTerpilih ? { kanbanSerial: kanbanTerpilih.serial } : {}),
-          },
-        });
-        // mysql2 mengembalikan insertId pada elemen pertama hasil insert.
-        insertedId = Number((inserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
+        const inserted = await tx
+          .insert(scanEvents)
+          .values({
+            plantId,
+            kind: normalized.kind,
+            processType,
+            lineId: line?.id ?? null,
+            partId: part?.id ?? null,
+            machineId: machine?.id ?? null,
+            rawCode: normalized.rawCode,
+            serialNumber: seriScan,
+            qty: qtyScan,
+            userId: principal?.kind === 'user' ? principal.sub : null,
+            deviceId: principal?.kind === 'device' ? principal.sub : null,
+            scannedAt: normalized.scannedAt,
+            dedupeKey: normalized.dedupeKey,
+            // Aturan baca ikut dicatat: saat sebuah barcode terbaca keliru,
+            // pertanyaan pertama selalu "dibaca pakai aturan mana".
+            meta: {
+              ...(normalized.meta ?? {}),
+              aturanBarcode: parsed.aturan,
+              ...(parsed.programCode ? { programNumber: parsed.programCode } : {}),
+              ...(programModel ? { model: programModel } : {}),
+              sapRoute,
+              scanMode: modeScan,
+              ...(kanbanTerpilih ? { kanbanSerial: kanbanTerpilih.serial } : {}),
+            },
+          })
+          .returning({ id: scanEvents.id });
+        insertedId = Number(inserted[0]?.id);
 
         /*
          * Menempelkan unit ke kartu.
@@ -1693,7 +1714,8 @@ export class ScanService {
    */
   async mulaiBerhenti(input: MulaiBerhentiInput, principal?: Principal): Promise<BerhentiLini> {
     const line = await this.findLine(input.lineCode);
-    if (!line) throw new BadRequestException(`${REJECT_MESSAGES.LINE_NOT_FOUND} (${input.lineCode})`);
+    if (!line)
+      throw new BadRequestException(`${REJECT_MESSAGES.LINE_NOT_FOUND} (${input.lineCode})`);
 
     const sudah = await this.berhentiTerbuka(line.id);
     if (sudah) return sudah;
@@ -1703,7 +1725,11 @@ export class ScanService {
       .from(stopReasons)
       .where(and(eq(stopReasons.id, input.reasonId), eq(stopReasons.isActive, true)))
       .limit(1);
-    if (!alasan || alasan.plantId !== line.plantId || (alasan.lineId && alasan.lineId !== line.id)) {
+    if (
+      !alasan ||
+      alasan.plantId !== line.plantId ||
+      (alasan.lineId && alasan.lineId !== line.id)
+    ) {
       throw new BadRequestException('Alasan berhenti itu tidak berlaku untuk lini ini.');
     }
 
@@ -2075,7 +2101,7 @@ function isDuplicateKey(err: unknown): boolean {
   for (let depth = 0; depth < 5 && current; depth += 1) {
     if (typeof current === 'object' && current !== null) {
       const e = current as { code?: string; errno?: number; cause?: unknown };
-      if (e.code === ER_DUP_ENTRY || e.errno === ER_DUP_ENTRY_ERRNO) return true;
+      if (galatDuplikat(err)) return true;
       current = e.cause;
     } else {
       return false;

@@ -1,6 +1,6 @@
-import { mysqlTable, varchar, int, boolean, uniqueIndex, index, mysqlEnum } from 'drizzle-orm/mysql-core';
+import { boolean, index, integer, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { pk, fk, timestamps } from './_shared';
+import { daftarNilai, enumCol, fk, orgSchema, pk, timestamps } from './_shared';
 import { ROLE_KINDS, PROCESS_GROUPS, MENU_GROUPS } from '@avicenna/contracts';
 
 /**
@@ -8,7 +8,7 @@ import { ROLE_KINDS, PROCESS_GROUPS, MENU_GROUPS } from '@avicenna/contracts';
  * Dua sistem lama menjadi dua baris di sini: AVICENNA (die casting) & BELLA (injection).
  * Semua tabel operasional membawa plant_id supaya data dua pabrik tidak saling tercampur.
  */
-export const plants = mysqlTable(
+export const plants = orgSchema.table(
   'TM_PLANT',
   {
     id: pk(),
@@ -46,7 +46,7 @@ export const plants = mysqlTable(
   (t) => [uniqueIndex('TM_PLANT_CODE_UNIQUE').on(t.code)],
 );
 
-export const roles = mysqlTable(
+export const roles = orgSchema.table(
   'TM_ROLE',
   {
     id: pk(),
@@ -56,7 +56,7 @@ export const roles = mysqlTable(
      * Apa yang dikerjakan pemegang role: SCANNING (lasman), VIEW (jp, leader),
      * atau ADMIN.
      */
-    kind: mysqlEnum('CHR_KIND', ROLE_KINDS).notNull().default('VIEW'),
+    kind: enumCol('CHR_KIND', ROLE_KINDS).notNull().default('VIEW'),
     /**
      * Grup proses yang menjadi lingkupnya. Kosong berarti seluruh proses.
      *
@@ -64,7 +64,7 @@ export const roles = mysqlTable(
      * maupun Casting FG. Memakai jenis proses akan menuntut dua role terpisah
      * untuk satu jabatan yang di lapangan memang satu orang.
      */
-    processGroup: mysqlEnum('CHR_PROCESS_GROUP', PROCESS_GROUPS),
+    processGroup: enumCol('CHR_PROCESS_GROUP', PROCESS_GROUPS),
     /**
      * Role yang tidak dipakai lagi.
      *
@@ -75,7 +75,10 @@ export const roles = mysqlTable(
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_ROLE_NAME_UNIQUE').on(t.name)],
+  (t) => [uniqueIndex('TM_ROLE_NAME_UNIQUE').on(t.name),
+    daftarNilai('TM_ROLE_CHR_KIND_CHK', t.kind, ROLE_KINDS),
+    daftarNilai('TM_ROLE_CHR_PROCESS_GROUP_CHK', t.processGroup, PROCESS_GROUPS),
+  ],
 );
 
 /**
@@ -93,7 +96,7 @@ export const roles = mysqlTable(
  * daftar role yang dulu boleh membukanya — tanpa jejak, dan tanpa ada yang
  * ingat siapa saja mereka.
  */
-export const menus = mysqlTable(
+export const menus = orgSchema.table(
   'TM_MENU',
   {
     id: pk(),
@@ -102,8 +105,8 @@ export const menus = mysqlTable(
     label: varchar('CHR_LABEL', { length: 128 }).notNull(),
     href: varchar('CHR_HREF', { length: 191 }).notNull(),
     icon: varchar('CHR_ICON', { length: 64 }).notNull(),
-    menuGroup: mysqlEnum('CHR_MENU_GROUP', MENU_GROUPS).notNull(),
-    sortOrder: int('INT_SORT_ORDER').notNull().default(0),
+    menuGroup: enumCol('CHR_MENU_GROUP', MENU_GROUPS).notNull(),
+    sortOrder: integer('INT_SORT_ORDER').notNull().default(0),
     /** Hanya untuk ADMIN, apa pun isi TM_ROLE_MENU. */
     adminOnly: boolean('FLG_ADMIN_ONLY').notNull().default(false),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
@@ -112,6 +115,8 @@ export const menus = mysqlTable(
   (t) => [
     uniqueIndex('TM_MENU_KEY_UNIQUE').on(t.key),
     index('TM_MENU_GROUP_IDX').on(t.menuGroup, t.sortOrder),
+  
+    daftarNilai('TM_MENU_CHR_MENU_GROUP_CHK', t.menuGroup, MENU_GROUPS),
   ],
 );
 
@@ -122,7 +127,7 @@ export const menus = mysqlTable(
  * BOLEH — bawaan yang aman: role baru yang belum diatur tidak diam-diam
  * mendapat seluruh menu.
  */
-export const roleMenus = mysqlTable(
+export const roleMenus = orgSchema.table(
   'TM_ROLE_MENU',
   {
     id: pk(),
@@ -140,7 +145,7 @@ export const roleMenus = mysqlTable(
   ],
 );
 
-export const users = mysqlTable(
+export const users = orgSchema.table(
   'TM_USER',
   {
     id: pk(),
@@ -166,20 +171,22 @@ export const users = mysqlTable(
  * Punya kredensial sendiri terpisah dari user — pola ini diambil dari
  * MachineAuthorizationService milik bella dan dipertahankan.
  */
-export const devices = mysqlTable(
+export const devices = orgSchema.table(
   'TM_DEVICE',
   {
     id: pk(),
     code: varchar('CHR_CODE', { length: 64 }).notNull(),
     name: varchar('CHR_NAME', { length: 128 }).notNull(),
     plantId: fk('INT_PLANT_ID').references(() => plants.id),
-    kind: mysqlEnum('CHR_KIND', ['SCANNER', 'RFID', 'MACHINE_PANEL', 'PRINTER']).notNull(),
+    kind: enumCol('CHR_KIND', ['SCANNER', 'RFID', 'MACHINE_PANEL', 'PRINTER']).notNull(),
     tokenHash: varchar('CHR_TOKEN_HASH', { length: 255 }),
     lastSeenAt: varchar('CHR_LAST_SEEN_AT', { length: 32 }),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_DEVICE_CODE_UNIQUE').on(t.code), index('TM_DEVICE_PLANT_IDX').on(t.plantId)],
+  (t) => [uniqueIndex('TM_DEVICE_CODE_UNIQUE').on(t.code), index('TM_DEVICE_PLANT_IDX').on(t.plantId),
+    daftarNilai('TM_DEVICE_CHR_KIND_CHK', t.kind, ['SCANNER', 'RFID', 'MACHINE_PANEL', 'PRINTER']),
+  ],
 );
 
 export const plantsRelations = relations(plants, ({ many }) => ({

@@ -174,18 +174,21 @@ export class ReceivingService {
     return this.db.transaction(async (tx) => {
       const documentNumber = buildReceiptNumber(receivedAt, seqBase + 1);
 
-      const inserted = await tx.insert(receipts).values({
-        plantId: input.plantId,
-        supplierId: input.supplierId,
-        documentNumber,
-        supplierDocNumber: input.supplierDocNumber ?? null,
-        receivedAt,
-        locationId: input.locationId ?? null,
-        status: 'RECEIVED',
-        receivedById: principal?.kind === 'user' ? principal.sub : null,
-        note: input.note ?? null,
-      });
-      const receiptId = Number((inserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
+      const inserted = await tx
+        .insert(receipts)
+        .values({
+          plantId: input.plantId,
+          supplierId: input.supplierId,
+          documentNumber,
+          supplierDocNumber: input.supplierDocNumber ?? null,
+          receivedAt,
+          locationId: input.locationId ?? null,
+          status: 'RECEIVED',
+          receivedById: principal?.kind === 'user' ? principal.sub : null,
+          note: input.note ?? null,
+        })
+        .returning({ id: receipts.id });
+      const receiptId = Number(inserted[0]?.id);
 
       let lotSeq = 0;
 
@@ -227,17 +230,20 @@ export class ReceivingService {
               .set({ initialQty: String(Number(existingLot[0].initialQty) + line.qty) })
               .where(eq(lots.id, lotId));
           } else {
-            const lotInserted = await tx.insert(lots).values({
-              plantId: input.plantId,
-              partId: part.id,
-              lotNumber,
-              supplierLotNumber: line.supplierLotNumber ?? null,
-              supplierId: input.supplierId,
-              receivedAt,
-              initialQty: String(line.qty),
-              status: 'OPEN',
-            });
-            lotId = Number((lotInserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
+            const lotInserted = await tx
+              .insert(lots)
+              .values({
+                plantId: input.plantId,
+                partId: part.id,
+                lotNumber,
+                supplierLotNumber: line.supplierLotNumber ?? null,
+                supplierId: input.supplierId,
+                receivedAt,
+                initialQty: String(line.qty),
+                status: 'OPEN',
+              })
+              .returning({ id: lots.id });
+            lotId = Number(lotInserted[0]?.id);
           }
         }
 
@@ -415,17 +421,20 @@ export class ReceivingService {
             at: receipt.receivedAt,
             sequenceToday: lotSeq,
           });
-          const lotInserted = await tx.insert(lots).values({
-            plantId: receipt.plantId,
-            partId: part.id,
-            lotNumber,
-            supplierLotNumber: line.supplierLotNumber ?? null,
-            supplierId: receipt.supplierId,
-            receivedAt: receipt.receivedAt,
-            initialQty: String(line.qty),
-            status: 'OPEN',
-          });
-          lotId = Number((lotInserted as unknown as Array<{ insertId: number }>)[0]?.insertId);
+          const lotInserted = await tx
+            .insert(lots)
+            .values({
+              plantId: receipt.plantId,
+              partId: part.id,
+              lotNumber,
+              supplierLotNumber: line.supplierLotNumber ?? null,
+              supplierId: receipt.supplierId,
+              receivedAt: receipt.receivedAt,
+              initialQty: String(line.qty),
+              status: 'OPEN',
+            })
+            .returning({ id: lots.id });
+          lotId = Number(lotInserted[0]?.id);
         }
 
         await tx.insert(receiptLines).values({
@@ -502,12 +511,12 @@ export class ReceivingService {
           status: receipts.status,
           sourceSnapshot: receipts.sourceSnapshot,
           closedAt: receipts.closedAt,
-          boxScanned: sql<number>`(SELECT COUNT(*) FROM TT_HISTORY_SCAN s WHERE s.CHR_DEDUPE_KEY LIKE CONCAT('ares-rcv:', ${receipts.id}, ':%') AND JSON_UNQUOTE(JSON_EXTRACT(s.CHR_META, '$.result'))='OK')`,
+          boxScanned: sql<number>`(SELECT COUNT(*) FROM production."TT_HISTORY_SCAN" s WHERE s."CHR_DEDUPE_KEY" LIKE CONCAT('ares-rcv:', ${receipts.id}, ':%') AND JSON_UNQUOTE(JSON_EXTRACT(s."CHR_META", '$.result'))='OK')`,
           // Nama tabel ditulis langsung karena subquery berkorelasi belum bisa
           // dibentuk lewat pembangun query Drizzle. Ikut berubah bila tabelnya
           // diganti nama — tidak ada yang mengingatkan, jadi dicatat di sini.
-          lineCount: sql<number>`(SELECT COUNT(*) FROM TT_PURCHASE_RECEIPT_L rl WHERE rl.INT_RECEIPT_ID = ${receipts.id})`,
-          totalQty: sql<string>`(SELECT COALESCE(SUM(rl.FLT_RECQTY), 0) FROM TT_PURCHASE_RECEIPT_L rl WHERE rl.INT_RECEIPT_ID = ${receipts.id})`,
+          lineCount: sql<number>`(SELECT COUNT(*) FROM logistics."TT_PURCHASE_RECEIPT_L" rl WHERE rl."INT_RECEIPT_ID" = ${receipts.id})`,
+          totalQty: sql<string>`(SELECT COALESCE(SUM(rl."FLT_RECQTY"), 0) FROM logistics."TT_PURCHASE_RECEIPT_L" rl WHERE rl."INT_RECEIPT_ID" = ${receipts.id})`,
         })
         .from(receipts)
         .leftJoin(suppliers, eq(receipts.supplierId, suppliers.id))

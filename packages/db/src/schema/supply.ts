@@ -1,18 +1,6 @@
-import {
-  mysqlTable,
-  varchar,
-  int,
-  decimal,
-  date,
-  timestamp,
-  mysqlEnum,
-  uniqueIndex,
-  foreignKey,
-  index,
-  json,
-} from 'drizzle-orm/mysql-core';
+import { date, decimal, foreignKey, index, integer, jsonb, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { pk, fk, timestamps } from './_shared';
+import { daftarNilai, enumCol, fk, inventorySchema, logisticsSchema, pk, productionSchema, timestamps } from './_shared';
 import { parts, suppliers } from './master';
 import { locations } from './inventory';
 import { plants, users } from './org';
@@ -32,7 +20,7 @@ import type { AresOrderSource } from '@avicenna/contracts';
  * ini akan ikut mengubah telusur produksi bulan lalu — dan jawaban atas
  * pertanyaan audit menjadi salah tanpa ada yang menyadarinya.
  */
-export const bomLines = mysqlTable(
+export const bomLines = productionSchema.table(
   'TM_BOM',
   {
     id: pk(),
@@ -55,7 +43,7 @@ export const bomLines = mysqlTable(
     uom: varchar('CHR_UOM', { length: 16 }).notNull().default('pcs'),
     /** Persentase susut yang wajar, dipakai saat menghitung kebutuhan material. */
     scrapPct: decimal('FLT_SCRAP_PCT', { precision: 5, scale: 2 }).notNull().default('0'),
-    sequence: int('INT_SEQUENCE').notNull().default(0),
+    sequence: integer('INT_SEQUENCE').notNull().default(0),
     effectiveFrom: date('DTM_EFFECTIVE_FROM', { mode: 'string' }).notNull(),
     /** NULL berarti masih berlaku. */
     effectiveTo: date('DTM_EFFECTIVE_TO', { mode: 'string' }),
@@ -77,7 +65,7 @@ export const bomLines = mysqlTable(
  * itulah yang dipakai customer dan supplier untuk saling merujuk — mengganti
  * atau menormalkannya akan memutus rujukan tersebut.
  */
-export const lots = mysqlTable(
+export const lots = inventorySchema.table(
   'TT_LOT',
   {
     id: pk(),
@@ -92,7 +80,7 @@ export const lots = mysqlTable(
     /** Nomor lot dari supplier, apa adanya. */
     supplierLotNumber: varchar('CHR_SUPPLIER_LOT_NUMBER', { length: 64 }),
     supplierId: fk('INT_SUPPLIER_ID').references(() => suppliers.id),
-    receivedAt: timestamp('DTM_RECEIVED_AT'),
+    receivedAt: timestamp('DTM_RECEIVED_AT', { withTimezone: true, mode: 'date' }),
     expiresAt: date('DTM_EXPIRES_AT', { mode: 'string' }),
     /**
      * Jumlah yang tertulis saat barang datang. CATATAN SAJA, BUKAN SALDO.
@@ -102,7 +90,7 @@ export const lots = mysqlTable(
      * yang sama dua kali.
      */
     initialQty: decimal('FLT_INITIAL_QTY', { precision: 14, scale: 4 }).notNull().default('0'),
-    status: mysqlEnum('CHR_STATUS', ['OPEN', 'CONSUMED', 'BLOCKED', 'RETURNED'])
+    status: enumCol('CHR_STATUS', ['OPEN', 'CONSUMED', 'BLOCKED', 'RETURNED'])
       .notNull()
       .default('OPEN'),
     ...timestamps,
@@ -111,13 +99,15 @@ export const lots = mysqlTable(
     uniqueIndex('TT_LOT_PLANT_NUMBER_UNIQUE').on(t.plantId, t.lotNumber),
     index('TT_LOT_PART_IDX').on(t.partId),
     index('TT_LOT_SUPPLIER_LOT_IDX').on(t.supplierLotNumber),
+  
+    daftarNilai('TT_LOT_CHR_STATUS_CHK', t.status, ['OPEN', 'CONSUMED', 'BLOCKED', 'RETURNED']),
   ],
 );
 
 /**
  * ─── Penerimaan dari supplier ─────────────────────────────────────────────
  */
-export const receipts = mysqlTable(
+export const receipts = logisticsSchema.table(
   'TT_PURCHASE_RECEIPT_H',
   {
     id: pk(),
@@ -130,24 +120,26 @@ export const receipts = mysqlTable(
     documentNumber: varchar('CHR_PDS_NO', { length: 64 }).notNull(),
     /** Nomor surat jalan supplier. */
     supplierDocNumber: varchar('CHR_SUPPLIER_DOC_NUMBER', { length: 64 }),
-    receivedAt: timestamp('DTM_RECEIVED_AT').notNull(),
+    receivedAt: timestamp('DTM_RECEIVED_AT', { withTimezone: true, mode: 'date' }).notNull(),
     locationId: fk('INT_LOCATION_ID').references(() => locations.id),
-    status: mysqlEnum('CHR_STATUS', ['DRAFT', 'RECEIVED', 'CANCELLED']).notNull().default('DRAFT'),
+    status: enumCol('CHR_STATUS', ['DRAFT', 'RECEIVED', 'CANCELLED']).notNull().default('DRAFT'),
     receivedById: fk('INT_RECEIVED_BY_ID').references(() => users.id),
     note: varchar('CHR_NOTE', { length: 255 }),
     aresOrderId: fk('INT_ARES_ORDER_ID'),
-    sourceSnapshot: json('CHR_SOURCE_SNAPSHOT').$type<AresOrderSource>(),
-    closedAt: timestamp('DTM_CLOSED_AT'),
+    sourceSnapshot: jsonb('CHR_SOURCE_SNAPSHOT').$type<AresOrderSource>(),
+    closedAt: timestamp('DTM_CLOSED_AT', { withTimezone: true, mode: 'date' }),
     ...timestamps,
   },
   (t) => [
     uniqueIndex('TT_PURCHASE_RECEIPT_H_PLANT_DOCUMENT_UNIQUE').on(t.plantId, t.documentNumber),
     index('TT_PURCHASE_RECEIPT_H_SUPPLIER_DATE_IDX').on(t.supplierId, t.receivedAt),
     index('TT_PURCHASE_RECEIPT_H_ARES_IDX').on(t.aresOrderId, t.status),
+  
+    daftarNilai('TT_PURCHASE_RECEIPT_H_CHR_STATUS_CHK', t.status, ['DRAFT', 'RECEIVED', 'CANCELLED']),
   ],
 );
 
-export const receiptLines = mysqlTable(
+export const receiptLines = logisticsSchema.table(
   'TT_PURCHASE_RECEIPT_L',
   {
     id: pk(),
@@ -196,7 +188,7 @@ export const receiptLines = mysqlTable(
  * Keduanya didukung karena pilihan di antara keduanya adalah keputusan beban
  * kerja di lapangan, bukan keputusan teknis.
  */
-export const consumptions = mysqlTable(
+export const consumptions = productionSchema.table(
   'TT_CONSUMPTION',
   {
     id: pk(),
@@ -215,8 +207,8 @@ export const consumptions = mysqlTable(
     lotId: fk('INT_LOT_ID').references(() => lots.id),
     qty: decimal('FLT_QTY', { precision: 14, scale: 4 }).notNull(),
     uom: varchar('CHR_UOM', { length: 16 }).notNull().default('pcs'),
-    source: mysqlEnum('CHR_SOURCE', ['BACKFLUSH', 'MANUAL', 'ADJUSTMENT']).notNull(),
-    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
+    source: enumCol('CHR_SOURCE', ['BACKFLUSH', 'MANUAL', 'ADJUSTMENT']).notNull(),
+    occurredAt: timestamp('DTM_OCCURRED_AT', { withTimezone: true, mode: 'date' }).notNull(),
     userId: fk('INT_USER_ID').references(() => users.id),
     ...timestamps,
   },
@@ -224,6 +216,8 @@ export const consumptions = mysqlTable(
     index('TT_CONSUMPTION_PRODUCED_IDX').on(t.producedPartId, t.occurredAt),
     index('TT_CONSUMPTION_COMPONENT_IDX').on(t.componentPartId, t.occurredAt),
     index('TT_CONSUMPTION_LOT_IDX').on(t.lotId),
+  
+    daftarNilai('TT_CONSUMPTION_CHR_SOURCE_CHK', t.source, ['BACKFLUSH', 'MANUAL', 'ADJUSTMENT']),
   ],
 );
 
@@ -242,7 +236,7 @@ export const consumptions = mysqlTable(
  *
  * Kedua arah itu sama pentingnya, jadi keduanya diberi index.
  */
-export const genealogy = mysqlTable(
+export const genealogy = productionSchema.table(
   'TT_GENEALOGY',
   {
     id: pk(),
@@ -269,8 +263,8 @@ export const genealogy = mysqlTable(
      *            cukup untuk kebanyakan kasus, tapi TIDAK cukup saat customer
      *            menuntut bukti. Bedanya harus terlihat, bukan disamarkan.
      */
-    evidence: mysqlEnum('CHR_EVIDENCE', ['SCANNED', 'INFERRED']).notNull().default('INFERRED'),
-    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
+    evidence: enumCol('CHR_EVIDENCE', ['SCANNED', 'INFERRED']).notNull().default('INFERRED'),
+    occurredAt: timestamp('DTM_OCCURRED_AT', { withTimezone: true, mode: 'date' }).notNull(),
     /**
      * Ditandai saat komponen ini diganti lewat perbaikan.
      *
@@ -279,9 +273,9 @@ export const genealogy = mysqlTable(
      * justru itu yang sering dicari ketika masalah muncul belakangan.
      * Tautan yang masih berlaku adalah yang superseded_at-nya kosong.
      */
-    supersededAt: timestamp('DTM_SUPERSEDED_AT'),
+    supersededAt: timestamp('DTM_SUPERSEDED_AT', { withTimezone: true, mode: 'date' }),
     supersededByRepairId: fk('INT_SUPERSEDED_BY_REPAIR_ID'),
-    meta: json('CHR_META'),
+    meta: jsonb('CHR_META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [
@@ -289,13 +283,15 @@ export const genealogy = mysqlTable(
     index('TT_GENEALOGY_LOT_IDX').on(t.componentLotId),
     index('TT_GENEALOGY_COMPONENT_SERIAL_IDX').on(t.componentSerial),
     index('TT_GENEALOGY_PART_TIME_IDX').on(t.parentPartId, t.occurredAt),
+  
+    daftarNilai('TT_GENEALOGY_CHR_EVIDENCE_CHK', t.evidence, ['SCANNED', 'INFERRED']),
   ],
 );
 
 /**
  * ─── Perpindahan antar lokasi / line ──────────────────────────────────────
  */
-export const transfers = mysqlTable(
+export const transfers = logisticsSchema.table(
   'TT_GOODS_MOVEMENT_H',
   {
     id: pk(),
@@ -307,8 +303,8 @@ export const transfers = mysqlTable(
     toLocationId: fk('INT_TO_LOCATION_ID').references(() => locations.id),
     fromLineId: fk('INT_FROM_LINE_ID').references(() => lines.id),
     toLineId: fk('INT_TO_LINE_ID').references(() => lines.id),
-    movedAt: timestamp('DTM_MOVED_AT').notNull(),
-    status: mysqlEnum('CHR_STATUS', ['DRAFT', 'MOVED', 'CANCELLED']).notNull().default('DRAFT'),
+    movedAt: timestamp('DTM_MOVED_AT', { withTimezone: true, mode: 'date' }).notNull(),
+    status: enumCol('CHR_STATUS', ['DRAFT', 'MOVED', 'CANCELLED']).notNull().default('DRAFT'),
     userId: fk('INT_USER_ID').references(() => users.id),
     note: varchar('CHR_NOTE', { length: 255 }),
     ...timestamps,
@@ -316,10 +312,12 @@ export const transfers = mysqlTable(
   (t) => [
     uniqueIndex('TT_GOODS_MOVEMENT_H_PLANT_DOCUMENT_UNIQUE').on(t.plantId, t.documentNumber),
     index('TT_GOODS_MOVEMENT_H_MOVED_IDX').on(t.movedAt),
+  
+    daftarNilai('TT_GOODS_MOVEMENT_H_CHR_STATUS_CHK', t.status, ['DRAFT', 'MOVED', 'CANCELLED']),
   ],
 );
 
-export const transferLines = mysqlTable(
+export const transferLines = logisticsSchema.table(
   'TT_GOODS_MOVEMENT_L',
   {
     id: pk(),

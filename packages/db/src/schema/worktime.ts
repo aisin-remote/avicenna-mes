@@ -1,17 +1,6 @@
-import {
-  mysqlTable,
-  varchar,
-  int,
-  time,
-  date,
-  timestamp,
-  boolean,
-  mysqlEnum,
-  uniqueIndex,
-  index,
-} from 'drizzle-orm/mysql-core';
+import { boolean, date, index, integer, time, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { pk, fk, timestamps } from './_shared';
+import { daftarNilai, enumCol, fk, pk, productionSchema, timestamps } from './_shared';
 import { plants, users } from './org';
 import { lines, parts } from './master';
 
@@ -35,7 +24,7 @@ import { lines, parts } from './master';
  * kecil dari `startTime`. Yang membaca harus memperlakukannya sebagai rentang
  * yang menyeberang hari — lihat `jamKerjaMenyeberang()` di domain.
  */
-export const workTimes = mysqlTable(
+export const workTimes = productionSchema.table(
   'TM_WORK_TIME',
   {
     id: pk(),
@@ -69,7 +58,7 @@ export const workTimes = mysqlTable(
  * kerugian membuat angka efisiensi selalu terlihat buruk tanpa sebab yang bisa
  * ditindaklanjuti.
  */
-export const workBreaks = mysqlTable(
+export const workBreaks = productionSchema.table(
   'TM_WORK_BREAK',
   {
     id: pk(),
@@ -111,7 +100,7 @@ export const STOP_REASON_CATEGORIES = [
  * dibuat untuk lini itu saja, sehingga daftar di layar operator tetap pendek —
  * daftar panjang berisi alasan yang tidak relevan akan selalu diisi asal pilih.
  */
-export const stopReasons = mysqlTable(
+export const stopReasons = productionSchema.table(
   'TM_STOP_REASON',
   {
     id: pk(),
@@ -122,17 +111,19 @@ export const stopReasons = mysqlTable(
     lineId: fk('INT_LINE_ID').references(() => lines.id),
     code: varchar('CHR_CODE', { length: 32 }).notNull(),
     name: varchar('CHR_NAME', { length: 128 }).notNull(),
-    category: mysqlEnum('CHR_CATEGORY', STOP_REASON_CATEGORIES).notNull().default('PROBLEM'),
+    category: enumCol('CHR_CATEGORY', STOP_REASON_CATEGORIES).notNull().default('PROBLEM'),
     /** Direncanakan = tidak dihitung sebagai kerugian yang harus ditindaklanjuti. */
     isPlanned: boolean('FLG_IS_PLANNED').notNull().default(false),
     /** Urutan tampil di layar operator — yang paling sering dipakai di atas. */
-    sortOrder: int('INT_SORT_ORDER').notNull().default(0),
+    sortOrder: integer('INT_SORT_ORDER').notNull().default(0),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
     uniqueIndex('TM_STOP_REASON_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
     index('TM_STOP_REASON_LINE_IDX').on(t.lineId, t.isActive),
+  
+    daftarNilai('TM_STOP_REASON_CHR_CATEGORY_CHK', t.category, STOP_REASON_CATEGORIES),
   ],
 );
 
@@ -153,7 +144,7 @@ export const STOP_CLOSED_BY = ['TOMBOL', 'SCAN', 'SISTEM'] as const;
  * hasil produksi hilang hanya karena tombol terlewat. Penutupnya dicatat supaya
  * selisih keduanya bisa diperiksa.
  */
-export const lineStops = mysqlTable(
+export const lineStops = productionSchema.table(
   'TT_LINE_STOP',
   {
     id: pk(),
@@ -168,10 +159,10 @@ export const lineStops = mysqlTable(
     reasonId: fk('INT_STOP_REASON_ID').references(() => stopReasons.id),
     /** Hari produksi, bukan tanggal kalender. Berhenti pukul 02:00 milik hari kemarin. */
     productionDate: date('DTM_PRODUCTION_DATE', { mode: 'string' }).notNull(),
-    startedAt: timestamp('DTM_STARTED_AT').notNull(),
+    startedAt: timestamp('DTM_STARTED_AT', { withTimezone: true, mode: 'date' }).notNull(),
     /** Kosong = masih berhenti sampai sekarang. */
-    endedAt: timestamp('DTM_ENDED_AT'),
-    closedBy: mysqlEnum('CHR_CLOSED_BY', STOP_CLOSED_BY),
+    endedAt: timestamp('DTM_ENDED_AT', { withTimezone: true, mode: 'date' }),
+    closedBy: enumCol('CHR_CLOSED_BY', STOP_CLOSED_BY),
     npk: varchar('CHR_NPK', { length: 32 }),
     userId: fk('INT_USER_ID').references(() => users.id),
     note: varchar('CHR_NOTE', { length: 255 }),
@@ -185,6 +176,8 @@ export const lineStops = mysqlTable(
      * operator maupun dashboard — tiap kali layar dimuat, untuk tiap lini.
      */
     index('TT_LINE_STOP_OPEN_IDX').on(t.lineId, t.endedAt),
+  
+    daftarNilai('TT_LINE_STOP_CHR_CLOSED_BY_CHK', t.closedBy, STOP_CLOSED_BY),
   ],
 );
 

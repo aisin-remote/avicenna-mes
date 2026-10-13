@@ -52,7 +52,7 @@ async function main() {
   const [supplier] = await db
     .insert(suppliers)
     .values({ code: `QA-RCV-${suffix}`, name: `Supplier QA Receiving ${suffix}` })
-    .$returningId();
+    .returning({ id: suppliers.id });
   const [part] = await db
     .insert(parts)
     .values({
@@ -65,7 +65,7 @@ async function main() {
       trackingMode: 'LOT',
       uom: 'PCS',
     })
-    .$returningId();
+    .returning({ id: parts.id });
   assert(part && supplier);
   const order: AresOrderSource = {
     id: 1_000_000_000 + Math.floor(Math.random() * 900_000_000),

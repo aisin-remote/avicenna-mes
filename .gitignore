@@ -1,6 +1,9 @@
 node_modules/
 .pnpm-store/
 dist/
+# Build terpisah untuk uji coba, supaya tidak menimpa dist/ yang sedang dipakai
+# `pnpm dev`. Tidak pernah ikut ke repo maupun ke image.
+dist-uji/
 build/
 .next/
 out/

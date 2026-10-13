@@ -249,8 +249,8 @@ async function main() {
     );
   assert(gi);
   assert.equal(gi.isSimulation, true, 'Fixture tidak masuk antrean push produksi');
-  await db.execute(sql`UPDATE TT_SAP_OUTBOX o JOIN TT_DELIVERY d ON o.INT_SOURCE_ID = d.INT_ID
-    SET o.FLG_SIMULATION = 1 WHERE o.CHR_SOURCE_TABLE = 'TT_DELIVERY' AND d.CHR_DEL_NO LIKE 'LL-TRIAL-%'`);
+  await db.execute(sql`UPDATE sap."TT_SAP_OUTBOX" o JOIN logistics."TT_DELIVERY" d ON o."INT_SOURCE_ID" = d."INT_ID"
+    SET o."FLG_SIMULATION" = 1 WHERE o."CHR_SOURCE_TABLE" = 'TT_DELIVERY' AND d."CHR_DEL_NO" LIKE 'LL-TRIAL-%'`);
   assert.equal((await outbox.simulateDelivery(gi.id, 'REJECTED')).status, 'REJECTED');
   assert.equal(
     (await service.list({ page: 1, perPage: 100, query: number, attention: 'only' })).data.length,
@@ -270,7 +270,7 @@ async function main() {
   const [balance] =
     (
       (await db.execute(
-        sql`SELECT SUM(FLT_QTY) AS qty FROM TT_STOCK_MUTATION WHERE INT_PART_ID = ${part.id}`,
+        sql`SELECT SUM(FLT_QTY) AS qty FROM inventory."TT_STOCK_MUTATION" WHERE INT_PART_ID = ${part.id}`,
       )) as unknown as Array<Array<{ qty: string }>>
     )[0] ?? [];
   assert.equal(Number(balance?.qty), 20);

@@ -1,14 +1,6 @@
-import {
-  mysqlTable,
-  varchar,
-  decimal,
-  timestamp,
-  mysqlEnum,
-  uniqueIndex,
-  index,
-} from 'drizzle-orm/mysql-core';
+import { decimal, index, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { pk, fk, timestamps } from './_shared';
+import { daftarNilai, enumCol, fk, pk, qualitySchema, timestamps } from './_shared';
 import { parts, lines } from './master';
 import { lots } from './supply';
 import { plants, users } from './org';
@@ -35,7 +27,7 @@ export const DISPOSITIONS = ['REMELT', 'REPAIR', 'DISCARD', 'RETURN_SUPPLIER'] a
  * menempel di tungku. Memakai angka BOM apa adanya akan membuat stok D
  * terlihat lebih banyak daripada kenyataan.
  */
-export const scrapRules = mysqlTable(
+export const scrapRules = qualitySchema.table(
   'TM_SCRAP_RULE',
   {
     id: pk(),
@@ -46,17 +38,20 @@ export const scrapRules = mysqlTable(
     partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    disposition: mysqlEnum('CHR_DISPOSITION', DISPOSITIONS).notNull(),
+    disposition: enumCol('CHR_DISPOSITION', DISPOSITIONS).notNull(),
     /** Untuk REMELT: part hasil peleburan. */
     convertsToPartId: fk('INT_CONVERTS_TO_PART_ID').references(() => parts.id),
     /** Untuk REMELT: berapa banyak part tujuan dihasilkan dari satu unit NG. */
     conversionQty: decimal('FLT_CONVERSION_QTY', { precision: 12, scale: 4 }),
     conversionUom: varchar('CHR_CONVERSION_UOM', { length: 16 }),
     note: varchar('CHR_NOTE', { length: 255 }),
-    isActive: mysqlEnum('CHR_IS_ACTIVE', ['0', '1']).notNull().default('1'),
+    isActive: enumCol('CHR_IS_ACTIVE', ['0', '1']).notNull().default('1'),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_SCRAP_RULE_PART_UNIQUE').on(t.plantId, t.partId)],
+  (t) => [uniqueIndex('TM_SCRAP_RULE_PART_UNIQUE').on(t.plantId, t.partId),
+    daftarNilai('TM_SCRAP_RULE_CHR_DISPOSITION_CHK', t.disposition, DISPOSITIONS),
+    daftarNilai('TM_SCRAP_RULE_CHR_IS_ACTIVE_CHK', t.isActive, ['0', '1']),
+  ],
 );
 
 /**
@@ -69,7 +64,7 @@ export const scrapRules = mysqlTable(
  * satu. Kalau hanya dicatat sebagai pengurangan, material yang sebenarnya
  * masih bernilai akan hilang dari pembukuan.
  */
-export const ngDispositions = mysqlTable(
+export const ngDispositions = qualitySchema.table(
   'TT_NG_DISPOSITION',
   {
     id: pk(),
@@ -85,7 +80,7 @@ export const ngDispositions = mysqlTable(
     /** Diisi untuk part ber-lot. */
     lotId: fk('INT_LOT_ID').references(() => lots.id),
     qty: decimal('FLT_QTY', { precision: 14, scale: 4 }).notNull(),
-    disposition: mysqlEnum('CHR_DISPOSITION', DISPOSITIONS).notNull(),
+    disposition: enumCol('CHR_DISPOSITION', DISPOSITIONS).notNull(),
 
     /** Hasil peleburan — hanya untuk REMELT. */
     convertedToPartId: fk('INT_CONVERTED_TO_PART_ID').references(() => parts.id),
@@ -93,7 +88,7 @@ export const ngDispositions = mysqlTable(
     convertedLotId: fk('INT_CONVERTED_LOT_ID').references(() => lots.id),
 
     reason: varchar('CHR_REASON', { length: 255 }),
-    occurredAt: timestamp('DTM_OCCURRED_AT').notNull(),
+    occurredAt: timestamp('DTM_OCCURRED_AT', { withTimezone: true, mode: 'date' }).notNull(),
     userId: fk('INT_USER_ID').references(() => users.id),
     ...timestamps,
   },
@@ -101,6 +96,8 @@ export const ngDispositions = mysqlTable(
     index('TT_NG_DISPOSITION_PART_TIME_IDX').on(t.partId, t.occurredAt),
     index('TT_NG_DISPOSITION_SERIAL_IDX').on(t.serialNumber),
     index('TT_NG_DISPOSITION_DISPOSITION_IDX').on(t.disposition, t.occurredAt),
+  
+    daftarNilai('TT_NG_DISPOSITION_CHR_DISPOSITION_CHK', t.disposition, DISPOSITIONS),
   ],
 );
 
@@ -109,7 +106,7 @@ export const ngDispositions = mysqlTable(
  *
  * Unit barang jadi yang NG diperbaiki dengan mengganti komponen tertentu.
  */
-export const repairs = mysqlTable(
+export const repairs = qualitySchema.table(
   'TT_REPAIR_H',
   {
     id: pk(),
@@ -123,15 +120,17 @@ export const repairs = mysqlTable(
     /** Nomor seri unit yang diperbaiki. */
     serialNumber: varchar('CHR_SERIAL_NUMBER', { length: 64 }).notNull(),
     reason: varchar('CHR_REASON', { length: 255 }),
-    status: mysqlEnum('CHR_STATUS', ['OPEN', 'DONE', 'SCRAPPED']).notNull().default('OPEN'),
-    startedAt: timestamp('DTM_STARTED_AT').notNull(),
-    finishedAt: timestamp('DTM_FINISHED_AT'),
+    status: enumCol('CHR_STATUS', ['OPEN', 'DONE', 'SCRAPPED']).notNull().default('OPEN'),
+    startedAt: timestamp('DTM_STARTED_AT', { withTimezone: true, mode: 'date' }).notNull(),
+    finishedAt: timestamp('DTM_FINISHED_AT', { withTimezone: true, mode: 'date' }),
     userId: fk('INT_USER_ID').references(() => users.id),
     ...timestamps,
   },
   (t) => [
     index('TT_REPAIR_H_SERIAL_IDX').on(t.serialNumber),
     index('TT_REPAIR_H_STATUS_IDX').on(t.status, t.startedAt),
+  
+    daftarNilai('TT_REPAIR_H_CHR_STATUS_CHK', t.status, ['OPEN', 'DONE', 'SCRAPPED']),
   ],
 );
 
@@ -143,7 +142,7 @@ export const repairs = mysqlTable(
  * TIDAK dihapus — saat investigasi, pertanyaan "unit ini dulu pakai lot apa"
  * harus tetap bisa dijawab.
  */
-export const repairLines = mysqlTable(
+export const repairLines = qualitySchema.table(
   'TT_REPAIR_L',
   {
     id: pk(),
@@ -158,7 +157,7 @@ export const repairLines = mysqlTable(
     removedSerial: varchar('CHR_REMOVED_SERIAL', { length: 64 }),
     removedLotId: fk('INT_REMOVED_LOT_ID').references(() => lots.id),
     /** Apa yang dilakukan terhadap komponen yang dilepas. */
-    removedDisposition: mysqlEnum('CHR_REMOVED_DISPOSITION', DISPOSITIONS),
+    removedDisposition: enumCol('CHR_REMOVED_DISPOSITION', DISPOSITIONS),
 
     /** Komponen pengganti yang dipasang. */
     installedSerial: varchar('CHR_INSTALLED_SERIAL', { length: 64 }),
@@ -170,6 +169,8 @@ export const repairLines = mysqlTable(
   (t) => [
     index('TT_REPAIR_L_REPAIR_IDX').on(t.repairId),
     index('TT_REPAIR_L_COMPONENT_IDX').on(t.componentPartId),
+  
+    daftarNilai('TT_REPAIR_L_CHR_REMOVED_DISPOSITION_CHK', t.removedDisposition, DISPOSITIONS),
   ],
 );
 

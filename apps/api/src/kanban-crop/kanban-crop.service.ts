@@ -64,7 +64,7 @@ export class KanbanCropService {
       verticalLines: normalisasiGarisPotong(input.verticalLines),
       updatedById: principal?.kind === 'user' ? principal.sub : null,
     };
-    await this.db.insert(kanbanCropProfiles).values(values).onDuplicateKeyUpdate({ set: values });
+    await this.db.insert(kanbanCropProfiles).values(values).onConflictDoUpdate({ target: kanbanCropProfiles.customerId, set: values });
 
     const saved = await this.find(input.customerId);
     if (!saved) throw new NotFoundException('Profil potong Kanban gagal dibaca kembali.');

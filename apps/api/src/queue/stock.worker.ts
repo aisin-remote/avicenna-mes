@@ -167,7 +167,8 @@ export class StockWorker implements OnModuleInit, OnModuleDestroy {
         outQty: String(summary.outQty),
         closingQty: String(summary.closingQty),
       })
-      .onDuplicateKeyUpdate({
+      .onConflictDoUpdate({
+        target: [stockBalances.partId, stockBalances.locationId, stockBalances.balanceDate],
         set: {
           openingQty: String(summary.openingQty),
           inQty: String(summary.inQty),

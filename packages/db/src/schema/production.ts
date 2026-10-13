@@ -1,18 +1,6 @@
-import {
-  mysqlTable,
-  varchar,
-  int,
-  date,
-  time,
-  timestamp,
-  mysqlEnum,
-  uniqueIndex,
-  foreignKey,
-  index,
-  json,
-} from 'drizzle-orm/mysql-core';
+import { date, foreignKey, index, integer, jsonb, time, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { pk, fk, timestamps, PROCESS_TYPES } from './_shared';
+import { PROCESS_TYPES, daftarNilai, enumCol, fk, pk, productionSchema, timestamps } from './_shared';
 import { lines, parts, customers, machines } from './master';
 import { plants, users, devices } from './org';
 
@@ -23,7 +11,7 @@ import { plants, users, devices } from './org';
  * dinormalisasi jadi FK supaya rename master data tidak memutus data historis,
  * dan report bisa join tanpa pencocokan string.
  */
-export const productionPlans = mysqlTable(
+export const productionPlans = productionSchema.table(
   'TT_PRODUCTION_PLAN',
   {
     id: pk(),
@@ -39,20 +27,20 @@ export const productionPlans = mysqlTable(
     customerId: fk('INT_CUSTOMER_ID').references(() => customers.id),
     planDate: date('DTM_PLAN_DATE', { mode: 'string' }).notNull(),
     /** Cycle / rit pengiriman ke berapa dalam satu hari. */
-    cycle: int('INT_CYCLE').notNull().default(1),
-    seqNo: int('INT_SEQ_NO').notNull().default(0),
-    orderQty: int('INT_ORDER_QTY').notNull().default(0),
-    directPullingQty: int('INT_DIRECT_PULLING_QTY').notNull().default(0),
-    stockChuteQty: int('INT_STOCK_CHUTE_QTY').notNull().default(0),
+    cycle: integer('INT_CYCLE').notNull().default(1),
+    seqNo: integer('INT_SEQ_NO').notNull().default(0),
+    orderQty: integer('INT_ORDER_QTY').notNull().default(0),
+    directPullingQty: integer('INT_DIRECT_PULLING_QTY').notNull().default(0),
+    stockChuteQty: integer('INT_STOCK_CHUTE_QTY').notNull().default(0),
     dock: varchar('CHR_DOCK', { length: 32 }),
     dnNumber: varchar('CHR_DN_NUMBER', { length: 64 }),
     workingStart: time('DTM_WORKING_START'),
     workingEnd: time('DTM_WORKING_END'),
     deliveryTime: time('DTM_DELIVERY_TIME'),
-    actualStartAt: timestamp('DTM_ACTUAL_START_AT'),
-    actualEndAt: timestamp('DTM_ACTUAL_END_AT'),
-    planSource: mysqlEnum('CHR_PLAN_SOURCE', ['MANUAL', 'IMPORT', 'STATIC_SEQ', 'API']).notNull().default('MANUAL'),
-    status: mysqlEnum('CHR_STATUS', ['DRAFT', 'RELEASED', 'RUNNING', 'DONE', 'CANCELLED'])
+    actualStartAt: timestamp('DTM_ACTUAL_START_AT', { withTimezone: true, mode: 'date' }),
+    actualEndAt: timestamp('DTM_ACTUAL_END_AT', { withTimezone: true, mode: 'date' }),
+    planSource: enumCol('CHR_PLAN_SOURCE', ['MANUAL', 'IMPORT', 'STATIC_SEQ', 'API']).notNull().default('MANUAL'),
+    status: enumCol('CHR_STATUS', ['DRAFT', 'RELEASED', 'RUNNING', 'DONE', 'CANCELLED'])
       .notNull()
       .default('DRAFT'),
     ...timestamps,
@@ -61,6 +49,9 @@ export const productionPlans = mysqlTable(
     index('TT_PRODUCTION_PLAN_DATE_LINE_IDX').on(t.planDate, t.lineId),
     index('TT_PRODUCTION_PLAN_PART_DATE_IDX').on(t.partId, t.planDate),
     uniqueIndex('TT_PRODUCTION_PLAN_SLOT_UNIQUE').on(t.lineId, t.planDate, t.cycle, t.seqNo),
+  
+    daftarNilai('TT_PRODUCTION_PLAN_CHR_PLAN_SOURCE_CHK', t.planSource, ['MANUAL', 'IMPORT', 'STATIC_SEQ', 'API']),
+    daftarNilai('TT_PRODUCTION_PLAN_CHR_STATUS_CHK', t.status, ['DRAFT', 'RELEASED', 'RUNNING', 'DONE', 'CANCELLED']),
   ],
 );
 
@@ -85,15 +76,15 @@ export const SCAN_KINDS = [
  *
  * ATURAN: append-only, sama seperti kanban_events.
  */
-export const scanEvents = mysqlTable(
+export const scanEvents = productionSchema.table(
   'TT_HISTORY_SCAN',
   {
     id: pk(),
     plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    kind: mysqlEnum('CHR_KIND', SCAN_KINDS).notNull(),
-    processType: mysqlEnum('CHR_PROCESS_TYPE', PROCESS_TYPES),
+    kind: enumCol('CHR_KIND', SCAN_KINDS).notNull(),
+    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES),
     lineId: fk('INT_LINE_ID').references(() => lines.id),
     partId: fk('INT_PART_ID').references(() => parts.id),
     machineId: fk('INT_MACHINE_ID').references(() => machines.id),
@@ -101,16 +92,16 @@ export const scanEvents = mysqlTable(
     /** Isi barcode mentah, disimpan apa adanya untuk audit & investigasi. */
     rawCode: varchar('CHR_RAW_CODE', { length: 255 }).notNull(),
     serialNumber: varchar('CHR_SERIAL_NUMBER', { length: 64 }),
-    qty: int('INT_QTY').notNull().default(1),
+    qty: integer('INT_QTY').notNull().default(1),
     userId: fk('INT_USER_ID').references(() => users.id),
     deviceId: fk('INT_DEVICE_ID').references(() => devices.id),
-    scannedAt: timestamp('DTM_SCANNED_AT').notNull(),
+    scannedAt: timestamp('DTM_SCANNED_AT', { withTimezone: true, mode: 'date' }).notNull(),
     /**
      * Kunci idempoten. Scanner di pabrik sering mengirim ulang saat jaringan
      * putus-nyambung; unique index di sini yang mencegah dobel, bukan logika app.
      */
     dedupeKey: varchar('CHR_DEDUPE_KEY', { length: 128 }).notNull(),
-    meta: json('CHR_META'),
+    meta: jsonb('CHR_META'),
     createdAt: timestamps.createdAt,
   },
   (t) => [
@@ -153,6 +144,9 @@ export const scanEvents = mysqlTable(
      * TERAKHIR pada sebuah barang (pencatatan NG) tidak perlu mengurutkan lagi.
      */
     index('TT_HISTORY_SCAN_RAW_PROCESS_IDX').on(t.rawCode, t.processType, t.scannedAt),
+  
+    daftarNilai('TT_HISTORY_SCAN_CHR_KIND_CHK', t.kind, SCAN_KINDS),
+    daftarNilai('TT_HISTORY_SCAN_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
   ],
 );
 

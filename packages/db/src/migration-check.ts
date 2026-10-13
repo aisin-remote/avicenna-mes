@@ -87,13 +87,22 @@ export async function periksaMigrasi(folder: string): Promise<HasilPeriksaMigras
    */
   let tercatat: string[] = [];
   try {
-    const rows = await db.execute(sql`SELECT hash FROM __drizzle_migrations`);
-    tercatat = ((rows as unknown as Array<Array<{ hash: string }>>)[0] ?? []).map((r) => r.hash);
+    /*
+     * Di Postgres tabel ini berada di SKEMA tersendiri, `drizzle` — bukan di
+     * search_path. Tanpa menyebut skemanya, kueri gagal dengan "relation does
+     * not exist" meski migrasinya sudah jalan, dan API menolak menyala di atas
+     * database yang sebenarnya sehat.
+     */
+    const rows = await db.execute<{ hash: string }>(
+      sql`SELECT hash FROM drizzle.__drizzle_migrations`,
+    );
+    tercatat = rows.rows.map((r) => r.hash);
   } catch (err) {
-    const e = err as { errno?: number; cause?: { errno?: number } };
-    const errno = e?.errno ?? e?.cause?.errno;
-    // 1146 = tabel tidak ada
-    if (errno !== 1146) throw err;
+    // 42P01 = undefined_table. Database benar-benar kosong, dan itulah yang
+    // dilaporkan ke pemanggil — bukan dilempar sebagai kegagalan.
+    const kode = (err as { code?: string; cause?: { code?: string } })?.code
+      ?? (err as { cause?: { code?: string } })?.cause?.code;
+    if (kode !== '42P01') throw err;
   }
 
   const hashDb = new Set(tercatat);

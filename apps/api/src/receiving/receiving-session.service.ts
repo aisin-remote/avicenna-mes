@@ -220,7 +220,7 @@ export class ReceivingSessionService {
           aresOrderId: source.id,
           sourceSnapshot: source,
         })
-        .$returningId();
+        .returning({ id: receipts.id });
       await this.record(tx, row!.id, plant.id, user, 'OPEN', input.code, {
         result: 'OPEN',
         message: 'Sesi receiving dibuka',
@@ -397,15 +397,15 @@ export class ReceivingSessionService {
           .from(scanEvents)
           .innerJoin(
             receipts,
-            eq(receipts.id, sql`JSON_EXTRACT(${scanEvents.meta}, '$.sessionId')`),
+            eq(receipts.id, sql`${scanEvents.meta}->>'sessionId'`),
           )
           .where(
             and(
               eq(scanEvents.kind, 'RECEIVING'),
               eq(scanEvents.rawCode, code),
               ne(receipts.status, 'CANCELLED'),
-              sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.module'))='ARES_RECEIVING'`,
-              sql`JSON_UNQUOTE(JSON_EXTRACT(${scanEvents.meta}, '$.result'))='OK'`,
+              sql`${scanEvents.meta}->>'module'='ARES_RECEIVING'`,
+              sql`${scanEvents.meta}->>'result'='OK'`,
             ),
           )
           .limit(1);
@@ -520,7 +520,7 @@ export class ReceivingSessionService {
               receivedAt: now,
               initialQty: String(line.pcsReceived),
             })
-            .$returningId();
+            .returning({ id: lots.id });
           lotId = lot!.id;
         }
         await tx.insert(receiptLines).values({

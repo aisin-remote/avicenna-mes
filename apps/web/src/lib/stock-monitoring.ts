@@ -177,7 +177,7 @@ export async function stockMonitor(params: StockMonitorParams) {
    * detik yang sama.
    */
   const urutanMutasi = sql<string>`CONCAT(
-    DATE_FORMAT(${mutations.occurredAt}, '%Y%m%d%H%i%s'),
+    to_char(${mutations.occurredAt}, 'YYYYMMDDHH24MISS'),
     LPAD(${mutations.id}, 20, '0')
   )`;
   const mutasiSaldo = db
@@ -203,10 +203,10 @@ export async function stockMonitor(params: StockMonitorParams) {
   if (locationKind) kondisiSaldo.push(eq(locations.kind, locationKind));
   if (processType) {
     kondisiSaldo.push(sql`EXISTS (
-      SELECT 1 FROM TM_PROCESS_PARTS pp
-      WHERE pp.INT_PART_ID = ${parts.id}
-        AND pp.CHR_PROCESS_TYPE = ${processType}
-        AND pp.FLG_IS_ACTIVE = true
+      SELECT 1 FROM master."TM_PROCESS_PARTS" pp
+      WHERE pp."INT_PART_ID" = ${parts.id}
+        AND pp."CHR_PROCESS_TYPE" = ${processType}
+        AND pp."FLG_IS_ACTIVE" = true
     )`);
   }
   if (search) {
@@ -290,8 +290,8 @@ export async function stockMonitor(params: StockMonitorParams) {
         eq(locations.kind, locationKind),
         sql`EXISTS (
           SELECT 1
-          FROM TT_STOCK_MUTATION mutation_in
-          INNER JOIN TM_LOCATION location_in
+          FROM inventory."TT_STOCK_MUTATION" mutation_in
+          INNER JOIN inventory."TM_LOCATION" location_in
             ON location_in.INT_ID = mutation_in.INT_LOCATION_ID
           WHERE mutation_in.CHR_TYPE = 'TRANSFER_IN'
             AND mutation_in.CHR_SOURCE_TABLE = ${mutations.sourceTable}
@@ -317,8 +317,8 @@ export async function stockMonitor(params: StockMonitorParams) {
         like(mutations.note, term),
         sql`EXISTS (
           SELECT 1
-          FROM TT_STOCK_MUTATION mutation_in
-          INNER JOIN TM_LOCATION location_in
+          FROM inventory."TT_STOCK_MUTATION" mutation_in
+          INNER JOIN inventory."TM_LOCATION" location_in
             ON location_in.INT_ID = mutation_in.INT_LOCATION_ID
           WHERE mutation_in.CHR_TYPE = 'TRANSFER_IN'
             AND mutation_in.CHR_SOURCE_TABLE = ${mutations.sourceTable}
