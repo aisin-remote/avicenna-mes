@@ -49,6 +49,36 @@ services:
     volumes:
       - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 
+  # pgAdmin: antarmuka web untuk Postgres lokal. DEV SAJA — jangan pernah
+  # dipakai menghadap jaringan; tidak ada TLS dan sandinya sekadar formalitas.
+  # Buka http://localhost:5050, masuk dengan email/sandi di bawah. Server
+  # "avicenna lokal" sudah didaftarkan otomatis (docker/pgadmin-servers.json);
+  # kalau tetap diminta sandi database, isinya: avicenna
+  pgadmin:
+    image: dpage/pgadmin4:9
+    container_name: avicenna-pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@avicenna.co.id
+      PGADMIN_DEFAULT_PASSWORD: admin
+      # Mode desktop: satu pengguna, tanpa verifikasi email.
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin-servers.json:/pgadmin4/servers.json:ro
+      - ./docker/pgadmin-pgpass:/pgpass:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/misc/ping || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
 volumes:
   pg_data:
   valkey_data:
+  pgadmin_data:

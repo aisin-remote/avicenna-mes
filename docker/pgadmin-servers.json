@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "avicenna lokal",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "postgres",
+      "Username": "avicenna",
+      "SSLMode": "prefer",
+      "PassFile": "/pgpass"
+    }
+  }
+}
