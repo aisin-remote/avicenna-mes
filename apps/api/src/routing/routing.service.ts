@@ -275,6 +275,57 @@ export class RoutingService {
     const masalah = periksaRute(unik.map((processType, i) => ({ processType, seqNo: (i + 1) * 10 })));
 
     /*
+     * ── Langkah yang lininya ada di PABRIK LAIN ───────────────────────────────
+     *
+     * Ada part yang setelah selesai di Antena (Electric) lanjut dirakit di
+     * Assembling Body — pabrik yang berbeda. Rute seperti itu BISA disimpan di
+     * sini, tetapi hasilnya tidak seperti yang orang sangka: setiap langkah
+     * dicap `part.plantId` (lihat insert di bawah), jadi langkah Assembling
+     * Body tercatat milik pabrik Electric. SLOC-nya pun ikut dari rute pabrik
+     * itu — FG90 alih-alih FG70 — sehingga barang jadinya diterima di pabrik
+     * yang salah, dan di SAP itu plant yang salah.
+     *
+     * Jadi keadaannya dilaporkan, bukan ditolak: rute yang belum bisa
+     * dinyatakan utuh tetap perlu disimpan sambil menunggu keputusan model
+     * lintas pabriknya. Yang penting ia tidak DIAM.
+     *
+     * Hanya proses yang PUNYA lini yang diperiksa. Proses tanpa lini di mana
+     * pun masih wajar — pabrik Electric belum punya lini sama sekali, dan
+     * menuduhnya "milik pabrik lain" akan salah.
+     */
+    if (unik.length > 0) {
+      const liniProses = await this.db
+        .select({ processType: lines.processType, plantId: lines.plantId })
+        .from(lines)
+        .where(and(inArray(lines.processType, unik), eq(lines.isActive, true)));
+      const pabrikLiniPerProses = new Map<ProcessType, Set<number>>();
+      for (const l of liniProses) {
+        let pabrik = pabrikLiniPerProses.get(l.processType);
+        if (!pabrik) {
+          pabrik = new Set<number>();
+          pabrikLiniPerProses.set(l.processType, pabrik);
+        }
+        pabrik.add(l.plantId);
+      }
+      const namaPabrik = new Map(
+        (await this.db.select({ id: plants.id, code: plants.code }).from(plants)).map((p) => [
+          p.id,
+          p.code,
+        ]),
+      );
+      for (const proses of unik) {
+        const pabrik = pabrikLiniPerProses.get(proses);
+        if (!pabrik || pabrik.size === 0 || pabrik.has(part.plantId)) continue;
+        const lain = [...pabrik].map((id) => namaPabrik.get(id) ?? id).join(', ');
+        masalah.push(
+          `${proses} tidak punya lini di pabrik part ini — lininya ada di ${lain}. ` +
+            'Rute lintas pabrik belum didukung: langkah ini akan tercatat milik pabrik part, ' +
+            'beserta SLOC pabrik itu',
+        );
+      }
+    }
+
+    /*
      * Hapus lalu tulis ulang, di dalam SATU transaksi.
      *
      * Menyandingkan yang lama dengan yang baru terdengar lebih hemat, tetapi

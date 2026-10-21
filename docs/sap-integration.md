@@ -437,7 +437,7 @@ lengkap — inilah daftar proses yang SAP kenal:
 | --- | --- | --- |
 | 700 Body | INJ / PTG / ASY | Injection, Painting, Assembly |
 | 800 Unit | DCT / MAC / ASY | Die Casting, Machining, Assembly |
-| 900 Electric | MNT / INS / VAC / ASY / ANT | Mounting, Inspection, Vacuum, Assembly, Antena |
+| 900 Electric | MNT / INS / VAC / ANT | Mounting, Inspection, Vacuum, Antena |
 
 Dipetakan ke jenis proses di sistem ini:
 
@@ -453,9 +453,8 @@ Dipetakan ke jenis proses di sistem ini:
 | `PAINTING` | 700 | PTG Painting | SFG¹ | WP70 |
 | `ASSEMBLING_BODY` | 700 | ASY Assembly | FG | FG70 |
 | `MOUNTING` | 900 | MNT Mounting | SFG² | WP90 |
-| `INSPECTION_ELEC` | 900 | INS Inspection | SFG² | WP90 |
+| `INSPECTION_ELEC` | 900 | INS Inspection + ASY Assembly | SFG² | WP90 |
 | `VACUUM` | 900 | VAC Vacuum | SFG² | WP90 |
-| `ASSEMBLING_ELEC` | 900 | ASY Assembly | FG² | FG90 |
 | `ANTENNA` | 900 | ANT Antena | SFG² | WP90 |
 | `DELIVERY` | semua | — _modul SD_ | — | tidak didorong |
 
@@ -463,24 +462,80 @@ Dipetakan ke jenis proses di sistem ini:
 Injection menjadi barang jadi di situ — lihat `kelasHasilSap()` yang menerima
 `langkahTerakhir`.
 
-² **Dugaan, bukan temuan blueprint.** Urutan rute Electric tidak ada di
-dokumen itu; yang ada hanya daftar bagiannya. Assembly diperlakukan sebagai
-penutup rute karena begitu di Body dan Unit. Kalau ternyata Antena yang
-terakhir, yang berubah hanya satu baris di `KELAS_HASIL`. Sampai itu dipastikan,
-izin push rute Electric sebaiknya tetap mati.
+² **Electric tidak menutup rute.** Keluarannya barang setengah jadi yang
+dirakit di Assembling Body, jadi keempat langkahnya SFG. Kalau kelak ada part
+Electric yang dikirim langsung ke customer, yang menjawabnya bukan tabel ini
+melainkan posisi langkah itu di rute part.
 
-Lima jenis proses Electric itu **sudah ada di enum** sejak migrasi `0001`, tapi
-pabrik 900 belum punya lini maupun part — kode work center-nya belum kita
-ketahui, dan menebaknya berarti membuat master yang harus dibongkar lagi.
+**ASY Assembly ada di Tabel 16 blueprint tetapi TIDAK menjadi jenis proses
+sendiri di sini**: di lapangan assembly Electric dikerjakan di lini yang sama
+dengan Inspection. Dibuatkan jenis sendiri, ia akan menjadi kolom yang tidak
+pernah dipakai di matriks rute dan nilai enum yang tidak pernah muncul di data
+— lalu suatu hari ada yang mengisinya karena "ada di blueprint". Kalau SAP
+membuat work center di bawah ASY untuk plant 900, pasangannya di sini
+`INSPECTION_ELEC`.
 
-### Dua penamaan yang diberi akhiran, dan kenapa
+Keempat jenis proses Electric **sudah ada di enum**, tapi pabrik 900 belum punya
+lini maupun part — kode work center-nya belum kita ketahui, dan menebaknya
+berarti membuat master yang harus dibongkar lagi.
 
-`ASSEMBLING_ELEC` karena ketiga pabrik punya "Assembly"; tanpa pembeda, hasil
-ketiganya bercampur di laporan dan tidak ada cara memisahkannya kembali setelah
-datanya masuk. `INSPECTION_ELEC` karena "inspection" di sistem ini sudah berarti
-sesi pemeriksaan kualitas (`TT_INSPECTION_H`) — nilai bernama `INSPECTION` akan
+### Rute boleh melintasi pabrik — modelnya yang belum ada
+
+Ada part yang setelah selesai di **Antena (plant 900)** lanjut dirakit di
+**Assembling Body (plant 700)**. Urutan langkah sendiri memang disusun manual:
+`PUT /routing/part/:id` menerima daftar proses **terurut sesuai jalannya
+barang** dan membangkitkan `INT_SEQ_NO` 10, 20, 30, … dari urutan itu.
+
+Yang belum ada adalah tempat menyimpan **pabrik per langkah**. `simpanRute()`
+mencap setiap langkah dengan `part.plantId`, jadi rute di atas tersimpan dengan
+langkah Assembling Body tercatat milik pabrik Electric — beserta SLOC pabrik
+itu, `FG90` alih-alih `FG70`. Barang jadinya diterima di pabrik yang salah, dan
+di SAP itu **plant** yang salah.
+
+Karena itu keadaan ini **dilaporkan sebagai peringatan** pada hasil simpan rute
+(bukan ditolak — rute yang belum bisa dinyatakan utuh tetap perlu disimpan):
+
+```
+ASSEMBLING_BODY tidak punya lini di pabrik part ini — lininya ada di BODY.
+Rute lintas pabrik belum didukung: langkah ini akan tercatat milik pabrik part,
+beserta SLOC pabrik itu
+```
+
+Dan di sisi SAP, perpindahan `WP90 → WP70` **bukan** transfer antar storage
+location: plant adalah unit organisasi tersendiri, dan perpindahan antar plant
+butuh stock transport order atau movement 301/303/305. `periksaTransferSloc()`
+karena itu memeriksa pabrik LEBIH DULU daripada pola SLOC-nya — tanpa itu,
+`WP90 → WP70` jatuh ke aturan "WIP → WIP" dan dilewati sebagai serah-terima
+internal, padahal justru inilah satu-satunya perpindahan di rute itu yang HARUS
+sampai ke SAP.
+
+Dua model yang mungkin, dan pilihannya belum diambil:
+
+| | Satu baris part, langkah lintas pabrik | Dua baris part + transfer antar plant |
+| --- | --- | --- |
+| Ketertelusuran | satu part id dari awal sampai akhir | genealogy harus menyambung dua part id |
+| Padanan SAP | tidak ada — SAP tidak punya material lintas plant | **persis** seperti SAP: material di-extend ke dua plant, dipindahkan STO |
+| Tarik master | bertentangan: `TM_PROCESS_PARTS` staging berkunci (part, plant) | sejalan — memang menghasilkan dua baris |
+| Yang harus diubah | `plantId` per langkah, resolusi SLOC, validasi scan | dokumen perpindahan antar plant, penyambung genealogy |
+
+### Satu penamaan yang diberi akhiran, dan kenapa
+
+`INSPECTION_ELEC`, karena "inspection" di sistem ini sudah berarti sesi
+pemeriksaan kualitas (`TT_INSPECTION_H`) — nilai bernama `INSPECTION` akan
 dibaca sebagai itu, padahal yang dimaksud langkah produksi dengan work center
 sendiri.
+
+### Urutan jenis proses di enum ikut bermakna
+
+Bukan sebagai rute: rute tetap melekat pada part lewat
+`TM_PROCESS_PARTS.INT_SEQ_NO`. Yang diturunkan dari urutan `PROCESS_TYPES`
+adalah **urutan kolom matriks rute**, dan matriks itu menyusun rute baru
+mengikuti kolomnya — jadi urutan enum adalah bawaan yang ditawarkan ke orang.
+
+Karena itu blok Electric ditaruh **sebelum** `ASSEMBLING_BODY`: ada part yang
+setelah Antena lanjut dirakit di Assembling Body, dan dengan urutan ini matriks
+menawarkan `ANTENNA` lebih dulu. Lewat API, urutan bebas sepenuhnya — yang
+dikirim adalah daftar terurut.
 
 ### SLOC hasil produksi datang dari material master, bukan dari kita
 

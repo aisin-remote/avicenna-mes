@@ -165,6 +165,7 @@ export class SapOutboxService {
         uom: parts.uom,
         slocCode: locations.code,
         slocKind: locations.kind,
+        slocPlantId: locations.plantId,
         qty: mutations.qty,
         lotId: mutations.lotId,
         // Nomor lot, bukan id-nya: sisi SAP tidak mengenal id tabel kita.
@@ -366,11 +367,13 @@ export class SapOutboxService {
        */
       const tujuanPerPart = new Map<string, string>();
       const jenisTujuanPerPart = new Map<string, NonNullable<typeof baris[number]['slocKind']>>();
+      const pabrikTujuanPerPart = new Map<string, number>();
       for (const b of anggota) {
         const arah = sapMovementFor(b.mutationType);
         if (arah && !arah.kirim && Number(b.qty) > 0 && b.partNumber && b.slocCode) {
           tujuanPerPart.set(b.partNumber, b.slocCode);
           if (b.slocKind) jenisTujuanPerPart.set(b.partNumber, b.slocKind);
+          if (b.slocPlantId != null) pabrikTujuanPerPart.set(b.partNumber, b.slocPlantId);
         }
       }
 
@@ -410,6 +413,17 @@ export class SapOutboxService {
           slocToKind: keluar
             ? (jenisTujuanPerPart.get(b.partNumber ?? '') ?? null)
             : (b.slocKind ?? null),
+
+          /*
+           * Pabrik pemilik kedua SLOC. Diambil dari TM_LOCATION, bukan dari
+           * kolom pabrik pada mutasinya: yang menentukan dokumen SAP adalah
+           * plant tempat SLOC itu berada, dan sebuah rute bisa melintasi
+           * pabrik — Antena di 900 lanjut ke Assembling Body di 700.
+           */
+          slocFromPlantId: keluar ? (b.slocPlantId ?? null) : null,
+          slocToPlantId: keluar
+            ? (pabrikTujuanPerPart.get(b.partNumber ?? '') ?? null)
+            : (b.slocPlantId ?? null),
 
           /** Bertanda, sesuai buku besar kita. */
           qty: b.qty,
@@ -455,6 +469,8 @@ export class SapOutboxService {
                   keKind: b.slocToKind,
                   dariCode: b.slocFrom,
                   keCode: b.slocTo,
+                  dariPlantId: b.slocFromPlantId,
+                  kePlantId: b.slocToPlantId,
                 }),
               )
               .find((k) => !k.kirim)
@@ -614,6 +630,8 @@ export class SapOutboxService {
           slocTo: string | null;
           slocFromKind?: LocationKind | null;
           slocToKind?: LocationKind | null;
+          slocFromPlantId?: number | null;
+          slocToPlantId?: number | null;
           partNumber: string | null;
         }>;
       };
@@ -638,6 +656,8 @@ export class SapOutboxService {
               keKind: l.slocToKind ?? null,
               dariCode: l.slocFrom,
               keCode: l.slocTo,
+              dariPlantId: l.slocFromPlantId ?? null,
+              kePlantId: l.slocToPlantId ?? null,
             }).kirim,
         )
       )

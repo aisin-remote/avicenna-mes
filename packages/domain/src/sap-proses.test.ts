@@ -23,17 +23,24 @@ describe('kelasHasilSap', () => {
     expect(kelasHasilSap('MACHINING_WIP')).toBe('SFG');
   });
 
-  it('assembling ketiga pabrik menghasilkan FG', () => {
+  it('assembling kedua pabrik menghasilkan FG', () => {
     expect(kelasHasilSap('ASSEMBLING_UNIT')).toBe('FG');
     expect(kelasHasilSap('ASSEMBLING_BODY')).toBe('FG');
-    expect(kelasHasilSap('ASSEMBLING_ELEC')).toBe('FG');
   });
 
-  it('empat langkah Electric selain assembly dianggap setengah jadi', () => {
+  /*
+   * Electric tidak menutup rute: hasilnya dirakit di Assembling Body, jadi
+   * keempat langkahnya menghasilkan barang setengah jadi.
+   */
+  it('seluruh langkah Electric menghasilkan setengah jadi', () => {
     expect(kelasHasilSap('MOUNTING')).toBe('SFG');
     expect(kelasHasilSap('INSPECTION_ELEC')).toBe('SFG');
     expect(kelasHasilSap('VACUUM')).toBe('SFG');
     expect(kelasHasilSap('ANTENNA')).toBe('SFG');
+  });
+
+  it('part Electric yang dikirim langsung tetap bisa jadi FG lewat posisi rute', () => {
+    expect(kelasHasilSap('ANTENNA', true)).toBe('FG');
   });
 
   it('melting dan delivery tidak punya padanan produksi di SAP', () => {
@@ -213,6 +220,52 @@ describe('periksaTransferSloc', () => {
     // Bukan "sengaja": ini pertanyaan untuk tim SAP, bukan keputusan kita.
     expect(hasil.sengaja).not.toBe(true);
     expect(hasil.alasan).toContain('tim SAP');
+  });
+
+  /*
+   * Kasus Antena (plant 900) lanjut ke Assembling Body (plant 700). Tanpa
+   * pemeriksaan pabrik, ini jatuh ke aturan "WIP -> WIP" dan DILEWATI —
+   * padahal justru inilah perpindahan yang harus sampai ke SAP.
+   */
+  it('beda pabrik DITAHAN, bukan dilewati sebagai serah-terima internal', () => {
+    const hasil = periksaTransferSloc({
+      dariKind: 'WIP',
+      keKind: 'WIP',
+      dariCode: 'WP90',
+      keCode: 'WP70',
+      dariPlantId: 3,
+      kePlantId: 2,
+    });
+    expect(hasil.kirim).toBe(false);
+    expect(hasil.sengaja).not.toBe(true);
+    expect(hasil.alasan).toContain('antar plant');
+    expect(hasil.alasan).toContain('301');
+  });
+
+  it('beda pabrik mengalahkan pola SLOC yang biasanya sah', () => {
+    // WH -> WP normalnya PP-PE-01, tetapi tidak bila menyeberang pabrik.
+    const hasil = periksaTransferSloc({
+      dariKind: 'WAREHOUSE',
+      keKind: 'WIP',
+      dariCode: 'WH90',
+      keCode: 'WP70',
+      dariPlantId: 3,
+      kePlantId: 2,
+    });
+    expect(hasil.kirim).toBe(false);
+  });
+
+  it('pabrik yang sama tetap lolos seperti biasa', () => {
+    expect(
+      periksaTransferSloc({
+        dariKind: 'WAREHOUSE',
+        keKind: 'WIP',
+        dariCode: 'WH80',
+        keCode: 'WP80',
+        dariPlantId: 1,
+        kePlantId: 1,
+      }).kirim,
+    ).toBe(true);
   });
 
   it('SLOC yang belum terisi menahan', () => {

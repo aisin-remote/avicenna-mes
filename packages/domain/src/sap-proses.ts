@@ -42,8 +42,11 @@ export type KelasHasilSap = 'SFG' | 'FG' | null;
  *
  *   700 Body      INJ Injection · PTG Painting · ASY Assembly
  *   800 Unit      DCT Die Casting · MAC Machining · ASY Assembly
- *   900 Electric  MNT Mounting · INS Inspection · VAC Vacuum
- *                 ASY Assembly · ANT Antena
+ *   900 Electric  MNT Mounting · INS Inspection · VAC Vacuum · ANT Antena
+ *
+ * ASY Assembly tercatat juga untuk plant 900 di tabel itu, tetapi di lapangan
+ * dikerjakan di lini yang sama dengan Inspection — karena itu tidak ada jenis
+ * proses tersendiri untuknya. Lihat catatan di processTypeSchema.
  *
  * ── MELTING tidak ada di daftar itu ─────────────────────────────────────────
  *
@@ -60,17 +63,16 @@ export type KelasHasilSap = 'SFG' | 'FG' | null;
  * PP-PE-02, lini FG menjadi PP-PE-03. SAP menerima keduanya sebagai
  * confirmation pada work center masing-masing.
  *
- * ── Yang masih DUGAAN, dan harus dikonfirmasi ───────────────────────────────
+ * ── Seluruh langkah Electric 'SFG', dan itu memang keadaannya ──────────────
  *
- * Empat langkah Electric selain Assembly ditandai 'SFG' karena di Body dan
- * Unit hanya Assembly yang menutup rute. Rute Electric sendiri TIDAK ada di
- * blueprint. Kalau ternyata Antena yang terakhir, baris ANTENNA-lah yang
- * berubah — dan sampai itu dipastikan, izin push rute Electric sebaiknya tetap
- * mati.
+ * Pabrik Electric tidak menutup rute: ada part yang setelah selesai di Antena
+ * lanjut dirakit di Assembling Body, jadi keluaran Electric adalah barang
+ * setengah jadi yang dikonsumsi pabrik lain.
  *
- * Hal yang sama berlaku untuk INJECTION: sebuah part bisa berhenti di sana dan
- * langsung dikirim ke customer. Lihat kelasHasilSap() — posisi langkah di rute
- * mengalahkan tabel ini.
+ * Kalau kelak ada part Electric yang dikirim langsung ke customer, yang
+ * menjawabnya bukan tabel ini melainkan POSISI langkah itu di rute part —
+ * lihat kelasHasilSap() di bawah. Hal yang sama berlaku untuk INJECTION:
+ * sebuah part bisa berhenti di sana dan langsung dikirim.
  */
 const KELAS_HASIL: Record<ProcessType, KelasHasilSap> = {
   MELTING: null,
@@ -85,7 +87,6 @@ const KELAS_HASIL: Record<ProcessType, KelasHasilSap> = {
   MOUNTING: 'SFG',
   INSPECTION_ELEC: 'SFG',
   VACUUM: 'SFG',
-  ASSEMBLING_ELEC: 'FG',
   ANTENNA: 'SFG',
   // Delivery bukan produksi: itu modul SD, bukan PP.
   DELIVERY: null,
@@ -227,6 +228,9 @@ export function periksaTransferSloc(opsi: {
   keKind: LocationKind | null;
   dariCode?: string | null;
   keCode?: string | null;
+  /** Pabrik pemilik SLOC asal dan tujuan. Beda pabrik = dokumen yang lain. */
+  dariPlantId?: number | null;
+  kePlantId?: number | null;
 }): KeputusanSap {
   const { dariKind, keKind } = opsi;
   const dari = opsi.dariCode ?? dariKind ?? '(kosong)';
@@ -241,6 +245,35 @@ export function periksaTransferSloc(opsi: {
       kirim: false,
       sengaja: true,
       alasan: `asal dan tujuan SLOC sama (${dari}) — bukan perpindahan di SAP`,
+    };
+  }
+
+  /*
+   * ── Beda pabrik diperiksa SEBELUM pola SLOC-nya ───────────────────────────
+   *
+   * Ada part yang setelah selesai di Antena (plant 900) lanjut dirakit di
+   * Assembling Body (plant 700). Barangnya benar-benar berpindah pabrik, dan
+   * di SAP itu BUKAN transfer antar storage location: plant adalah unit
+   * organisasi tersendiri, perpindahannya dokumen lain lagi — stock transport
+   * order, atau movement 301/303/305 tergantung caranya.
+   *
+   * Tanpa pemeriksaan ini, WP90 -> WP70 jatuh ke aturan "WIP -> WIP" di bawah
+   * dan DILEWATI sebagai serah-terima internal. Padahal yang terjadi
+   * sebaliknya: itu satu-satunya perpindahan di rute yang justru HARUS sampai
+   * ke SAP, dan melewatkannya membuat stok plant 900 tidak pernah berkurang
+   * sementara plant 700 tidak pernah bertambah.
+   *
+   * Blueprint PP tidak menyebut perpindahan antar plant sama sekali, jadi
+   * dokumennya DITAHAN — bukan dilewati, dan bukan pula dikirim dengan
+   * movement yang ditebak.
+   */
+  if (opsi.dariPlantId != null && opsi.kePlantId != null && opsi.dariPlantId !== opsi.kePlantId) {
+    return {
+      kirim: false,
+      alasan:
+        `${dari} dan ${ke} milik pabrik yang berbeda — perpindahan antar plant ` +
+        'bukan transfer antar SLOC di SAP (butuh stock transport order atau ' +
+        'movement 301/303/305). Tidak disebut blueprint PP; perlu dikonfirmasi tim SAP',
     };
   }
 

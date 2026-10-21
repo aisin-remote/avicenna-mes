@@ -14,34 +14,41 @@ export const processTypeSchema = z.enum([
   'ASSEMBLING_UNIT',
   'INJECTION',
   'PAINTING',
-  'ASSEMBLING_BODY',
   /*
    * ── Electric (plant 900) ──────────────────────────────────────────────────
    *
-   * Kelimanya diambil dari Tabel 16 "Person Responsible" Blueprint SAP PP AIIA:
-   * MNT Mounting, INS Inspection, VAC Vacuum, ASY Assembly, ANT Antena. Itulah
-   * daftar LENGKAP bagian produksi pabrik Electric menurut SAP — bukan dugaan.
+   * Diambil dari Tabel 16 "Person Responsible" Blueprint SAP PP AIIA: MNT
+   * Mounting, INS Inspection, VAC Vacuum, ANT Antena.
    *
-   * Dua di antaranya diberi akhiran supaya tidak terbaca sebagai hal lain:
-   *   ASSEMBLING_ELEC   tiga pabrik masing-masing punya "Assembly"; tanpa
-   *                     akhiran, hasil ketiganya bercampur di laporan dan tidak
-   *                     ada cara memisahkannya kembali.
-   *   INSPECTION_ELEC   "inspection" di sistem ini sudah berarti sesi
-   *                     pemeriksaan kualitas (TT_INSPECTION_H). Nilai bernama
-   *                     INSPECTION akan dibaca sebagai itu, padahal yang
-   *                     dimaksud di sini LANGKAH PRODUKSI dengan work center
-   *                     sendiri.
+   * ASY Assembly ada di tabel blueprint itu TETAPI TIDAK ada di sini: di
+   * lapangan assembly Electric dikerjakan di LINI YANG SAMA dengan Inspection,
+   * jadi ia bukan langkah tersendiri. Dibuat sebagai jenis proses sendiri, ia
+   * akan menjadi kolom yang tidak pernah dipakai di matriks rute dan nilai enum
+   * yang tidak pernah muncul di data — dan suatu hari ada yang mengisinya
+   * karena "ada di blueprint". Kalau kelak SAP membuat work center di bawah ASY
+   * untuk plant 900, pasangannya di sini adalah INSPECTION_ELEC.
    *
-   * URUTAN RUTE Electric TIDAK ada di blueprint — yang ada hanya daftar bagian.
-   * Jadi jangan menyimpulkan Mounting → Inspection → Vacuum → Assembly →
-   * Antena dari urutan di bawah; rute tetap melekat pada part lewat
-   * TM_PROCESS_PARTS, dan rute Electric yang sebenarnya masih harus diminta.
+   * INSPECTION_ELEC diberi akhiran karena "inspection" di sistem ini sudah
+   * berarti sesi pemeriksaan kualitas (TT_INSPECTION_H). Nilai bernama
+   * INSPECTION akan dibaca sebagai itu, padahal yang dimaksud di sini LANGKAH
+   * PRODUKSI dengan work center sendiri.
+   *
+   * ── URUTAN di daftar ini BERMAKNA, tetapi bukan sebagai rute ──────────────
+   *
+   * Rute tetap melekat pada part (TM_PROCESS_PARTS.INT_SEQ_NO). Yang diturunkan
+   * dari urutan di sini adalah URUTAN KOLOM pada matriks rute, dan matriks itu
+   * menyusun rute baru mengikuti kolomnya — jadi urutan di bawah adalah
+   * BAWAAN yang ditawarkan ke orang, bukan kebenaran tentang satu part.
+   *
+   * Karena itu blok Electric ditaruh SEBELUM ASSEMBLING_BODY: ada part yang
+   * setelah selesai di Antena lanjut dirakit di Assembling Body. Dengan urutan
+   * ini, matriks menawarkan ANTENNA lebih dulu, bukan sebaliknya.
    */
   'MOUNTING',
   'INSPECTION_ELEC',
   'VACUUM',
-  'ASSEMBLING_ELEC',
   'ANTENNA',
+  'ASSEMBLING_BODY',
   'DELIVERY',
 ]);
 export type ProcessType = z.infer<typeof processTypeSchema>;
@@ -77,17 +84,14 @@ export const FINISH_GOOD_PROCESSES = [
   'ASSEMBLING_UNIT',
   'ASSEMBLING_BODY',
   /*
-   * ASSEMBLING_ELEC ikut DI SINI sebagai DUGAAN, bukan temuan blueprint.
+   * Tidak ada langkah Electric di sini, dan itu BUKAN kelalaian.
    *
-   * Di Body maupun Unit, Assembly adalah langkah terakhir sebelum Delivery,
-   * jadi bagian "ASY" di Electric diperlakukan sama. Rute Electric sendiri
-   * belum ada di blueprint; kalau nanti ternyata Antena yang menutup rute,
-   * yang berubah hanya daftar ini.
-   *
-   * Taruhannya kecil: daftar ini hanya dipakai pemeriksaan KEWAJARAN rute,
-   * bukan penentu izin scan — itu milik metode scan di TM_ROUTE_PROCESS.
+   * Pabrik Electric tidak menutup rute: hasilnya dirakit di Assembling Body,
+   * jadi langkah terakhir yang menghasilkan barang jadi tetap milik Body.
+   * Kalau kelak ada part Electric yang dikirim langsung ke customer, yang
+   * menjawabnya bukan daftar ini melainkan POSISI langkah itu di rute part —
+   * lihat kelasHasilSap(proses, langkahTerakhir).
    */
-  'ASSEMBLING_ELEC',
 ] as const satisfies readonly ProcessType[];
 
 /**
@@ -116,7 +120,6 @@ export const PROCESS_LABELS: Record<ProcessType, string> = {
   MOUNTING: 'Mounting',
   INSPECTION_ELEC: 'Inspection (Electric)',
   VACUUM: 'Vacuum',
-  ASSEMBLING_ELEC: 'Assembling (Electric)',
   ANTENNA: 'Antena',
   DELIVERY: 'Delivery',
 };
