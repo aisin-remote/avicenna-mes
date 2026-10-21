@@ -47,9 +47,26 @@ async function main() {
    */
   let plantRows = await db.select().from(plants);
   if (plantRows.length === 0) {
+    /*
+     * Kode SAP diisi sejak awal — 700/800/900 menurut Blueprint SAP PP AIIA.
+     *
+     * Bukan hiasan: database staging dipakai BERSAMA dengan AII, yang memakai
+     * plant 600. Kode inilah yang memisahkan master kita dari milik mereka,
+     * baik saat menarik maupun mendorong. Tanpa terisi, tarik master menolak
+     * jalan — lihat staging-pull.service.ts.
+     */
     await db.insert(plants).values([
-      { code: 'UNIT', name: 'Plant Unit - Melting, Casting, Machining, Assembling' },
-      { code: 'BODY', name: 'Plant Body - Injection, Painting, Assembling' },
+      {
+        code: 'UNIT',
+        name: 'Plant Unit - Melting, Casting, Machining, Assembling',
+        sapCode: '800',
+      },
+      { code: 'BODY', name: 'Plant Body - Injection, Painting, Assembling', sapCode: '700' },
+      {
+        code: 'ELEC',
+        name: 'Plant Electric - Mounting, Inspection, Vacuum, Assembling',
+        sapCode: '900',
+      },
     ]);
     plantRows = await db.select().from(plants);
     console.log(`[seed]   + ${plantRows.length} baris ke plants`);
@@ -117,14 +134,32 @@ async function main() {
    * itulah sebabnya "sudah ada" dinilai dari pabrik + kode, bukan kode saja.
    * Lihat docs/sap-integration.md.
    */
-  const slocPerPlant = [
-    { code: 'WH00', name: 'Komponen & Raw Material', kind: 'WAREHOUSE' as const },
-    { code: 'WP01', name: 'Work In Process', kind: 'WIP' as const },
-    { code: 'PP02', name: 'Finish Good', kind: 'FINISH_GOOD' as const },
-    { code: 'PP04', name: 'Staging & Shipping', kind: 'STAGING' as const },
-    // Area NG tidak punya padanan SLOC; tidak ikut dikirim ke SAP.
-    { code: 'NG01', name: 'Area NG', kind: 'NG' as const },
-  ];
+  /*
+   * Kodenya BERBEDA tiap pabrik, mengikuti Blueprint SAP PP AIIA:
+   *
+   *   Body 700      WH70  WP70  FG70  RE70
+   *   Unit 800      WH80  WP80  FG80  RE80
+   *   Electric 900  WH90  WP90  FG90  RE90
+   *
+   * Dua digit terakhir diturunkan dari kode SAP pabrik, bukan ditulis ulang —
+   * menambah pabrik keempat tidak menuntut menyunting daftar ini.
+   *
+   * Staging & Shipping TIDAK ada di blueprint: menurut SAP barang keluar dari
+   * SLOC FG, sedangkan di lapangan ada area tunggu sebelum naik truk. Karena
+   * itu diberi awalan ST — jelas milik kita, dan tidak tertukar dengan kode
+   * SAP sungguhan saat seseorang membaca mutasi stok.
+   */
+  const slocPabrik = (kodeSap: string | null) => {
+    const akhiran = (kodeSap ?? '').trim().slice(0, 2) || '00';
+    return [
+      { code: `WH${akhiran}`, name: 'Komponen & Raw Material', kind: 'WAREHOUSE' as const },
+      { code: `WP${akhiran}`, name: 'Work In Process / Semi Finished', kind: 'WIP' as const },
+      { code: `FG${akhiran}`, name: 'Finish Good', kind: 'FINISH_GOOD' as const },
+      // Reject: padanan SLOC RE di SAP, tujuan posting scrap.
+      { code: `RE${akhiran}`, name: 'Reject / Scrap', kind: 'NG' as const },
+      { code: `ST${akhiran}`, name: 'Staging & Shipping', kind: 'STAGING' as const },
+    ];
+  };
   // Untuk SEMUA pabrik yang ada, bukan hanya dua yang dikenal lewat kode.
   // Kode pabrik bisa diganti lewat layar master, dan seed yang mencarinya
   // berdasarkan kode akan diam-diam membuat pabrik kembar.
@@ -132,7 +167,7 @@ async function main() {
     'locations',
     locations,
     ['plantId', 'code'],
-    plantRows.flatMap((p) => slocPerPlant.map((l) => ({ plantId: p.id, ...l }))),
+    plantRows.flatMap((p) => slocPabrik(p.sapCode).map((l) => ({ plantId: p.id, ...l }))),
   );
 
   // ── Lines ─────────────────────────────────────────────────────────────────
@@ -141,13 +176,20 @@ async function main() {
   // produksi tercatat sebagai PERPINDAHAN — komponen keluar dari WP01, barang
   // jadi masuk ke PP02 — bukan sekadar penambahan dari ketiadaan.
   const locationRows = await db.select().from(locations);
-  const sloc = (plantId: number, code: string) =>
-    locationRows.find((l) => l.plantId === plantId && l.code === code)?.id ?? null;
+  /*
+   * Dicari lewat JENIS, bukan kode.
+   *
+   * Kodenya kini berbeda tiap pabrik (FG70/FG80/FG90) dan masih bisa berubah
+   * bila SAP menatanya ulang; jenisnya tidak. Mencari lewat kode membuat seed
+   * diam-diam menghasilkan lini tanpa SLOC begitu kodenya bergeser.
+   */
+  const slocJenis = (plantId: number, kind: string) =>
+    locationRows.find((l) => l.plantId === plantId && l.kind === kind)?.id ?? null;
 
   const lineDefaults = (plantId: number) => ({
     plantId,
-    inputLocationId: sloc(plantId, 'WP01'),
-    outputLocationId: sloc(plantId, 'PP02'),
+    inputLocationId: slocJenis(plantId, 'WIP'),
+    outputLocationId: slocJenis(plantId, 'FINISH_GOOD'),
   });
 
   await insertMissing(
@@ -155,16 +197,76 @@ async function main() {
     lines,
     ['plantId', 'code'],
     [
-      { ...lineDefaults(unit.id), code: 'DC-01', name: 'Die Casting 1 (WIP)', processType: 'CASTING_WIP' as const, sortOrder: 1 },
-      { ...lineDefaults(unit.id), code: 'DC-02', name: 'Die Casting 2 (FG)', processType: 'CASTING_FG' as const, sortOrder: 2 },
-      { ...lineDefaults(unit.id), code: 'MC-01', name: 'Machining 1 (WIP)', processType: 'MACHINING_WIP' as const, sortOrder: 3 },
-      { ...lineDefaults(unit.id), code: 'MC-02', name: 'Machining 2 (FG)', processType: 'MACHINING_FG' as const, sortOrder: 4 },
-      { ...lineDefaults(unit.id), code: 'AS-01', name: 'Assembling 1', processType: 'ASSEMBLING_UNIT' as const, sortOrder: 5 },
-      { ...lineDefaults(unit.id), code: 'ML-01', name: 'Melting 1', processType: 'MELTING' as const, sortOrder: 0 },
-      { ...lineDefaults(body.id), code: 'INJ-01', name: 'Injection 1', processType: 'INJECTION' as const, sortOrder: 1 },
-      { ...lineDefaults(body.id), code: 'INJ-02', name: 'Injection 2', processType: 'INJECTION' as const, sortOrder: 2 },
-      { ...lineDefaults(body.id), code: 'PT-01', name: 'Painting 1', processType: 'PAINTING' as const, sortOrder: 3 },
-      { ...lineDefaults(body.id), code: 'AS-02', name: 'Assembling 2', processType: 'ASSEMBLING_BODY' as const, sortOrder: 4 },
+      {
+        ...lineDefaults(unit.id),
+        code: 'DC-01',
+        name: 'Die Casting 1 (WIP)',
+        processType: 'CASTING_WIP' as const,
+        sortOrder: 1,
+      },
+      {
+        ...lineDefaults(unit.id),
+        code: 'DC-02',
+        name: 'Die Casting 2 (FG)',
+        processType: 'CASTING_FG' as const,
+        sortOrder: 2,
+      },
+      {
+        ...lineDefaults(unit.id),
+        code: 'MC-01',
+        name: 'Machining 1 (WIP)',
+        processType: 'MACHINING_WIP' as const,
+        sortOrder: 3,
+      },
+      {
+        ...lineDefaults(unit.id),
+        code: 'MC-02',
+        name: 'Machining 2 (FG)',
+        processType: 'MACHINING_FG' as const,
+        sortOrder: 4,
+      },
+      {
+        ...lineDefaults(unit.id),
+        code: 'AS-01',
+        name: 'Assembling 1',
+        processType: 'ASSEMBLING_UNIT' as const,
+        sortOrder: 5,
+      },
+      {
+        ...lineDefaults(unit.id),
+        code: 'ML-01',
+        name: 'Melting 1',
+        processType: 'MELTING' as const,
+        sortOrder: 0,
+      },
+      {
+        ...lineDefaults(body.id),
+        code: 'INJ-01',
+        name: 'Injection 1',
+        processType: 'INJECTION' as const,
+        sortOrder: 1,
+      },
+      {
+        ...lineDefaults(body.id),
+        code: 'INJ-02',
+        name: 'Injection 2',
+        processType: 'INJECTION' as const,
+        sortOrder: 2,
+      },
+      {
+        ...lineDefaults(body.id),
+        code: 'PT-01',
+        name: 'Painting 1',
+        processType: 'PAINTING' as const,
+        sortOrder: 3,
+      },
+      {
+        ...lineDefaults(body.id),
+        code: 'AS-02',
+        name: 'Assembling 2',
+        processType: 'ASSEMBLING_BODY' as const,
+        sortOrder: 4,
+      },
     ],
   );
 
@@ -174,8 +276,8 @@ async function main() {
    */
   for (const line of await db.select().from(lines)) {
     if (line.inputLocationId && line.outputLocationId) continue;
-    const wip = line.inputLocationId ?? sloc(line.plantId, 'WP01');
-    const fg = line.outputLocationId ?? sloc(line.plantId, 'PP02');
+    const wip = line.inputLocationId ?? slocJenis(line.plantId, 'WIP');
+    const fg = line.outputLocationId ?? slocJenis(line.plantId, 'FINISH_GOOD');
     if (!wip || !fg) {
       // Dilaporkan, bukan dilempar: pabrik yang SLOC-nya belum lengkap tidak
       // boleh menggagalkan seluruh seed.
@@ -225,68 +327,73 @@ async function main() {
    * Rantai ini ada di seed supaya begitu database dibuat, BOM, backflush, dan
    * telusur silsilah bisa langsung diperagakan tanpa mengetik master dulu.
    */
-  await insertMissing('parts', parts, ['plantId', 'partNumber'], [
-    {
-      plantId: unit.id,
-      lineId: dc01.id,
-      partNumber: 'RM-D-001',
-      project: 'TCC',
-      name: 'Aluminium Ingot D',
-      processType: 'CASTING_WIP' as const,
-      partType: 'RAW_MATERIAL' as const,
-      sourceType: 'PURCHASED' as const,
-      trackingMode: 'LOT' as const,
-      uom: 'kg',
-      standardStock: 1000,
-    },
-    {
-      plantId: unit.id,
-      lineId: dc01.id,
-      partNumber: 'WIP-A-001',
-      project: 'TCC',
-      name: 'Housing Cast A',
-      processType: 'CASTING_WIP' as const,
-      partType: 'WIP' as const,
-      qtyPerKanban: 20,
-      standardStock: 200,
-    },
-    {
-      plantId: unit.id,
-      lineId: as01.id,
-      partNumber: 'CMP-B-001',
-      project: 'TCC',
-      backNumber: 'BN-B',
-      name: 'Bracket B',
-      processType: 'ASSEMBLING_UNIT' as const,
-      partType: 'COMPONENT' as const,
-      sourceType: 'PURCHASED' as const,
-      trackingMode: 'LOT' as const,
-      qtyPerKanban: 100,
-      standardStock: 500,
-    },
-    {
-      plantId: unit.id,
-      lineId: dc01.id,
-      partNumber: 'AV-12345-001',
-      project: 'TCC',
-      backNumber: 'BN-001',
-      name: 'Housing Cover A',
-      processType: 'CASTING_WIP' as const,
-      qtyPerKanban: 20,
-      standardStock: 200,
-    },
-    {
-      plantId: body.id,
-      lineId: inj01.id,
-      partNumber: 'BL-98765-002',
-      project: '660A',
-      backNumber: 'BN-002',
-      name: 'Clip Bracket B',
-      processType: 'INJECTION' as const,
-      qtyPerKanban: 50,
-      standardStock: 500,
-    },
-  ]);
+  await insertMissing(
+    'parts',
+    parts,
+    ['plantId', 'partNumber'],
+    [
+      {
+        plantId: unit.id,
+        lineId: dc01.id,
+        partNumber: 'RM-D-001',
+        project: 'TCC',
+        name: 'Aluminium Ingot D',
+        processType: 'CASTING_WIP' as const,
+        partType: 'RAW_MATERIAL' as const,
+        sourceType: 'PURCHASED' as const,
+        trackingMode: 'LOT' as const,
+        uom: 'kg',
+        standardStock: 1000,
+      },
+      {
+        plantId: unit.id,
+        lineId: dc01.id,
+        partNumber: 'WIP-A-001',
+        project: 'TCC',
+        name: 'Housing Cast A',
+        processType: 'CASTING_WIP' as const,
+        partType: 'WIP' as const,
+        qtyPerKanban: 20,
+        standardStock: 200,
+      },
+      {
+        plantId: unit.id,
+        lineId: as01.id,
+        partNumber: 'CMP-B-001',
+        project: 'TCC',
+        backNumber: 'BN-B',
+        name: 'Bracket B',
+        processType: 'ASSEMBLING_UNIT' as const,
+        partType: 'COMPONENT' as const,
+        sourceType: 'PURCHASED' as const,
+        trackingMode: 'LOT' as const,
+        qtyPerKanban: 100,
+        standardStock: 500,
+      },
+      {
+        plantId: unit.id,
+        lineId: dc01.id,
+        partNumber: 'AV-12345-001',
+        project: 'TCC',
+        backNumber: 'BN-001',
+        name: 'Housing Cover A',
+        processType: 'CASTING_WIP' as const,
+        qtyPerKanban: 20,
+        standardStock: 200,
+      },
+      {
+        plantId: body.id,
+        lineId: inj01.id,
+        partNumber: 'BL-98765-002',
+        project: '660A',
+        backNumber: 'BN-002',
+        name: 'Clip Bracket B',
+        processType: 'INJECTION' as const,
+        qtyPerKanban: 50,
+        standardStock: 500,
+      },
+    ],
+  );
 
   /*
    * ── Rute proses per part ──────────────────────────────────────────────────
@@ -379,22 +486,27 @@ async function main() {
    * Serinya sengaja pendek seperti di sistem lama ('1456', '1082'): seri unik
    * per PART, bukan per pabrik, jadi angka yang sama boleh muncul di part lain.
    */
-  await insertMissing('kanbans', kanbans, ['partId', 'serialNumber'], [
-    ...['1001', '1002', '1003'].map((serialNumber) => ({
-      plantId: unit.id,
-      partId: partId('AV-12345-001'),
-      serialNumber,
-      qtyPerBox: 20,
-      unitPerKanban: 1,
-    })),
-    ...['1001', '1002'].map((serialNumber) => ({
-      plantId: body.id,
-      partId: partId('BL-98765-002'),
-      serialNumber,
-      qtyPerBox: 50,
-      unitPerKanban: 1,
-    })),
-  ]);
+  await insertMissing(
+    'kanbans',
+    kanbans,
+    ['partId', 'serialNumber'],
+    [
+      ...['1001', '1002', '1003'].map((serialNumber) => ({
+        plantId: unit.id,
+        partId: partId('AV-12345-001'),
+        serialNumber,
+        qtyPerBox: 20,
+        unitPerKanban: 1,
+      })),
+      ...['1001', '1002'].map((serialNumber) => ({
+        plantId: body.id,
+        partId: partId('BL-98765-002'),
+        serialNumber,
+        qtyPerBox: 50,
+        unitPerKanban: 1,
+      })),
+    ],
+  );
 
   // ── BOM: WIP-A-001 dibuat dari RM-D-001 ───────────────────────────────────
   const partRowsForBom = await db.select().from(parts);
@@ -456,30 +568,168 @@ async function main() {
    * pilihan, kalau tidak barang rusaknya lewat sebagai barang baik.
    */
   await insertMissing('ng_masters', ngMasters, 'code', [
-    { plantId: unit.id, code: 'CRACK', name: 'Crack', processGroup: 'CASTING' as const, sortOrder: 1 },
-    { plantId: unit.id, code: 'YUZIWA', name: 'Yuziwa', processGroup: 'CASTING' as const, sortOrder: 2 },
-    { plantId: unit.id, code: 'KAJIRI', name: 'Kajiri', processGroup: 'CASTING' as const, sortOrder: 3 },
-    { plantId: unit.id, code: 'YOGORE', name: 'Yogore', processGroup: 'CASTING' as const, sortOrder: 4 },
-    { plantId: unit.id, code: 'DENT', name: 'Dent', processGroup: 'CASTING' as const, sortOrder: 5 },
-    { plantId: unit.id, code: 'NG_DIAL', name: 'NG Dial', processGroup: 'CASTING' as const, sortOrder: 6 },
-    { plantId: unit.id, code: 'CORE_PIN', name: 'Core Pin Patah', processGroup: 'CASTING' as const, sortOrder: 7 },
-    { plantId: unit.id, code: 'TOOL_INJURY', name: 'Tool Injury', processGroup: 'CASTING' as const, sortOrder: 8 },
-    { plantId: unit.id, code: 'YAKITSUKI', name: 'Yakitsuki', processGroup: 'CASTING' as const, sortOrder: 9 },
-    { plantId: unit.id, code: 'SCRATCH', name: 'Scratch', processGroup: 'CASTING' as const, sortOrder: 10 },
-    { plantId: unit.id, code: 'NG_MARKING', name: 'NG Marking', processGroup: 'CASTING' as const, sortOrder: 11 },
-    { plantId: unit.id, code: 'MIKUI', name: 'Mikui', processGroup: 'CASTING' as const, sortOrder: 12 },
-    { plantId: unit.id, code: 'DIE_CRACK', name: 'Die Crack', processGroup: 'CASTING' as const, sortOrder: 13 },
-    { plantId: unit.id, code: 'GOMPAL', name: 'Produk Gompal', processGroup: 'CASTING' as const, sortOrder: 14 },
-    { plantId: unit.id, code: 'MENGELUPAS', name: 'Mengelupas', processGroup: 'CASTING' as const, sortOrder: 15 },
-    { plantId: unit.id, code: 'OVER_KIKIR', name: 'Over Kikir', processGroup: 'CASTING' as const, sortOrder: 16 },
-    { plantId: unit.id, code: 'GAP_TEBAL', name: 'Gap Tebal', processGroup: 'CASTING' as const, sortOrder: 17 },
-    { plantId: unit.id, code: 'BURR', name: 'Burr', processGroup: 'MACHINING' as const, sortOrder: 20 },
-    { plantId: unit.id, code: 'DIM_NG', name: 'Dimensi NG', processGroup: 'MACHINING' as const, sortOrder: 21 },
+    {
+      plantId: unit.id,
+      code: 'CRACK',
+      name: 'Crack',
+      processGroup: 'CASTING' as const,
+      sortOrder: 1,
+    },
+    {
+      plantId: unit.id,
+      code: 'YUZIWA',
+      name: 'Yuziwa',
+      processGroup: 'CASTING' as const,
+      sortOrder: 2,
+    },
+    {
+      plantId: unit.id,
+      code: 'KAJIRI',
+      name: 'Kajiri',
+      processGroup: 'CASTING' as const,
+      sortOrder: 3,
+    },
+    {
+      plantId: unit.id,
+      code: 'YOGORE',
+      name: 'Yogore',
+      processGroup: 'CASTING' as const,
+      sortOrder: 4,
+    },
+    {
+      plantId: unit.id,
+      code: 'DENT',
+      name: 'Dent',
+      processGroup: 'CASTING' as const,
+      sortOrder: 5,
+    },
+    {
+      plantId: unit.id,
+      code: 'NG_DIAL',
+      name: 'NG Dial',
+      processGroup: 'CASTING' as const,
+      sortOrder: 6,
+    },
+    {
+      plantId: unit.id,
+      code: 'CORE_PIN',
+      name: 'Core Pin Patah',
+      processGroup: 'CASTING' as const,
+      sortOrder: 7,
+    },
+    {
+      plantId: unit.id,
+      code: 'TOOL_INJURY',
+      name: 'Tool Injury',
+      processGroup: 'CASTING' as const,
+      sortOrder: 8,
+    },
+    {
+      plantId: unit.id,
+      code: 'YAKITSUKI',
+      name: 'Yakitsuki',
+      processGroup: 'CASTING' as const,
+      sortOrder: 9,
+    },
+    {
+      plantId: unit.id,
+      code: 'SCRATCH',
+      name: 'Scratch',
+      processGroup: 'CASTING' as const,
+      sortOrder: 10,
+    },
+    {
+      plantId: unit.id,
+      code: 'NG_MARKING',
+      name: 'NG Marking',
+      processGroup: 'CASTING' as const,
+      sortOrder: 11,
+    },
+    {
+      plantId: unit.id,
+      code: 'MIKUI',
+      name: 'Mikui',
+      processGroup: 'CASTING' as const,
+      sortOrder: 12,
+    },
+    {
+      plantId: unit.id,
+      code: 'DIE_CRACK',
+      name: 'Die Crack',
+      processGroup: 'CASTING' as const,
+      sortOrder: 13,
+    },
+    {
+      plantId: unit.id,
+      code: 'GOMPAL',
+      name: 'Produk Gompal',
+      processGroup: 'CASTING' as const,
+      sortOrder: 14,
+    },
+    {
+      plantId: unit.id,
+      code: 'MENGELUPAS',
+      name: 'Mengelupas',
+      processGroup: 'CASTING' as const,
+      sortOrder: 15,
+    },
+    {
+      plantId: unit.id,
+      code: 'OVER_KIKIR',
+      name: 'Over Kikir',
+      processGroup: 'CASTING' as const,
+      sortOrder: 16,
+    },
+    {
+      plantId: unit.id,
+      code: 'GAP_TEBAL',
+      name: 'Gap Tebal',
+      processGroup: 'CASTING' as const,
+      sortOrder: 17,
+    },
+    {
+      plantId: unit.id,
+      code: 'BURR',
+      name: 'Burr',
+      processGroup: 'MACHINING' as const,
+      sortOrder: 20,
+    },
+    {
+      plantId: unit.id,
+      code: 'DIM_NG',
+      name: 'Dimensi NG',
+      processGroup: 'MACHINING' as const,
+      sortOrder: 21,
+    },
     { plantId: unit.id, code: 'DLL', name: 'DLL', processGroup: null, sortOrder: 99 },
-    { plantId: body.id, code: 'SHORT', name: 'Short Shot', processGroup: 'INJECTION' as const, sortOrder: 1 },
-    { plantId: body.id, code: 'FLASH', name: 'Flashing', processGroup: 'INJECTION' as const, sortOrder: 2 },
-    { plantId: body.id, code: 'SILVER', name: 'Silver Streak', processGroup: 'INJECTION' as const, sortOrder: 3 },
-    { plantId: body.id, code: 'BUREK', name: 'Burek / Kotor', processGroup: 'PAINTING' as const, sortOrder: 10 },
+    {
+      plantId: body.id,
+      code: 'SHORT',
+      name: 'Short Shot',
+      processGroup: 'INJECTION' as const,
+      sortOrder: 1,
+    },
+    {
+      plantId: body.id,
+      code: 'FLASH',
+      name: 'Flashing',
+      processGroup: 'INJECTION' as const,
+      sortOrder: 2,
+    },
+    {
+      plantId: body.id,
+      code: 'SILVER',
+      name: 'Silver Streak',
+      processGroup: 'INJECTION' as const,
+      sortOrder: 3,
+    },
+    {
+      plantId: body.id,
+      code: 'BUREK',
+      name: 'Burek / Kotor',
+      processGroup: 'PAINTING' as const,
+      sortOrder: 10,
+    },
     { plantId: body.id, code: 'DLL', name: 'DLL', processGroup: null, sortOrder: 99 },
   ]);
 

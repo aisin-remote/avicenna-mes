@@ -12,7 +12,7 @@ const baris = (v: Partial<BarisPerpindahan>): BarisPerpindahan => ({
 describe('slocKurang', () => {
   it('meloloskan transfer yang punya asal dan tujuan', () => {
     const hasil = slocKurang('TRANSFER', [
-      baris({ slocFrom: 'PP02', slocTo: 'PP04', partNumber: 'AV-1' }),
+      baris({ slocFrom: 'FG80', slocTo: 'ST80', partNumber: 'AV-1' }),
     ]);
     expect(hasil).toEqual([]);
   });
@@ -21,13 +21,13 @@ describe('slocKurang', () => {
     // Justru ini yang paling mudah hilang: tujuan datang dari baris masuk
     // pasangannya, yang sengaja tidak ikut dikirim.
     const hasil = slocKurang('TRANSFER', [
-      baris({ slocFrom: 'PP02', slocTo: null, partNumber: 'AV-1' }),
+      baris({ slocFrom: 'FG80', slocTo: null, partNumber: 'AV-1' }),
     ]);
     expect(hasil).toEqual(['TRANSFER_OUT AV-1: SLOC tujuan kosong']);
   });
 
   it('menahan transfer yang kehilangan asal', () => {
-    const hasil = slocKurang('TRANSFER', [baris({ slocFrom: null, slocTo: 'PP04' })]);
+    const hasil = slocKurang('TRANSFER', [baris({ slocFrom: null, slocTo: 'ST80' })]);
     expect(hasil).toEqual(['TRANSFER_OUT: SLOC asal kosong']);
   });
 
@@ -37,7 +37,7 @@ describe('slocKurang', () => {
   });
 
   it('penerimaan hanya butuh tujuan', () => {
-    const masuk = baris({ mutationType: 'RECEIVING_IN', qty: 500, slocTo: 'WH00' });
+    const masuk = baris({ mutationType: 'RECEIVING_IN', qty: 500, slocTo: 'WH80' });
     expect(slocKurang('GOODS_RECEIPT', [masuk])).toEqual([]);
   });
 
@@ -47,7 +47,7 @@ describe('slocKurang', () => {
   });
 
   it('pengiriman keluar hanya butuh asal', () => {
-    const keluar = baris({ mutationType: 'DELIVERY_OUT', qty: -60, slocFrom: 'PP04' });
+    const keluar = baris({ mutationType: 'DELIVERY_OUT', qty: -60, slocFrom: 'ST80' });
     expect(slocKurang('DELIVERY', [keluar])).toEqual([]);
   });
 
@@ -60,23 +60,23 @@ describe('slocKurang', () => {
     // Satu dokumen konfirmasi produksi memuat hasil jadi (masuk ke PP02) dan
     // pemakaian komponen (keluar dari WP01). Keduanya diperiksa berbeda.
     const hasil = slocKurang('PRODUCTION', [
-      baris({ mutationType: 'PRODUCTION_IN', qty: 10, slocTo: 'PP02' }),
-      baris({ mutationType: 'CONSUMPTION_OUT', qty: -17.34, slocFrom: 'WP01' }),
+      baris({ mutationType: 'PRODUCTION_IN', qty: 10, slocTo: 'FG80' }),
+      baris({ mutationType: 'CONSUMPTION_OUT', qty: -17.34, slocFrom: 'WP80' }),
     ]);
     expect(hasil).toEqual([]);
   });
 
   it('menahan produksi yang komponennya tidak punya SLOC asal', () => {
     const hasil = slocKurang('PRODUCTION', [
-      baris({ mutationType: 'PRODUCTION_IN', qty: 10, slocTo: 'PP02' }),
+      baris({ mutationType: 'PRODUCTION_IN', qty: 10, slocTo: 'FG80' }),
       baris({ mutationType: 'CONSUMPTION_OUT', qty: -17.34, slocFrom: null }),
     ]);
     expect(hasil).toEqual(['CONSUMPTION_OUT: SLOC asal kosong']);
   });
 
   it('penyesuaian mengikuti tanda qty-nya', () => {
-    const turun = baris({ mutationType: 'ADJUSTMENT', qty: -1, slocFrom: 'WH00' });
-    const naik = baris({ mutationType: 'ADJUSTMENT', qty: 1, slocTo: 'WH00' });
+    const turun = baris({ mutationType: 'ADJUSTMENT', qty: -1, slocFrom: 'WH80' });
+    const naik = baris({ mutationType: 'ADJUSTMENT', qty: 1, slocTo: 'WH80' });
     expect(slocKurang('ADJUSTMENT', [turun])).toEqual([]);
     expect(slocKurang('ADJUSTMENT', [naik])).toEqual([]);
     expect(slocKurang('ADJUSTMENT', [baris({ mutationType: 'ADJUSTMENT', qty: -1 })])).toEqual([

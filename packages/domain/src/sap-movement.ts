@@ -52,7 +52,28 @@ export const SAP_MOVEMENTS: Record<string, SapMovement> = {
     alasan: 'sisi masuk dari perpindahan yang sama — sudah terwakili baris keluarnya',
   },
   PRODUCTION_IN: { docType: 'PRODUCTION', movementType: '101', kirim: true },
-  CONSUMPTION_OUT: { docType: 'PRODUCTION', movementType: '261', kirim: true },
+  /*
+   * TIDAK dikirim — dan ini keputusan yang paling mahal bila terbalik.
+   *
+   * Blueprint SAP PP AIIA (6 Oktober 2026) menetapkan REM Profile Z001 dengan
+   * parameter "GI Backflush at GR Posting": begitu hasil produksi diposting
+   * sebagai goods receipt, SAP SENDIRI yang mengurangi komponen sesuai BOM.
+   *
+   * Mengirim 261 dari sini berarti komponen terpotong DUA KALI — sekali oleh
+   * backflush SAP, sekali oleh dokumen kita. Tidak ada galat yang muncul; yang
+   * terlihat hanya stok komponen yang menyusut lebih cepat daripada yang
+   * dipakai, dan sebabnya hampir mustahil ditemukan berbulan-bulan kemudian.
+   *
+   * Movement type-nya tetap dicatat karena memang 261 yang dipakai SAP (lihat
+   * PP-PE-04 Clearing Backflush Error di blueprint) — yang berubah hanya SIAPA
+   * yang mempostingnya.
+   */
+  CONSUMPTION_OUT: {
+    docType: 'PRODUCTION',
+    movementType: '261',
+    kirim: false,
+    alasan: 'backflush dilakukan SAP sendiri saat GR (REM Profile Z001)',
+  },
   DELIVERY_OUT: { docType: 'DELIVERY', movementType: '601', kirim: true },
   NG_OUT: { docType: 'SCRAP', movementType: '551', kirim: true },
   ADJUSTMENT: { docType: 'ADJUSTMENT', movementType: '309', kirim: true },
@@ -92,9 +113,10 @@ export function bolehKirimDokumenRute(
  *
  * Satu kelompok bisa memuat beberapa jenis mutasi — produksi menghasilkan
  * PRODUCTION_IN untuk barang jadi DAN CONSUMPTION_OUT untuk komponennya.
- * Keduanya dikelompokkan sebagai satu dokumen outbox produksi. Adapter
- * TT_PRODUCTION_RESULT saat ini menulis hasilnya saja; konsumsi komponen
- * di SAP bergantung pada semantik backflush yang harus dikonfirmasi.
+ * Keduanya dikelompokkan sebagai satu dokumen outbox produksi, tetapi yang
+ * DIKIRIM hanya hasilnya. Konsumsi komponennya diposting SAP sendiri lewat
+ * backflush saat goods receipt (REM Profile Z001) — sudah dipastikan di
+ * blueprint SAP PP AIIA, bukan lagi dugaan.
  */
 export function docTypeOf(mutationTypes: string[]): SapDocType | undefined {
   // Urutan menentukan: yang lebih spesifik didahulukan.
@@ -146,10 +168,7 @@ export interface BarisPerpindahan {
  * Mengembalikan daftar masalah dalam bahasa yang terbaca di layar pemantauan;
  * kosong berarti lengkap.
  */
-export function slocKurang(
-  docType: SapDocType,
-  lines: readonly BarisPerpindahan[],
-): string[] {
+export function slocKurang(docType: SapDocType, lines: readonly BarisPerpindahan[]): string[] {
   const masalah: string[] = [];
 
   for (const b of lines) {

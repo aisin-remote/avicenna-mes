@@ -336,6 +336,21 @@ export interface SumberMaster {
   /** <field Avicenna>: <ekspresi SELECT di staging> */
   kolom: Record<string, string>;
   /**
+   * Kolom yang memuat kode plant SAP, bila sumbernya memang per plant.
+   *
+   * ── Kenapa penyaringan harus di KUERI, bukan sesudah baris terbaca ─────────
+   *
+   * Database staging dipakai BERSAMA dengan AII — plant 600 milik mereka,
+   * 700/800/900 milik AIIA. Menyaring di sisi aplikasi memang mencegah data
+   * mereka masuk ke master kita, tetapi tidak mencegah jatah satu putaran
+   * (TOP n) habis oleh baris milik AII sebelum satu pun part AIIA terbaca.
+   * Gejalanya: tarik master melaporkan "berhasil, 0 baris" selamanya.
+   *
+   * Dikosongkan untuk sumber yang tidak punya kolom plant — customer dan
+   * vendor berlaku se-perusahaan, bukan per pabrik.
+   */
+  kolomPlant?: string;
+  /**
    * Kolom penanda terhapus. Nilai TIDAK KOSONG berarti baris itu dihapus di SAP,
    * dan di sisi kita ditandai tidak aktif — bukan dihapus. Transaksi lama masih
    * menunjuk master ini; menghapusnya membuat riwayat kehilangan namanya.
@@ -438,6 +453,7 @@ export const SUMBER_MASTER: SumberMaster[] = [
       'FROM TM_PROCESS_PARTS GROUP BY CHR_PLANT, CHR_PART_NO) pp ' +
       'LEFT JOIN TM_PARTS p ON p.CHR_PART_NO = pp.CHR_PART_NO',
     kunci: 'pp.CHR_PART_NO',
+    kolomPlant: 'pp.CHR_PLANT',
     flagHapus: "CASE WHEN pp.INT_SEMUA_HAPUS = 1 THEN 'X' END",
     kolomPerubahan: 'pp.CHR_UBAH_TERAKHIR',
     kolom: {

@@ -371,12 +371,88 @@ dikenali dan tidak ada mutasi yang ditulis. Barcode berformat
 `PART|BACK|SERIAL|QTY` bekerja normal. Selama format sebenarnya di lapangan
 belum dipastikan, sebagian scan produksi tidak akan pernah sampai ke SAP.
 
+## Dibaca dari Blueprint SAP PP AIIA, 6 Oktober 2026
+
+Dokumen *Business Blueprint — Production Planning, Repetitive Manufacturing*
+(NTT Data, versi 1.0 final) menjawab sebagian pertanyaan yang sebelumnya
+tertulis sebagai dugaan di bawah. Yang berikut ini **bukan lagi tebakan**.
+
+### Struktur organisasi
+
+Company code **J922** (PT Aisin Indonesia Automotive). Tiga plant:
+
+| plant | deskripsi | di sistem ini |
+|---|---|---|
+| 700 | AIIA Body | `TM_PLANT.CHR_SAP_CODE` pabrik BODY |
+| 800 | AIIA Unit | pabrik UNIT |
+| 900 | AIIA Electric | pabrik ELEC — belum punya lini maupun part |
+
+**Plant 600 adalah AII**, perusahaan induk yang berbeda. Database staging
+dipakai bersama, jadi angka itu MUNCUL di sana — dan mengisinya ke master
+pabrik kita akan menarik seluruh master mereka ke dalam sistem ini.
+
+### Storage location
+
+| fungsi | Body | Unit | Electric |
+|---|---|---|---|
+| komponen | WH70 | WH80 | WH90 |
+| SFG / WIP | WP70 | WP80 | WP90 |
+| barang jadi | FG70 | FG80 | FG90 |
+| reject / scrap | RE70 | RE80 | RE90 |
+
+Area staging sebelum naik truk tidak ada di blueprint — menurut SAP barang
+keluar langsung dari SLOC FG. Di sini ia tetap ada sebagai `ST70`/`ST80`/`ST90`
+dengan awalan yang jelas bukan kode SAP.
+
+### Backflush diposting SAP, bukan oleh kita
+
+REM Profile **Z001** berparameter **"GI Backflush at GR Posting"**: begitu hasil
+produksi diposting sebagai goods receipt, SAP sendiri mengurangi komponen
+sesuai BOM. Karena itu `CONSUMPTION_OUT` di `sap-movement.ts` diberi
+`kirim: false`. Mengirimnya berarti komponen terpotong DUA KALI, tanpa galat
+apa pun yang muncul.
+
+### Cycle time ada di SAP
+
+Standard Value Key **Z002** pada Rate Routing: `ZCT001` Cycle Time, `ZMT001`
+Machine Time, `ZMAN01` Man Hour — seluruhnya dalam menit. Master cycle time di
+sini nantinya disinkronkan dari sana, bukan diketik ulang.
+
+### Yang diserahkan blueprint kepada sistem ini
+
+Setiap kali dokumen itu menulis "Third-Party System", yang dimaksud adalah
+Avicenna:
+
+- pembuatan master kanban dan pencetakan kartunya (PP-MD-05), dengan
+  **Production Version dari SAP sebagai syarat** — kolom itu belum ada di
+  `TM_KANBAN`;
+- klasifikasi kanban **cyclic** (kartu berputar, kembali ke available) atau
+  **one-way** (sekali pakai lewat procurement);
+- scan kanban sebagai pemicu seluruh posting: stock transfer, confirmation,
+  backflush;
+- pencatatan NG, keputusan rework, dan posting scrap ke SLOC `RE*`;
+- **menampilkan error COGI milik SAP di layar kita** (PP-PE-04, PP-PE-05) —
+  interface arah MASUK yang belum ada sama sekali;
+- **Cancel Production Booking** (PP-PE-06): koreksi dilakukan di sini, lalu
+  dikirim ke SAP sebagai penambahan kuantitas (defisit) atau pembatalan
+  material document (surplus).
+
+### Yang masih harus diminta
+
+Tabel *Interfaces* dan Appendix A di blueprint itu **kosong**, sedangkan tabel
+gap analysis berulang kali menulis "copy dan penyesuaian development/interface
+existing dari AII". Artinya spesifikasi antarmukanya sudah ada di AII dan harus
+diminta, bukan dirancang ulang: pemetaan field, nilai flag status, isi
+`CHR_TYPE_TRANS`, dan apakah program penjemput di sisi SAP menyaring per plant.
+
 ## Yang masih terbuka
 
 - **Movement type SAP** untuk tiap jenis mutasi. Dugaan sementara sudah
   dituliskan di `packages/domain/src/sap-movement.ts` — 101 (GR), 311
   (transfer antar SLOC), 261 (pemakaian produksi), 601 (pengiriman), 551
-  (scrap), 309 (penyesuaian). **Angka-angka itu BELUM dikonfirmasi tim SAP.**
+  (scrap), 309 (penyesuaian). **Angka-angka itu BELUM dikonfirmasi tim SAP**,
+  kecuali 261 yang disebut blueprint sebagai movement konsumsi komponen — dan
+  itu pun diposting SAP sendiri lewat backflush, bukan oleh sistem ini.
   Salah movement type berarti salah akun GL: barangnya pindah dengan benar di
   gudang, tetapi jurnalnya masuk ke tempat yang keliru, dan itu baru ketahuan
   saat tutup buku.
@@ -615,7 +691,7 @@ Dua akibat langsung, keduanya sudah diperbaiki:
    Sekarang dikelompokkan per (pabrik, part), dan penanda hapus memakai MIN —
    part dianggap terhapus hanya bila SELURUH langkahnya terhapus.
 2. **Pabrik dicocokkan ke kolom yang salah.** `CHR_PLANT` berisi kode SAP
-   (`600` pada data nyata), sedangkan kita mencocokkannya ke `TM_PLANT.CHR_CODE`
+   (`600` pada data nyata — itu milik AII), sedangkan kita mencocokkannya ke `TM_PLANT.CHR_CODE`
    yang berisi "UNIT"/"BODY". Dengan data nyata, SETIAP part akan dilewati dan
    tarik master melaporkan "berhasil, 0 baris". Sekarang dicocokkan ke
    `CHR_SAP_CODE` lebih dulu, dan yang tidak cocok dicatat sebagai peringatan.
@@ -653,5 +729,6 @@ pernah cocok dengan rutenya.
    semuanya 0. Tanpa legenda ini, metode scan tidak bisa ditarik dari SAP.
 2. **Pemetaan work center → lini kita.** Kode SAP (MADS05, ASCD01) berbeda dari
    kode kita (DC-01, MC-01), dan jenis proses tidak ada di staging.
-3. **Kode SAP tiap pabrik.** Data nyata memakai `600`; `TM_PLANT.CHR_SAP_CODE`
+3. ~~**Kode SAP tiap pabrik.**~~ TERJAWAB blueprint: 700 Body, 800 Unit,
+   900 Electric. (`600` milik AII.) Catatan lama: `TM_PLANT.CHR_SAP_CODE`
    untuk UNIT dan BODY harus diisi sebelum tarik maupun dorong bisa jalan.

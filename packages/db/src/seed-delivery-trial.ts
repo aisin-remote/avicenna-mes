@@ -52,9 +52,12 @@ async function main() {
   if (!part) throw new Error('Part AV-12345-001 belum ada. Jalankan pnpm db:seed lebih dulu.');
 
   const plantLocations = await db.select().from(locations).where(eq(locations.plantId, plant.id));
-  const source = plantLocations.find((location) => location.code === 'PP02');
-  const staging = plantLocations.find((location) => location.code === 'PP04');
-  if (!source || !staging) throw new Error('SLOC PP02/PP04 belum ada. Jalankan pnpm db:seed.');
+  // Lewat jenis: kode SLOC berbeda tiap pabrik (FG70/FG80/FG90).
+  const source = plantLocations.find((location) => location.kind === 'FINISH_GOOD');
+  const staging = plantLocations.find((location) => location.kind === 'STAGING');
+  if (!source || !staging) {
+    throw new Error('SLOC berjenis FINISH_GOOD/STAGING belum ada. Jalankan pnpm db:seed.');
+  }
 
   let [customer] = await db
     .select()

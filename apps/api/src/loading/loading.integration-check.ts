@@ -41,9 +41,10 @@ async function main() {
   const [plant] = await db.select().from(plants).orderBy(plants.id).limit(1);
   assert(plant, 'Butuh plant lokal');
   const slocs = await db.select().from(locations).where(eq(locations.plantId, plant.id));
-  const source = slocs.find((row) => row.code === 'PP02');
-  const staging = slocs.find((row) => row.code === 'PP04');
-  assert(source && staging, 'Butuh PP02 dan PP04');
+  // Lewat jenis: kode SLOC berbeda tiap pabrik (FG70/FG80/FG90).
+  const source = slocs.find((row) => row.kind === 'FINISH_GOOD');
+  const staging = slocs.find((row) => row.kind === 'STAGING');
+  assert(source && staging, 'Butuh SLOC berjenis FINISH_GOOD dan STAGING');
   await db.insert(parts).values({
     plantId: plant.id,
     partNumber: `QA-DEL-${suffix}`,

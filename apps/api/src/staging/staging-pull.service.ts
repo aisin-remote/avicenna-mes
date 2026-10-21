@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, or, inArray, type Database } from '@avicenna/db';
+import { eq, and, or, inArray, isNotNull, type Database } from '@avicenna/db';
 import {
   parts,
   customers,
@@ -369,12 +369,8 @@ export class StagingPullService {
         .where(
           and(eq(locations.plantId, plantId), inArray(locations.kind, ['FINISH_GOOD', 'STAGING'])),
         );
-      const sourceLocationId =
-        siteLocations.find((location) => location.code === 'PP02')?.id ??
-        siteLocations.find((location) => location.kind === 'FINISH_GOOD')?.id;
-      const stagingLocationId =
-        siteLocations.find((location) => location.code === 'PP04')?.id ??
-        siteLocations.find((location) => location.kind === 'STAGING')?.id;
+      const sourceLocationId = siteLocations.find((l) => l.kind === 'FINISH_GOOD')?.id;
+      const stagingLocationId = siteLocations.find((l) => l.kind === 'STAGING')?.id;
       const existing = existingHeaders.find((doc) => doc.plantId === plantId);
 
       if (uji) {
@@ -560,8 +556,53 @@ export class StagingPullService {
     const dari = sumber.dari ?? `[${sumber.tabel}]`;
     const urut = sumber.kolomPerubahan ? ` ORDER BY ${sumber.kolomPerubahan} ASC` : '';
 
+    /*
+     * Penyaringan plant dilakukan DI KUERI.
+     *
+     * Staging dipakai bersama AII (plant 600); milik AIIA 700/800/900. Membaca
+     * dulu lalu membuang yang bukan milik kita membuat jatah TOP (n) habis oleh
+     * baris AII, dan tarik master melaporkan "0 baris" tanpa sebab yang terlihat.
+     */
+    let saring = '';
+    const params: Record<string, unknown> = {};
+    if (sumber.kolomPlant) {
+      const kodeKita = (
+        await this.db.select({ kode: plants.sapCode }).from(plants).where(isNotNull(plants.sapCode))
+      )
+        .map((r) => (r.kode ?? '').trim())
+        .filter(Boolean);
+
+      if (kodeKita.length === 0) {
+        /*
+         * Menolak menarik, bukan menarik tanpa saringan.
+         *
+         * Tanpa satu pun Kode SAP terisi, kueri tanpa WHERE akan membaca master
+         * milik AII — dan sebagian akan lolos ke tabel kita lewat pencocokan
+         * cadangan ke `code`. Lebih baik berhenti dengan sebab yang jelas.
+         */
+        return {
+          entitas: sumber.entitas,
+          dibaca: 0,
+          baru: 0,
+          diperbarui: 0,
+          dinonaktifkan: 0,
+          dilewati: 0,
+          catatan: [
+            'tarik dibatalkan: belum ada satu pun Kode SAP di master Pabrik. ' +
+              'Isi CHR_SAP_CODE (AIIA: 700 Body, 800 Unit, 900 Electric) lebih dulu — ' +
+              'tanpa itu kuerinya akan membaca master milik AII (plant 600).',
+          ],
+        };
+      }
+
+      const nama = kodeKita.map((_, i) => `@plant${i}`);
+      kodeKita.forEach((kode, i) => (params[`plant${i}`] = kode));
+      saring = ` WHERE ${sumber.kolomPlant} IN (${nama.join(', ')})`;
+    }
+
     const rows = await this.staging.query<Record<string, unknown>>(
-      `SELECT TOP (${BATCH}) ${pilih.join(', ')} FROM ${dari}${urut}`,
+      `SELECT TOP (${BATCH}) ${pilih.join(', ')} FROM ${dari}${saring}${urut}`,
+      params,
     );
 
     const hasil: HasilTarik = {
@@ -717,7 +758,7 @@ export class StagingPullService {
     /*
      * Dicocokkan ke KODE SAP pabrik, bukan ke kode kita.
      *
-     * CHR_PLANT di staging berisi kode SAP — "600" pada data nyata — sedangkan
+     * CHR_PLANT di staging berisi kode SAP, sedangkan
      * kode kita "UNIT"/"BODY". Mencocokkannya ke `code` membuat SETIAP part
      * dilewati dengan diam: tarik master melaporkan "berhasil, 0 baris", dan
      * tidak ada yang tahu sebabnya. Kode kita tetap diterima sebagai cadangan
