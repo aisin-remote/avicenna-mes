@@ -481,7 +481,7 @@ export const SUMBER_MASTER: SumberMaster[] = [
        * tempat scan terjadi. Nilai di sini SEMENTARA sampai work center SAP
        * dipetakan ke lini kita — dan tarik master menyebutkannya di laporan.
        */
-      processType: 'ASSEMBLING_UNIT',
+      processType: 'ASSEMBLING_UNIT_FG',
       partType: 'FINISHED_GOOD',
       sourceType: 'MANUFACTURED',
       trackingMode: 'SERIAL',

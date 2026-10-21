@@ -448,10 +448,12 @@ Dipetakan ke jenis proses di sistem ini:
 | `CASTING_FG` | 800 | DCT Die Casting | FG | FG80 |
 | `MACHINING_WIP` | 800 | MAC Machining | SFG | WP80 |
 | `MACHINING_FG` | 800 | MAC Machining | FG | FG80 |
-| `ASSEMBLING_UNIT` | 800 | ASY Assembly | FG | FG80 |
-| `INJECTION` | 700 | INJ Injection | SFG¹ | WP70 |
-| `PAINTING` | 700 | PTG Painting | SFG¹ | WP70 |
-| `ASSEMBLING_BODY` | 700 | ASY Assembly | FG | FG70 |
+| `ASSEMBLING_UNIT_FG` | 800 | ASY Assembly | FG | FG80 |
+| `INJECTION_WIP` | 700 | INJ Injection | SFG | WP70 |
+| `INJECTION_FG` | 700 | INJ Injection | FG | FG70 |
+| `PAINTING_WIP` | 700 | PTG Painting | SFG | WP70 |
+| `PAINTING_FG` | 700 | PTG Painting | FG | FG70 |
+| `ASSEMBLING_BODY_FG` | 700 | ASY Assembly | FG | FG70 |
 | `MOUNTING` | 900 | MNT Mounting | SFG | WP90 |
 | `INSPECTION_WIP` | 900 | INS Inspection + ASY Assembly | SFG | WP90 |
 | `INSPECTION_FG` | 900 | INS Inspection + ASY Assembly | FG | FG90 |
@@ -459,10 +461,6 @@ Dipetakan ke jenis proses di sistem ini:
 | `VACUUM_FG` | 900 | VAC Vacuum | FG | FG90 |
 | `ANTENNA` | 900 | ANT Antena | SFG² | WP90 |
 | `DELIVERY` | semua | — _modul SD_ | — | tidak didorong |
-
-¹ Posisi langkah di rute part mengalahkan tabel. Part yang BERHENTI di
-Injection menjadi barang jadi di situ — lihat `kelasHasilSap()` yang menerima
-`langkahTerakhir`.
 
 ² **Antena tidak menutup rute**: part yang selesai di sana lanjut dirakit di
 Assembling Body — pabrik yang berbeda. Inspection dan Vacuum sebaliknya, punya
@@ -524,6 +522,32 @@ Dua model yang mungkin, dan pilihannya belum diambil:
 | Padanan SAP | tidak ada — SAP tidak punya material lintas plant | **persis** seperti SAP: material di-extend ke dua plant, dipindahkan STO |
 | Tarik master | bertentangan: `TM_PROCESS_PARTS` staging berkunci (part, plant) | sejalan — memang menghasilkan dua baris |
 | Yang harus diubah | `plantId` per langkah, resolusi SLOC, validasi scan | dokumen perpindahan antar plant, penyambung genealogy |
+
+### Satu pola penamaan untuk semua jenis proses
+
+    NAMA_PROSES [_PABRIK] _VARIAN
+
+| Bagian | Dipakai kapan | Contoh |
+| --- | --- | --- |
+| `_WIP` | lini yang hasilnya diteruskan ke langkah berikutnya | `CASTING_WIP` |
+| `_FG` | lini yang menutup rute — di sinilah kanban ditempel | `PAINTING_FG` |
+| `_PABRIK` | hanya pada Assembling, satu-satunya nama proses yang ada di lebih dari satu pabrik | `ASSEMBLING_UNIT_FG` |
+| tanpa akhiran | proses yang memang hanya punya satu lini | `MELTING`, `MOUNTING`, `ANTENNA` |
+
+Akhiran varian dipakai **hanya** bila prosesnya benar-benar punya dua lini yang
+berbeda secara fisik. Menambahkannya pada yang tidak punya pasangan cuma
+membuat nilai yang tidak pernah terpakai — dan nilai semacam itu cepat atau
+lambat diisi seseorang.
+
+Sempat ada tiga pola dalam satu daftar: Casting dan Machining memakai varian,
+Injection dan Painting tanpa akhiran, Assembling memakai akhiran pabrik tanpa
+varian. Orang jadi harus menghafal mana yang mana, padahal yang dibedakan selalu
+hal yang sama: **lini mana**.
+
+`db:selaraskan` ikut menegakkannya: untuk setiap proses `_WIP` yang terdaftar di
+sebuah pabrik, pasangan `_FG`-nya didaftarkan juga. Tanpa itu kolomnya tidak
+pernah muncul di matriks rute, dan rute yang berhenti di langkah itu tidak bisa
+disusun sama sekali.
 
 ### Urutan jenis proses di enum TIDAK menentukan rute
 

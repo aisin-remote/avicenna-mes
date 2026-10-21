@@ -24,8 +24,22 @@ describe('kelasHasilSap', () => {
   });
 
   it('assembling kedua pabrik menghasilkan FG', () => {
-    expect(kelasHasilSap('ASSEMBLING_UNIT')).toBe('FG');
-    expect(kelasHasilSap('ASSEMBLING_BODY')).toBe('FG');
+    expect(kelasHasilSap('ASSEMBLING_UNIT_FG')).toBe('FG');
+    expect(kelasHasilSap('ASSEMBLING_BODY_FG')).toBe('FG');
+  });
+
+  /*
+   * Setiap proses yang punya dua lini mengikuti aturan yang sama, apa pun
+   * pabriknya: akhiran _FG berarti menutup rute, _WIP berarti diteruskan.
+   * Dinyatakan satu kali untuk SELURUH pasangannya supaya pasangan baru yang
+   * lupa diklasifikasikan langsung ketahuan.
+   */
+  it('akhiran _WIP selalu SFG dan _FG selalu FG, untuk semua pasangan', () => {
+    const pasangan = PROCESS_TYPES.filter((p) => p.endsWith('_WIP') || p.endsWith('_FG'));
+    expect(pasangan.length).toBeGreaterThan(8);
+    for (const p of pasangan) {
+      expect([p, kelasHasilSap(p)]).toEqual([p, p.endsWith('_FG') ? 'FG' : 'SFG']);
+    }
   });
 
   /*
@@ -63,9 +77,9 @@ describe('kelasHasilSap', () => {
    * mengalahkan tabel.
    */
   it('langkah terakhir di rute menghasilkan FG walau tabelnya bilang SFG', () => {
-    expect(kelasHasilSap('INJECTION', true)).toBe('FG');
-    expect(kelasHasilSap('INJECTION', false)).toBe('SFG');
-    expect(kelasHasilSap('PAINTING', true)).toBe('FG');
+    expect(kelasHasilSap('INJECTION_WIP', true)).toBe('FG');
+    expect(kelasHasilSap('INJECTION_WIP', false)).toBe('SFG');
+    expect(kelasHasilSap('PAINTING_WIP', true)).toBe('FG');
   });
 
   it('langkah terakhir tidak membuat melting jadi punya material SAP', () => {
@@ -88,7 +102,7 @@ describe('periksaHasilProduksi', () => {
 
   it('meloloskan FG yang keluar ke SLOC barang jadi', () => {
     expect(
-      periksaHasilProduksi({ proses: 'ASSEMBLING_UNIT', slocKind: 'FINISH_GOOD', slocCode: 'FG80' })
+      periksaHasilProduksi({ proses: 'ASSEMBLING_UNIT_FG', slocKind: 'FINISH_GOOD', slocCode: 'FG80' })
         .kirim,
     ).toBe(true);
   });
@@ -132,7 +146,7 @@ describe('periksaHasilProduksi', () => {
   it('part yang berhenti di injection boleh keluar ke SLOC barang jadi', () => {
     expect(
       periksaHasilProduksi({
-        proses: 'INJECTION',
+        proses: 'INJECTION_WIP',
         slocKind: 'FINISH_GOOD',
         slocCode: 'FG70',
         langkahTerakhir: true,

@@ -8,7 +8,7 @@ it('memisahkan pabrik/proses, menghitung line tanpa output, dan tidak memasukkan
     { plantCode: 'UNIT', processType: 'CASTING_WIP', qtyHariIni: 0 },
     { plantCode: 'UNIT', processType: 'CASTING_FG', qtyHariIni: 8 },
     { plantCode: 'BODY', processType: 'CASTING_WIP', qtyHariIni: 4 },
-    { plantCode: null, processType: 'INJECTION', qtyHariIni: 0 },
+    { plantCode: null, processType: 'INJECTION_WIP', qtyHariIni: 0 },
     { plantCode: 'UNIT', processType: 'DELIVERY', qtyHariIni: 50 },
   ];
   expect(summarizeProductionByProcess(lines)).toEqual([
@@ -33,7 +33,7 @@ it('memisahkan pabrik/proses, menghitung line tanpa output, dan tidak memasukkan
       totalLines: 1,
       producingLines: 1,
     },
-    { plantCode: null, processType: 'INJECTION', qtyHariIni: 0, totalLines: 1, producingLines: 0 },
+    { plantCode: null, processType: 'INJECTION_WIP', qtyHariIni: 0, totalLines: 1, producingLines: 0 },
   ]);
   expect(summarizeProductionByProcess([])).toEqual([]);
   expect(lines[0]?.qtyHariIni).toBe(12);

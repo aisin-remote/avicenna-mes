@@ -49,7 +49,7 @@ async function main() {
     plantId: plant.id,
     partNumber: `QA-DEL-${suffix}`,
     name: 'Part QA Delivery',
-    processType: 'ASSEMBLING_UNIT',
+    processType: 'ASSEMBLING_UNIT_FG',
     qtyPerKanban: 20,
     trackingMode: 'QUANTITY',
   });

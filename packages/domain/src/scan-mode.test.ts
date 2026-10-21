@@ -13,15 +13,15 @@ import { PROCESS_TYPES } from '@avicenna/contracts';
 
 describe('metode scan bawaan per jenis proses', () => {
   it('proses BODY: satu scan = satu box', () => {
-    expect(modeScanBawaan('INJECTION')).toBe('KANBAN_BOX');
-    expect(modeScanBawaan('PAINTING')).toBe('KANBAN_BOX');
-    expect(modeScanBawaan('ASSEMBLING_BODY')).toBe('KANBAN_BOX');
+    expect(modeScanBawaan('INJECTION_WIP')).toBe('KANBAN_BOX');
+    expect(modeScanBawaan('PAINTING_WIP')).toBe('KANBAN_BOX');
+    expect(modeScanBawaan('ASSEMBLING_BODY_FG')).toBe('KANBAN_BOX');
   });
 
   it('lini UNIT yang menghasilkan barang jadi: part + kartu', () => {
     expect(modeScanBawaan('CASTING_FG')).toBe('PART_KANBAN');
     expect(modeScanBawaan('MACHINING_FG')).toBe('PART_KANBAN');
-    expect(modeScanBawaan('ASSEMBLING_UNIT')).toBe('PART_KANBAN');
+    expect(modeScanBawaan('ASSEMBLING_UNIT_FG')).toBe('PART_KANBAN');
   });
 
   it('lini WIP: part saja', () => {
@@ -42,7 +42,7 @@ describe('nilai metode yang lama tetap terbaca', () => {
    * satu pun data yang disentuh.
    */
   it('PER_KANBAN menjadi KANBAN_BOX', () => {
-    expect(normalkanModeScan('PER_KANBAN', 'INJECTION')).toBe('KANBAN_BOX');
+    expect(normalkanModeScan('PER_KANBAN', 'INJECTION_WIP')).toBe('KANBAN_BOX');
   });
 
   it('PER_PIECE menjadi PART_KANBAN di lini FG, PART_SAJA di lini WIP', () => {
@@ -51,7 +51,7 @@ describe('nilai metode yang lama tetap terbaca', () => {
   });
 
   it('kosong jatuh ke bawaan prosesnya', () => {
-    expect(normalkanModeScan(null, 'INJECTION')).toBe('KANBAN_BOX');
+    expect(normalkanModeScan(null, 'INJECTION_WIP')).toBe('KANBAN_BOX');
     expect(normalkanModeScan(undefined, 'CASTING_WIP')).toBe('PART_SAJA');
   });
 
@@ -125,7 +125,7 @@ describe('dasar pemeriksaan duplikat', () => {
 
   it('nilai lama ikut benar', () => {
     expect(duplikatDariBarcode('PER_PIECE', 'MACHINING_FG')).toBe(true);
-    expect(duplikatDariBarcode('PER_KANBAN', 'INJECTION')).toBe(false);
+    expect(duplikatDariBarcode('PER_KANBAN', 'INJECTION_WIP')).toBe(false);
   });
 });
 
@@ -137,12 +137,12 @@ describe('metode yang berlaku di sebuah lini', () => {
      * pasti memakai cara yang tidak cocok.
      */
     expect(
-      modeScanBerlaku({ modeLini: 'KANBAN_MOLD', modeProses: 'KANBAN_BOX', proses: 'INJECTION' }),
+      modeScanBerlaku({ modeLini: 'KANBAN_MOLD', modeProses: 'KANBAN_BOX', proses: 'INJECTION_WIP' }),
     ).toBe('KANBAN_MOLD');
   });
 
   it('tanpa penimpa, ikut master proses', () => {
-    expect(modeScanBerlaku({ modeLini: null, modeProses: 'KANBAN_BOX', proses: 'INJECTION' })).toBe(
+    expect(modeScanBerlaku({ modeLini: null, modeProses: 'KANBAN_BOX', proses: 'INJECTION_WIP' })).toBe(
       'KANBAN_BOX',
     );
   });
@@ -153,7 +153,7 @@ describe('metode yang berlaku di sebuah lini', () => {
   });
 
   it('nilai lama di salah satu tingkat tetap diterjemahkan', () => {
-    expect(modeScanBerlaku({ modeLini: 'PER_KANBAN', proses: 'INJECTION' })).toBe('KANBAN_BOX');
+    expect(modeScanBerlaku({ modeLini: 'PER_KANBAN', proses: 'INJECTION_WIP' })).toBe('KANBAN_BOX');
     expect(modeScanBerlaku({ modeProses: 'PER_PIECE', proses: 'MACHINING_FG' })).toBe('PART_KANBAN');
   });
 

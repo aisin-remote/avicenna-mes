@@ -5,16 +5,41 @@ import { z } from 'zod';
  * packages/db/src/schema/_shared.ts — keduanya menulis ke kolom enum yang sama,
  * dan nilai yang tidak dikenal MySQL ditolak saat insert, bukan saat validasi.
  */
+/**
+ * ─── ATURAN PENAMAAN JENIS PROSES ───────────────────────────────────────────
+ *
+ * Satu pola untuk semuanya:  NAMA_PROSES [_PABRIK] _VARIAN
+ *
+ *   _WIP   lini yang hasilnya diteruskan ke langkah berikutnya
+ *   _FG    lini yang menutup rute — di sinilah kanban ditempel
+ *
+ * Akhiran varian dipakai HANYA bila prosesnya benar-benar punya dua lini yang
+ * berbeda secara fisik. Melting, Mounting, dan Antena tidak punya, jadi
+ * namanya polos — menambahkan akhiran pada yang tidak punya pasangan hanya
+ * membuat nilai yang tidak pernah terpakai, dan nilai semacam itu cepat atau
+ * lambat diisi seseorang.
+ *
+ * Akhiran PABRIK dipakai hanya pada Assembling, satu-satunya nama proses yang
+ * muncul di lebih dari satu pabrik. Tanpa pembeda itu, hasil Unit dan Body
+ * bercampur di laporan dan tidak ada cara memisahkannya kembali.
+ *
+ * Pernah tidak begitu: Injection dan Painting sempat tanpa akhiran sementara
+ * Casting dan Machining memakainya, dan Assembling memakai akhiran pabrik
+ * tanpa varian. Tiga pola dalam satu daftar membuat orang harus menghafal
+ * mana yang mana — padahal yang dibedakan selalu hal yang sama: LINI MANA.
+ */
 export const processTypeSchema = z.enum([
   'MELTING',
   'CASTING_WIP',
   'CASTING_FG',
   'MACHINING_WIP',
   'MACHINING_FG',
-  'ASSEMBLING_UNIT',
-  'INJECTION',
-  'PAINTING',
-  'ASSEMBLING_BODY',
+  'ASSEMBLING_UNIT_FG',
+  'INJECTION_WIP',
+  'INJECTION_FG',
+  'PAINTING_WIP',
+  'PAINTING_FG',
+  'ASSEMBLING_BODY_FG',
   /*
    * ── Electric (plant 900) ──────────────────────────────────────────────────
    *
@@ -83,8 +108,10 @@ export const PROCESS_TYPES = processTypeSchema.options;
 export const FINISH_GOOD_PROCESSES = [
   'CASTING_FG',
   'MACHINING_FG',
-  'ASSEMBLING_UNIT',
-  'ASSEMBLING_BODY',
+  'ASSEMBLING_UNIT_FG',
+  'INJECTION_FG',
+  'PAINTING_FG',
+  'ASSEMBLING_BODY_FG',
   /*
    * Electric menutup rute di lini FG-nya sendiri — Inspection FG dan Vacuum FG.
    *
@@ -116,10 +143,12 @@ export const PROCESS_LABELS: Record<ProcessType, string> = {
   CASTING_FG: 'Casting FG',
   MACHINING_WIP: 'Machining WIP',
   MACHINING_FG: 'Machining FG',
-  ASSEMBLING_UNIT: 'Assembling (Unit)',
-  INJECTION: 'Injection',
-  PAINTING: 'Painting',
-  ASSEMBLING_BODY: 'Assembling (Body)',
+  ASSEMBLING_UNIT_FG: 'Assembling Unit FG',
+  INJECTION_WIP: 'Injection WIP',
+  INJECTION_FG: 'Injection FG',
+  PAINTING_WIP: 'Painting WIP',
+  PAINTING_FG: 'Painting FG',
+  ASSEMBLING_BODY_FG: 'Assembling Body FG',
   MOUNTING: 'Mounting',
   INSPECTION_WIP: 'Inspection WIP',
   INSPECTION_FG: 'Inspection FG',
@@ -367,7 +396,9 @@ export function modeScanBerlaku(input: {
  * Hanya BAWAAN. Yang berlaku adalah isi TM_ROUTE_PROCESS per pabrik.
  */
 export function modeScanBawaan(p: ProcessType): ScanMode {
-  if (p === 'INJECTION' || p === 'PAINTING' || p === 'ASSEMBLING_BODY') return 'KANBAN_BOX';
+  // Seluruh lini pabrik Body memakai kanban box, baik lini WIP maupun FG-nya.
+  if (p.startsWith('INJECTION') || p.startsWith('PAINTING') || p.startsWith('ASSEMBLING_BODY'))
+    return 'KANBAN_BOX';
   return menghasilkanFinishGood(p) ? 'PART_KANBAN' : 'PART_SAJA';
 }
 

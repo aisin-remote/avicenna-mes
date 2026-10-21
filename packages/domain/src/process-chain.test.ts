@@ -23,16 +23,16 @@ const rute = (...p: LangkahRute['processType'][]): LangkahRute[] =>
  * OPN berakhir di MACHINING_FG, CSH di CASTING_FG, sedangkan pada TCC machining
  * masih WIP karena masih disusul assembling.
  */
-const TCC_A = rute('MELTING', 'CASTING_WIP', 'MACHINING_WIP', 'ASSEMBLING_UNIT', 'DELIVERY');
+const TCC_A = rute('MELTING', 'CASTING_WIP', 'MACHINING_WIP', 'ASSEMBLING_UNIT_FG', 'DELIVERY');
 const OPN_A = rute('MELTING', 'CASTING_WIP', 'MACHINING_FG', 'DELIVERY');
 const CSH_A = rute('MELTING', 'CASTING_FG', 'DELIVERY');
-const HANDLE = rute('INJECTION', 'PAINTING', 'ASSEMBLING_BODY', 'DELIVERY');
-const GARNISH = rute('INJECTION', 'ASSEMBLING_BODY', 'DELIVERY');
+const HANDLE = rute('INJECTION_WIP', 'PAINTING_WIP', 'ASSEMBLING_BODY_FG', 'DELIVERY');
+const GARNISH = rute('INJECTION_WIP', 'ASSEMBLING_BODY_FG', 'DELIVERY');
 
 describe('prosesSebelumnya', () => {
   it('proses pertama dalam rute tidak punya syarat', () => {
     expect(prosesSebelumnya(TCC_A, 'MELTING')).toBeUndefined();
-    expect(prosesSebelumnya(HANDLE, 'INJECTION')).toBeUndefined();
+    expect(prosesSebelumnya(HANDLE, 'INJECTION_WIP')).toBeUndefined();
   });
 
   it('machining mewajibkan casting', () => {
@@ -47,15 +47,15 @@ describe('prosesSebelumnya', () => {
      * hanya berupa fungsi dari jenis proses akan memberi jawaban yang sama
      * untuk ketiganya.
      */
-    expect(prosesSebelumnya(TCC_A, 'DELIVERY')).toBe('ASSEMBLING_UNIT');
+    expect(prosesSebelumnya(TCC_A, 'DELIVERY')).toBe('ASSEMBLING_UNIT_FG');
     expect(prosesSebelumnya(OPN_A, 'DELIVERY')).toBe('MACHINING_FG');
     expect(prosesSebelumnya(CSH_A, 'DELIVERY')).toBe('CASTING_FG');
   });
 
   it('dua part satu proyek bisa berbeda syaratnya', () => {
     // Proyek 660A: HANDLE melewati Painting, GARNISH tidak.
-    expect(prosesSebelumnya(HANDLE, 'ASSEMBLING_BODY')).toBe('PAINTING');
-    expect(prosesSebelumnya(GARNISH, 'ASSEMBLING_BODY')).toBe('INJECTION');
+    expect(prosesSebelumnya(HANDLE, 'ASSEMBLING_BODY_FG')).toBe('PAINTING_WIP');
+    expect(prosesSebelumnya(GARNISH, 'ASSEMBLING_BODY_FG')).toBe('INJECTION_WIP');
   });
 
   it('proses yang tidak ada di rute tidak menghasilkan syarat', () => {
@@ -96,20 +96,20 @@ describe('prosesAdaDiRute', () => {
     // discan di lini machining akan menambah stok barang jadi yang tak pernah
     // dibuat.
     expect(prosesAdaDiRute(CSH_A, 'MACHINING_WIP')).toBe(false);
-    expect(prosesAdaDiRute(GARNISH, 'PAINTING')).toBe(false);
+    expect(prosesAdaDiRute(GARNISH, 'PAINTING_WIP')).toBe(false);
   });
 
   it('menerima proses yang memang ada di rutenya', () => {
     expect(prosesAdaDiRute(CSH_A, 'CASTING_FG')).toBe(true);
-    expect(prosesAdaDiRute(HANDLE, 'PAINTING')).toBe(true);
+    expect(prosesAdaDiRute(HANDLE, 'PAINTING_WIP')).toBe(true);
   });
 
   it('alur UNIT dan BODY tidak saling menerima', () => {
-    expect(prosesAdaDiRute(TCC_A, 'INJECTION')).toBe(false);
+    expect(prosesAdaDiRute(TCC_A, 'INJECTION_WIP')).toBe(false);
     expect(prosesAdaDiRute(HANDLE, 'CASTING_WIP')).toBe(false);
     // Assembling pun tidak tertukar antar pabrik.
-    expect(prosesAdaDiRute(TCC_A, 'ASSEMBLING_BODY')).toBe(false);
-    expect(prosesAdaDiRute(HANDLE, 'ASSEMBLING_UNIT')).toBe(false);
+    expect(prosesAdaDiRute(TCC_A, 'ASSEMBLING_BODY_FG')).toBe(false);
+    expect(prosesAdaDiRute(HANDLE, 'ASSEMBLING_UNIT_FG')).toBe(false);
   });
 });
 
@@ -141,8 +141,8 @@ describe('menghasilkanFinishGood', () => {
   it('hanya lini FG dan assembling', () => {
     expect(menghasilkanFinishGood('CASTING_FG')).toBe(true);
     expect(menghasilkanFinishGood('MACHINING_FG')).toBe(true);
-    expect(menghasilkanFinishGood('ASSEMBLING_UNIT')).toBe(true);
-    expect(menghasilkanFinishGood('ASSEMBLING_BODY')).toBe(true);
+    expect(menghasilkanFinishGood('ASSEMBLING_UNIT_FG')).toBe(true);
+    expect(menghasilkanFinishGood('ASSEMBLING_BODY_FG')).toBe(true);
   });
 
   it('melting dan lini WIP tidak menghasilkan finish good', () => {

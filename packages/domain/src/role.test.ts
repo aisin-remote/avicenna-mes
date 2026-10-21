@@ -24,8 +24,8 @@ describe('grupProses', () => {
   });
 
   it('assembling kedua pabrik masuk grup yang sama', () => {
-    expect(grupProses('ASSEMBLING_UNIT')).toBe('ASSEMBLING');
-    expect(grupProses('ASSEMBLING_BODY')).toBe('ASSEMBLING');
+    expect(grupProses('ASSEMBLING_UNIT_FG')).toBe('ASSEMBLING');
+    expect(grupProses('ASSEMBLING_BODY_FG')).toBe('ASSEMBLING');
   });
 
   it('setiap jenis proses punya grupnya — tidak ada yang tercecer', () => {
@@ -95,7 +95,7 @@ describe('bolehScanDi', () => {
   });
 
   it('scanning tanpa lingkup boleh di mana saja', () => {
-    expect(bolehScanDi({ kind: 'SCANNING' }, 'PAINTING')).toBe(true);
+    expect(bolehScanDi({ kind: 'SCANNING' }, 'PAINTING_WIP')).toBe(true);
   });
 });
 

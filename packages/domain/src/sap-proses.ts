@@ -75,8 +75,9 @@ export type KelasHasilSap = 'SFG' | 'FG' | null;
  * pabrik ini bukan pabriknya, melainkan lini tempat barang terakhir dikerjakan.
  *
  * Dan itu pun masih bisa dikalahkan POSISI langkah di rute part — lihat
- * kelasHasilSap() di bawah. Hal yang sama berlaku untuk INJECTION: sebuah part
- * bisa berhenti di sana dan langsung dikirim ke customer.
+ * kelasHasilSap() di bawah. Jalur itu kini jarang dibutuhkan, sebab proses yang
+ * bisa menutup rute sudah punya lini FG-nya sendiri; ia tetap ada untuk hal
+ * yang tidak terduga, mis. part yang berhenti di langkah yang biasanya WIP.
  */
 const KELAS_HASIL: Record<ProcessType, KelasHasilSap> = {
   MELTING: null,
@@ -84,10 +85,12 @@ const KELAS_HASIL: Record<ProcessType, KelasHasilSap> = {
   CASTING_FG: 'FG',
   MACHINING_WIP: 'SFG',
   MACHINING_FG: 'FG',
-  ASSEMBLING_UNIT: 'FG',
-  INJECTION: 'SFG',
-  PAINTING: 'SFG',
-  ASSEMBLING_BODY: 'FG',
+  ASSEMBLING_UNIT_FG: 'FG',
+  INJECTION_WIP: 'SFG',
+  INJECTION_FG: 'FG',
+  PAINTING_WIP: 'SFG',
+  PAINTING_FG: 'FG',
+  ASSEMBLING_BODY_FG: 'FG',
   MOUNTING: 'SFG',
   INSPECTION_WIP: 'SFG',
   INSPECTION_FG: 'FG',

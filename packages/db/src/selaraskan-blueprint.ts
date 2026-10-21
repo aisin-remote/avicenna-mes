@@ -1,6 +1,6 @@
 import './load-env';
 import { eq } from 'drizzle-orm';
-import { menghasilkanFinishGood, type LocationKind } from '@avicenna/contracts';
+import { PROCESS_TYPES, menghasilkanFinishGood, type LocationKind } from '@avicenna/contracts';
 import { getDb, closeDb } from './client';
 import { plants, locations, lines, routeProcesses } from './schema/index';
 
@@ -253,8 +253,7 @@ async function main() {
         dilakukan.push({
           tindakan: `rute proses ${elec.code}`,
           rincian:
-            `${proses} didaftarkan` +
-            (wip && keluar ? `, SLOC ${wip.code} → ${keluar.code}` : ''),
+            `${proses} didaftarkan` + (wip && keluar ? `, SLOC ${wip.code} → ${keluar.code}` : ''),
         });
         if (tulis) {
           await tx.insert(routeProcesses).values({
@@ -271,6 +270,47 @@ async function main() {
         tindakan: 'rute proses ELEC',
         rincian: 'pabriknya baru dibuat saat --tulis, jadi belum bisa didaftarkan di uji coba',
       });
+    }
+
+    /*
+     * ── Pasangan _FG untuk setiap _WIP yang terdaftar ────────────────────────
+     *
+     * Akhiran _WIP dan _FG menandai DUA LINI yang berbeda secara fisik pada
+     * proses yang sama. Kalau sebuah pabrik mengerjakan Injection, ia punya
+     * keduanya — dan selama pasangan FG-nya belum terdaftar, kolomnya tidak
+     * pernah muncul di matriks rute, sehingga rute yang berhenti di situ tidak
+     * bisa disusun sama sekali.
+     *
+     * Hanya arah WIP → FG yang dilengkapi. Sebaliknya tidak: proses yang
+     * memang hanya punya lini FG (mis. Casting FG pada pabrik yang tidak punya
+     * Casting WIP) tidak boleh dipaksa memiliki lini WIP yang tidak ada.
+     */
+    const semuaRute = await tx.select().from(routeProcesses);
+    for (const p of pabrikKini) {
+      const diPabrik = semuaRute.filter((r) => r.plantId === p.id);
+      const sudah = new Set(diPabrik.map((r) => r.processType));
+      const fgSloc = cariSloc(p.id, 'FINISH_GOOD');
+      for (const r of diPabrik) {
+        if (!r.processType.endsWith('_WIP')) continue;
+        const pasangan = `${r.processType.slice(0, -4)}_FG`;
+        if (!(PROCESS_TYPES as readonly string[]).includes(pasangan)) continue;
+        if (sudah.has(pasangan as (typeof routeProcesses.$inferInsert)['processType'])) continue;
+        sudah.add(pasangan as (typeof routeProcesses.$inferInsert)['processType']);
+        dilakukan.push({
+          tindakan: `rute proses ${p.code}`,
+          rincian: `${pasangan} didaftarkan sebagai pasangan ${r.processType}`,
+        });
+        if (tulis) {
+          await tx.insert(routeProcesses).values({
+            plantId: p.id,
+            processType: pasangan as (typeof routeProcesses.$inferInsert)['processType'],
+            // Lini FG menempel kanban — lihat modeScanBawaan().
+            scanMode: r.scanMode === 'KANBAN_BOX' ? 'KANBAN_BOX' : 'PART_KANBAN',
+            inputLocationId: r.inputLocationId,
+            outputLocationId: fgSloc?.id ?? r.outputLocationId,
+          });
+        }
+      }
     }
   });
 

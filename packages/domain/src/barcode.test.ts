@@ -71,13 +71,13 @@ describe('pemilihan aturan', () => {
     const khususInjection: AturanBarcode = {
       nama: 'UJI_INJECTION',
       keterangan: 'hanya untuk injection',
-      berlaku: (ctx) => ctx.processType === 'INJECTION',
+      berlaku: (ctx) => ctx.processType === 'INJECTION_WIP',
       cocok: (raw) => raw.startsWith('INJ'),
       baca: (raw) => ({ raw, partNumber: raw.slice(3) }),
     };
     DAFTAR_ATURAN.unshift(khususInjection);
     try {
-      expect(bacaBarcode('INJ-777', { processType: 'INJECTION' }).aturan).toBe('UJI_INJECTION');
+      expect(bacaBarcode('INJ-777', { processType: 'INJECTION_WIP' }).aturan).toBe('UJI_INJECTION');
       // Proses lain tidak boleh ikut memakainya.
       expect(bacaBarcode('INJ-777', { processType: 'MACHINING_WIP' }).aturan).toBe('SERIAL_SAJA');
       // Tanpa konteks pun tidak dipakai — lingkupnya belum terpenuhi.
