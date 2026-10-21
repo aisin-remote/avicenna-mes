@@ -39,10 +39,15 @@ const LABEL = PROCESS_LABELS as Record<string, string>;
  *
  * ── Kenapa urutan tidak diketik ─────────────────────────────────────────────
  *
- * Nomor urut dibangkitkan server dari urutan kolom, bukan diketik orang.
+ * Nomor urut dibangkitkan server dari URUTAN KLIK, bukan diketik orang.
  * Mengetik nomor membuka kemungkinan dua langkah bernomor sama, dan nomor itu
  * sendiri tidak bermakna bagi siapa pun — yang bermakna adalah proses apa
  * mendahului proses apa.
+ *
+ * Urutan kolom tinggal menjadi TAWARAN: kolom disusun mengikuti alur yang
+ * paling lazim, sehingga mengklik dari kiri ke kanan menghasilkan rute yang
+ * wajar tanpa memikirkan urutannya. Yang rutenya tidak lazim tinggal mengklik
+ * sesuai jalannya barang.
  */
 export function MatriksRute({
   proses,
@@ -113,13 +118,24 @@ export function MatriksRute({
   async function ubah(b: BarisMatriks, p: string) {
     const aktif = p in b.rute;
     /*
-     * Urutan baru mengikuti urutan KOLOM, bukan urutan klik.
+     * Urutan mengikuti urutan KLIK, bukan urutan kolom.
      *
-     * Kolom sudah tersusun sesuai jalannya barang, jadi menyalakan Painting
-     * setelah Assembling tetap menghasilkan Painting lebih dulu — persis yang
-     * orang harapkan saat melihat tabelnya.
+     * Sebelumnya kolomlah yang menentukan, dengan alasan "kolom sudah tersusun
+     * sesuai jalannya barang". Itu benar untuk rute yang lurus, dan salah untuk
+     * yang tidak: ada part yang setelah selesai di Antena (pabrik Electric)
+     * lanjut dirakit di Assembling Body. Dengan urutan kolom, rute seperti itu
+     * MUSTAHIL disusun — kolom mana pun yang diklik lebih dulu, hasilnya tetap
+     * urutan kolom, dan tidak ada yang memberitahu bahwa keinginannya diabaikan.
+     *
+     * Sekarang klik menambahkan langkah di AKHIR rute. Mengklik ulang
+     * mencabutnya, dan langkah sesudahnya naik sendiri. Untuk menyisipkan di
+     * tengah, cabut langkah-langkah sesudahnya lalu klik lagi sesuai urutan
+     * yang dimaui — angka di sel memperlihatkan hasilnya seketika.
      */
-    const sesudah = proses.filter((x) => (x === p ? !aktif : x in b.rute));
+    const urutSekarang = Object.entries(b.rute)
+      .sort(([, a], [, z]) => a - z)
+      .map(([nama]) => nama);
+    const sesudah = aktif ? urutSekarang.filter((x) => x !== p) : [...urutSekarang, p];
 
     const sebelumnya = data;
     // Diperbarui di layar lebih dulu supaya klik terasa langsung; dikembalikan
@@ -321,9 +337,11 @@ export function MatriksRute({
       </div>
 
       <p className="text-[13px] text-ink-muted">
-        Angka di dalam sel menunjukkan proses ke berapa, bukan sekadar dilalui atau tidak. Urutannya
-        mengikuti urutan kolom, jadi menyalakan proses mana pun tidak akan mengacak urutan yang
-        sudah ada.
+        Angka di dalam sel menunjukkan proses ke berapa, bukan sekadar dilalui atau tidak.{' '}
+        <strong className="font-semibold text-ink">Urutannya mengikuti urutan klik</strong> — klik
+        sesuai jalannya barang, tidak harus dari kiri ke kanan. Mengklik ulang mencabut langkah itu
+        dan menaikkan langkah sesudahnya; untuk menyisipkan di tengah, cabut yang sesudahnya lalu
+        klik lagi berurutan.
       </p>
 
     </div>

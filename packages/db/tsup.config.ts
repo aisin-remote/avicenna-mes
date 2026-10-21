@@ -12,7 +12,13 @@ export default defineConfig((options) => ({
   // pindah-master ikut dibangun dengan alasan yang sama: ia dijalankan
   // SEKALI di server, dari dalam jaringan Docker, karena hanya dari sana
   // MySQL lama dan Postgres baru sama-sama terjangkau.
-  entry: ['src/index.ts', 'src/load-env.ts', 'src/seed.ts', 'src/pindah-master.ts'],
+  entry: [
+    'src/index.ts',
+    'src/load-env.ts',
+    'src/seed.ts',
+    'src/pindah-master.ts',
+    'src/selaraskan-blueprint.ts',
+  ],
   format: ['cjs', 'esm'],
   dts: true,
   sourcemap: true,

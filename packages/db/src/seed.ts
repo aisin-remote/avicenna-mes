@@ -84,6 +84,16 @@ async function main() {
   // Database satu pabrik tetap harus bisa di-seed; data pabrik kedua menumpang
   // ke pabrik yang sama.
   const body = sorted[1] ?? unit;
+  /*
+   * Pabrik Electric TIDAK punya cadangan seperti dua di atas.
+   *
+   * `?? unit` di sana masuk akal: database satu pabrik tetap harus bisa
+   * di-seed, dan data pabrik kedua menumpang. Di sini tidak — menumpangkan
+   * lini Mounting dan Antena ke pabrik Body akan membuat kolom Electric muncul
+   * di matriks rute Body, dan orang akan menyusun rute yang salah dari situ.
+   * Kalau pabriknya belum ada, data contohnya memang tidak dibuat.
+   */
+  const elec = sorted[2];
 
   // ── Roles ─────────────────────────────────────────────────────────────────
   /*
@@ -286,6 +296,28 @@ async function main() {
         name: 'Assembling 2',
         sortOrder: 4,
       },
+      /*
+       * Dua lini contoh pabrik Electric. Kode work center yang sebenarnya
+       * belum kita ketahui — di SAP bentuknya kode proses + nomor urut, maksimal
+       * 8 karakter (mis. MADS05) — jadi di sini dipakai pola yang sama dengan
+       * lini contoh lain, dan akan diganti saat master aslinya datang.
+       */
+      ...(elec
+        ? [
+            {
+              ...lineDefaults(elec.id, 'MOUNTING' as const),
+              code: 'MNT-01',
+              name: 'Mounting 1',
+              sortOrder: 1,
+            },
+            {
+              ...lineDefaults(elec.id, 'ANTENNA' as const),
+              code: 'ANT-01',
+              name: 'Antena 1',
+              sortOrder: 2,
+            },
+          ]
+        : []),
     ],
   );
 
@@ -361,6 +393,8 @@ async function main() {
   // ── Parts ─────────────────────────────────────────────────────────────────
   const lineRows = await db.select().from(lines);
   const dc01 = mustFind(lineRows, (l) => l.code === 'DC-01', 'line DC-01');
+  // Tidak dengan mustFind: lini ini hanya ada bila pabrik Electric ada.
+  const ant01 = lineRows.find((l) => l.code === 'ANT-01');
   const inj01 = mustFind(lineRows, (l) => l.code === 'INJ-01', 'line INJ-01');
   const as01 = mustFind(lineRows, (l) => l.code === 'AS-01', 'line AS-01');
 
@@ -442,6 +476,29 @@ async function main() {
         qtyPerKanban: 50,
         standardStock: 500,
       },
+      /*
+       * Part contoh pabrik Electric.
+       *
+       * Ada gunanya melebihi sekadar kelengkapan: kolom matriks rute mengikuti
+       * PABRIK DARI PART YANG TAMPIL, jadi tanpa satu pun part Electric, empat
+       * proses Electric tidak pernah terlihat di layar sekalipun sudah
+       * terdaftar di masternya — dan itu terbaca seperti kerusakan.
+       */
+      ...(elec
+        ? [
+            {
+              plantId: elec.id,
+              lineId: ant01?.id ?? null,
+              partNumber: 'EL-ANT-001',
+              project: 'ELC',
+              backNumber: 'BN-E01',
+              name: 'Antena Assy Electric',
+              processType: 'ANTENNA' as const,
+              qtyPerKanban: 40,
+              standardStock: 400,
+            },
+          ]
+        : []),
     ],
   );
 
@@ -510,6 +567,15 @@ async function main() {
       pn: 'BL-98765-002',
       langkah: ['INJECTION', 'PAINTING', 'ASSEMBLING_BODY', 'DELIVERY'],
     },
+    /*
+     * Berhenti sebagai setengah jadi, dan itu memang keadaan pabrik Electric:
+     * keluarannya dirakit di Assembling Body — pabrik yang BERBEDA. Rute lintas
+     * pabrik belum didukung, jadi langkah itu sengaja tidak ditulis di sini
+     * alih-alih ditulis dengan pabrik yang keliru.
+     */
+    ...(elec
+      ? [{ plantId: elec.id, pn: 'EL-ANT-001', langkah: ['MOUNTING', 'ANTENNA'] as const }]
+      : []),
   ];
 
   const ruteAda = new Set(
