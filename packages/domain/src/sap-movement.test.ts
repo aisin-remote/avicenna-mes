@@ -60,15 +60,27 @@ describe('siapDikirim', () => {
   });
 
   it('menahan dan menyebutkan jenis yang belum punya angka', () => {
-    const asli = SAP_MOVEMENTS.NG_OUT!.movementType;
-    SAP_MOVEMENTS.NG_OUT!.movementType = null;
+    const asli = SAP_MOVEMENTS.DELIVERY_OUT!.movementType;
+    SAP_MOVEMENTS.DELIVERY_OUT!.movementType = null;
     try {
-      const hasil = siapDikirim(['NG_OUT', 'RECEIVING_IN']);
+      const hasil = siapDikirim(['DELIVERY_OUT', 'RECEIVING_IN']);
       expect(hasil.siap).toBe(false);
-      expect(hasil.belum).toEqual(['NG_OUT']);
+      expect(hasil.belum).toEqual(['DELIVERY_OUT']);
     } finally {
-      SAP_MOVEMENTS.NG_OUT!.movementType = asli;
+      SAP_MOVEMENTS.DELIVERY_OUT!.movementType = asli;
     }
+  });
+
+  /*
+   * NG dulu dipakai sebagai contoh pada uji di atas, dan itu tidak berlaku lagi:
+   * sejak Blueprint PP dibaca, NG_OUT tidak dikirim sebagai dokumen tersendiri.
+   */
+  it('NG tidak dikirim sebagai dokumen scrap sendiri', () => {
+    expect(SAP_MOVEMENTS.NG_OUT!.kirim).toBe(false);
+    expect(SAP_MOVEMENTS.NG_OUT!.movementType).toBeNull();
+    expect(SAP_MOVEMENTS.NG_OUT!.alasan).toContain('qty NG');
+    // Tidak dikirim, jadi juga tidak boleh menahan dokumen apa pun.
+    expect(siapDikirim(['NG_OUT']).siap).toBe(true);
   });
 
   it('tidak mengulang jenis yang sama', () => {

@@ -46,6 +46,18 @@ export class SapController {
     });
   }
 
+  /**
+   * NG yang belum sampai ke SAP padahal hasil produksinya sudah.
+   *
+   * Dibuka sebagai endpoint sendiri, bukan diselipkan ke /sap/summary, supaya
+   * jelas ini DAFTAR PEKERJAAN orang — koreksi PP-PE-06 dikerjakan manual di
+   * SAP — bukan angka antrean yang akan beres sendiri.
+   */
+  @Get('ng-perlu-koreksi')
+  ngPerluKoreksi(@Query('limit') limit?: string) {
+    return this.outbox.ngPerluKoreksi(Math.min(500, Math.max(1, Number(limit) || 200)));
+  }
+
   /** Mengumpulkan sekarang juga, tanpa menunggu putaran berikutnya. */
   @Post('collect')
   async collect() {

@@ -31,6 +31,11 @@ const GRUP: Record<ProcessType, ProcessGroup> = {
   ASSEMBLING_BODY: 'ASSEMBLING',
   INJECTION: 'INJECTION',
   PAINTING: 'PAINTING',
+  MOUNTING: 'MOUNTING',
+  INSPECTION_ELEC: 'INSPECTION',
+  VACUUM: 'VACUUM',
+  ASSEMBLING_ELEC: 'ASSEMBLING',
+  ANTENNA: 'ANTENNA',
   DELIVERY: 'DELIVERY',
 };
 
@@ -106,6 +111,10 @@ export const PROCESS_GROUP_LABELS: Record<ProcessGroup, string> = {
   ASSEMBLING: 'Assembling',
   INJECTION: 'Injection',
   PAINTING: 'Painting',
+  MOUNTING: 'Mounting',
+  INSPECTION: 'Inspection',
+  VACUUM: 'Vacuum',
+  ANTENNA: 'Antena',
   DELIVERY: 'Delivery',
 };
 

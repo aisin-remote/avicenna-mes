@@ -94,6 +94,12 @@ tetapi tidak ditulis sebagai baris staging tersendiri. Movement type transfer,
 arti `STAGING_FLAG_*`, dan namespace `INT_NUMBER` juga perlu dicocokkan dengan
 proses SAP. Saklar global `STAGING_PUSH_ENABLED` tetap gerbang terakhir.
 
+> **Kode SLOC di bawah sudah tidak dipakai.** Rantai ini apa adanya dari diagram
+> MIS, dan ditinggalkan sebagai catatan asal-usul. Kode yang berlaku sekarang
+> datang dari Tabel 6 blueprint dan berbeda tiap pabrik —
+> `WH70/WP70/FG70/RE70` dan seterusnya; lihat
+> [Storage location](#storage-location) di bawah.
+
 ```
 Supplier → [WH00] → [WP01] → [PP02] → [PP04] → Customer
         (+)     (−)(+)    (−)(+)   (−)(+)   (−)
@@ -404,6 +410,144 @@ Area staging sebelum naik truk tidak ada di blueprint — menurut SAP barang
 keluar langsung dari SLOC FG. Di sini ia tetap ada sebagai `ST70`/`ST80`/`ST90`
 dengan awalan yang jelas bukan kode SAP.
 
+### Tiga transaksi, itu saja
+
+Modul PP di blueprint punya enam proses, dan hanya tiga yang menuntut kita
+menulis ke staging:
+
+| Proses blueprint | Pemicu | Yang kita dorong | Yang SAP lakukan |
+| --- | --- | --- | --- |
+| **PP-PE-01** Component Stock Transfer | scan kanban komponen | transfer **WH → WP** | transfer posting |
+| **PP-PE-02** Semifinished Goods Production | scan kanban hasil | production confirmation | backflush + **GR ke WP** |
+| **PP-PE-03** Finished Goods Production | scan kanban hasil | production confirmation | backflush + **GR ke FG** |
+| **PP-PE-06** Cancel Production Booking | koreksi di sistem ini | tambah qty (defisit) / batalkan material document (surplus) | sesuai yang dikirim |
+| PP-PE-04 / PP-PE-05 | — | **tidak ada** | SAP mengirim error COGI / transfer **ke kita** |
+
+Konsekuensinya menentukan: **SAP hanya mengenal dua jenis posting produksi,
+SFG dan FG.** Tidak ada tingkatan lain, dan Tabel 6 menegaskannya dengan hanya
+empat SLOC per pabrik. Perhatikan `WP70` di sana dinamai **"SFG Body"**, bukan
+"WIP" — satu SLOC itu menampung komponen yang di-stage DAN hasil setengah jadi.
+
+### Peta lengkap: sembilan proses kita, lima bagian Electric
+
+Tabel 16 *Person Responsible* menyebut bagian produksi tiap pabrik secara
+lengkap — inilah daftar proses yang SAP kenal:
+
+| Plant | Kode | Bagian |
+| --- | --- | --- |
+| 700 Body | INJ / PTG / ASY | Injection, Painting, Assembly |
+| 800 Unit | DCT / MAC / ASY | Die Casting, Machining, Assembly |
+| 900 Electric | MNT / INS / VAC / ASY / ANT | Mounting, Inspection, Vacuum, Assembly, Antena |
+
+Dipetakan ke jenis proses di sistem ini:
+
+| Jenis proses di sini | Pabrik | Bagian SAP | Kelas hasil | GR mendarat di |
+| --- | --- | --- | --- | --- |
+| `MELTING` | 800 | — _tidak ada_ | — | tidak didorong |
+| `CASTING_WIP` | 800 | DCT Die Casting | SFG | WP80 |
+| `CASTING_FG` | 800 | DCT Die Casting | FG | FG80 |
+| `MACHINING_WIP` | 800 | MAC Machining | SFG | WP80 |
+| `MACHINING_FG` | 800 | MAC Machining | FG | FG80 |
+| `ASSEMBLING_UNIT` | 800 | ASY Assembly | FG | FG80 |
+| `INJECTION` | 700 | INJ Injection | SFG¹ | WP70 |
+| `PAINTING` | 700 | PTG Painting | SFG¹ | WP70 |
+| `ASSEMBLING_BODY` | 700 | ASY Assembly | FG | FG70 |
+| `MOUNTING` | 900 | MNT Mounting | SFG² | WP90 |
+| `INSPECTION_ELEC` | 900 | INS Inspection | SFG² | WP90 |
+| `VACUUM` | 900 | VAC Vacuum | SFG² | WP90 |
+| `ASSEMBLING_ELEC` | 900 | ASY Assembly | FG² | FG90 |
+| `ANTENNA` | 900 | ANT Antena | SFG² | WP90 |
+| `DELIVERY` | semua | — _modul SD_ | — | tidak didorong |
+
+¹ Posisi langkah di rute part mengalahkan tabel. Part yang BERHENTI di
+Injection menjadi barang jadi di situ — lihat `kelasHasilSap()` yang menerima
+`langkahTerakhir`.
+
+² **Dugaan, bukan temuan blueprint.** Urutan rute Electric tidak ada di
+dokumen itu; yang ada hanya daftar bagiannya. Assembly diperlakukan sebagai
+penutup rute karena begitu di Body dan Unit. Kalau ternyata Antena yang
+terakhir, yang berubah hanya satu baris di `KELAS_HASIL`. Sampai itu dipastikan,
+izin push rute Electric sebaiknya tetap mati.
+
+Lima jenis proses Electric itu **sudah ada di enum** sejak migrasi `0001`, tapi
+pabrik 900 belum punya lini maupun part — kode work center-nya belum kita
+ketahui, dan menebaknya berarti membuat master yang harus dibongkar lagi.
+
+### Dua penamaan yang diberi akhiran, dan kenapa
+
+`ASSEMBLING_ELEC` karena ketiga pabrik punya "Assembly"; tanpa pembeda, hasil
+ketiganya bercampur di laporan dan tidak ada cara memisahkannya kembali setelah
+datanya masuk. `INSPECTION_ELEC` karena "inspection" di sistem ini sudah berarti
+sesi pemeriksaan kualitas (`TT_INSPECTION_H`) — nilai bernama `INSPECTION` akan
+dibaca sebagai itu, padahal yang dimaksud langkah produksi dengan work center
+sendiri.
+
+### SLOC hasil produksi datang dari material master, bukan dari kita
+
+`TT_PRODUCTION_RESULT` tidak punya kolom storage location sama sekali — 24
+kolom, tak satu pun SLOC. Sebabnya ada di blueprint: field **MRP 2 nomor 11,
+_Production Storage Location_**, "menentukan default Storage Location untuk
+proses penerimaan barang dari hasil produksi".
+
+Artinya SLOC keluaran di rute kita bukan perintah, melainkan **janji**: kalau ia
+berbeda dari isi material master, stok yang sama tercatat di dua tempat — FG80
+di sini, WP80 di SAP — dan selisihnya tidak memunculkan galat apa pun. Yang bisa
+diperiksa tanpa membaca SAP hanyalah kewajarannya, dan itu ditegakkan di master
+(lihat `pastikanSlocSesuaiBlueprint`): hasil SFG mustahil benar bila mendarat di
+SLOC barang jadi.
+
+Daftar yang harus diminta ke tim SAP: **material ber-REM-profile Z001 per
+plant, beserta Production Version dan Production Storage Location-nya.**
+
+### Hanya satu perpindahan SLOC yang punya dokumen SAP
+
+WH → WP, yaitu PP-PE-01. Sisanya tidak, masing-masing karena sebabnya sendiri —
+dan ini ditegakkan `periksaTransferSloc()`:
+
+| Perpindahan | Keputusan | Sebab |
+| --- | --- | --- |
+| WH → WP | **dikirim** | PP-PE-01 Component Stock Transfer |
+| → FG | dilewati | barang jadi masuk lewat GR dari confirmation; 311 di atasnya membuat barang yang sama masuk dua kali |
+| → RE | dilewati | SAP memposting sendiri dari qty NG pada baris hasil produksi |
+| WP → WP | dilewati | serah-terima antar langkah internal terjadi di dalam satu SLOC WIP di SAP |
+| FG → ST | dilewati | `ST70/ST80/ST90` tidak ada di SAP; menurut blueprint barang keluar langsung dari SLOC FG |
+| pola lain | **ditahan** | pertanyaan untuk tim SAP, bukan keputusan kita |
+
+Yang terakhir itu bukan kehati-hatian berlebihan: sebelum perbaikan ini, dokumen
+pulling `FG80 → ST80` masuk antrean dengan movement 311 dan akan ditolak SAP
+karena storage location-nya tidak dikenal — lalu menumpuk sebagai `REJECTED`
+yang tidak ada yang bisa memperbaiki.
+
+### NG: salurannya ada, isinya sengaja masih kosong
+
+Blueprint PP-PE-02 dan PP-PE-03 langkah 6: *"Post to Storage Location
+Scrapping — System | SAP (Background Job)"*. Jadi yang kita lakukan hanya
+**melaporkan kuantitas NG**, dan salurannya sudah ada di staging berupa
+`INT_NG_PRC` dan `INT_TOTAL_NG` pada baris hasil produksi yang sama.
+
+Karena itu `NG_OUT` tidak lagi dikirim sebagai dokumen scrap tersendiri, dan
+movement **551 dibuang** — bukan dipertahankan seperti 261. Dua hal pernah salah
+sekaligus di sana: siapa yang memposting, dan arahnya. 551 adalah penghapusan
+nilai, sedangkan blueprint menyebut barang NG **masuk** ke SLOC reject, dan
+`RE70/RE80/RE90` ada di Tabel 6 sebagai SLOC sungguhan. Itu perpindahan, bukan
+penghapusan.
+
+Kedua kolom NG masih dikirim bernilai **0**, dan itu keputusan sadar. Dua
+pertanyaan belum dijawab, dan salah menebaknya mengubah **angka goods receipt**
+di SAP:
+
+1. Pembagian keduanya — kalau SAP menjumlahkan `INT_NG_PRC` dan `INT_TOTAL_NG`,
+   mengisi angka yang sama di dua kolom berarti scrap dua kali lipat.
+2. Hubungannya dengan `INT_QTY_OK` dan `INT_TOTAL_QTY` — bila SAP meng-GR
+   sebesar `TOTAL_QTY - TOTAL_NG`, mengisi NG tanpa menaikkan `TOTAL_QTY`
+   membuat penerimaan barang jadi berkurang tanpa sebab.
+
+Yang berbahaya bukan keadaan itu, melainkan diamnya. Karena itu
+**`GET /sap/ng-perlu-koreksi`** mendaftar NG yang hasil produksinya sudah
+dikonfirmasi SAP — stok di sana lebih banyak daripada yang ada di lantai, dan
+koreksinya PP-PE-06 yang dikerjakan orang di SAP. Minimal angkanya terlihat,
+bukan menjadi selisih yang baru ketemu saat stock opname.
+
 ### Backflush diposting SAP, bukan oleh kita
 
 REM Profile **Z001** berparameter **"GI Backflush at GR Posting"**: begitu hasil
@@ -449,10 +593,12 @@ diminta, bukan dirancang ulang: pemetaan field, nilai flag status, isi
 
 - **Movement type SAP** untuk tiap jenis mutasi. Dugaan sementara sudah
   dituliskan di `packages/domain/src/sap-movement.ts` — 101 (GR), 311
-  (transfer antar SLOC), 261 (pemakaian produksi), 601 (pengiriman), 551
-  (scrap), 309 (penyesuaian). **Angka-angka itu BELUM dikonfirmasi tim SAP**,
-  kecuali 261 yang disebut blueprint sebagai movement konsumsi komponen — dan
-  itu pun diposting SAP sendiri lewat backflush, bukan oleh sistem ini.
+  (transfer antar SLOC), 601 (pengiriman), 309 (penyesuaian). **Angka-angka itu
+  BELUM dikonfirmasi tim SAP**, kecuali 261 yang disebut blueprint sebagai
+  movement konsumsi komponen — dan itu pun diposting SAP sendiri lewat
+  backflush, bukan oleh sistem ini. Angka 551 untuk scrap sudah DIBUANG, bukan
+  sekadar belum dikonfirmasi: blueprint menyebut barang NG masuk ke SLOC reject,
+  yang berarti perpindahan, bukan penghapusan nilai.
   Salah movement type berarti salah akun GL: barangnya pindah dengan benar di
   gudang, tetapi jurnalnya masuk ke tempat yang keliru, dan itu baru ketahuan
   saat tutup buku.

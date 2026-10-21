@@ -12,9 +12,19 @@ import {
   scanEvents,
   lines,
   users,
+  ngRecords,
 } from '@avicenna/db';
 import { galatDuplikat } from '@avicenna/db';
-import { sapMovementFor, siapDikirim, slocKurang, bolehKirimDokumenRute } from '@avicenna/domain';
+import {
+  sapMovementFor,
+  siapDikirim,
+  slocKurang,
+  bolehKirimDokumenRute,
+  kelasHasilSap,
+  periksaHasilProduksi,
+  periksaTransferSloc,
+} from '@avicenna/domain';
+import type { LocationKind } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
 
 /** Jeda sebelum sebuah dokumen dianggap lengkap. Lihat catatan di collect(). */
@@ -59,8 +69,15 @@ export class SapOutboxService {
     // Jeda memberi waktu transaksi scan selesai. Dokumen produksi juga
     // menunggu penanda backflushCompleted sebelum dibuat di bawah.
     const kandidat = await this.db.execute(sql`
-      SELECT m."CHR_SOURCE_TABLE" AS sourceTable,
-             m."INT_SOURCE_ID"  AS sourceId
+      /*
+       * Alias DIKUTIP. Postgres mengecilkan setiap identifier yang tidak
+       * dikutip, jadi AS sourceTable kembali sebagai kolom sourcetable —
+       * dan pembacaan r.sourceTable menghasilkan undefined, lalu Number(undefined)
+       * menjadi NaN yang dikirim sebagai parameter kueri berikutnya. MySQL
+       * mempertahankan besar-kecilnya, karena itu ini lolos sampai sekarang.
+       */
+      SELECT m."CHR_SOURCE_TABLE" AS "sourceTable",
+             m."INT_SOURCE_ID"  AS "sourceId"
       FROM ${mutations} m
       LEFT JOIN ${scanEvents} s
         ON m."CHR_SOURCE_TABLE" = 'TT_HISTORY_SCAN' AND s."INT_ID" = m."INT_SOURCE_ID"
@@ -93,7 +110,18 @@ export class SapOutboxService {
       LIMIT ${sql.raw(String(BATCH))}
     `);
 
-    const rows = (kandidat as unknown as Array<Array<Record<string, unknown>>>)[0] ?? [];
+    /*
+     * `.rows`, BUKAN `[0]`.
+     *
+     * Driver MySQL mengembalikan [rows, fields], sehingga hasilnya dibaca
+     * dengan [0]. node-postgres mengembalikan satu objek QueryResult, dan [0]
+     * padanya selalu undefined — artinya kandidatnya selalu kosong dan
+     * pengumpul ini melaporkan "0 dikumpulkan" tanpa pernah melihat satu pun
+     * mutasi. Tidak ada galat yang muncul: bentuknya "tidak ada pekerjaan",
+     * bukan "gagal". Ini sisa pindah dari MySQL yang baru ketahuan saat
+     * pengumpulnya diuji di atas Postgres sungguhan.
+     */
+    const rows = (kandidat as unknown as { rows?: Array<Record<string, unknown>> }).rows ?? [];
     let dikumpulkan = 0;
     let ditahan = 0;
     let dilewati = 0;
@@ -136,6 +164,7 @@ export class SapOutboxService {
         partNumber: parts.partNumber,
         uom: parts.uom,
         slocCode: locations.code,
+        slocKind: locations.kind,
         qty: mutations.qty,
         lotId: mutations.lotId,
         // Nomor lot, bukan id-nya: sisi SAP tidak mengenal id tabel kita.
@@ -179,6 +208,7 @@ export class SapOutboxService {
         ? await this.db
             .select({
               meta: scanEvents.meta,
+              processType: scanEvents.processType,
               lineCode: lines.code,
               backNumber: parts.backNumber,
               partName: parts.name,
@@ -261,11 +291,49 @@ export class SapOutboxService {
         continue;
 
       if (dikirim.length === 0) {
+        /*
+         * Alasannya diambil dari peta movement, bukan ditulis generik.
+         *
+         * Dua kelompok berakhir di sini dan sebabnya BERBEDA: konsumsi
+         * komponen (di-backflush SAP sendiri) dan NG (diposting SAP ke SLOC
+         * reject dari qty NG pada baris hasil produksi). Satu pesan untuk
+         * keduanya membuat layar pemantauan tidak bisa membedakan "memang
+         * tidak perlu" dari "ada yang lupa dipetakan".
+         */
+        const alasan = [
+          ...new Set(
+            anggota.map((b) => sapMovementFor(b.mutationType)?.alasan).filter(Boolean) as string[],
+          ),
+        ].join('; ');
         const baru = await this.simpan({
           ...dasar,
           movementType: null,
           status: 'SKIPPED',
-          lastError: 'tidak ada baris yang perlu dikirim ke SAP',
+          lastError: alasan || 'tidak ada baris yang perlu dikirim ke SAP',
+          payload: { docType, lines: [] },
+        });
+        if (baru) hasil.skipped++;
+        continue;
+      }
+
+      /*
+       * ── Proses yang tidak punya padanan di modul PP SAP ────────────────────
+       *
+       * Melting keluarannya logam cair: tidak ada nomor material, tidak ada
+       * Production Version, jadi tidak ada confirmation yang bisa diposting.
+       * Dilewati DENGAN SEBABNYA, bukan dibiarkan terkirim lalu ditolak SAP
+       * sebagai material yang tidak dikenal.
+       */
+      if (docType === 'PRODUCTION' && scan?.processType && kelasHasilSap(scan.processType) === null) {
+        const keputusan = periksaHasilProduksi({
+          proses: scan.processType,
+          slocKind: null,
+        });
+        const baru = await this.simpan({
+          ...dasar,
+          movementType: null,
+          status: 'SKIPPED',
+          lastError: keputusan.alasan ?? null,
           payload: { docType, lines: [] },
         });
         if (baru) hasil.skipped++;
@@ -297,10 +365,12 @@ export class SapOutboxService {
        * yang sengaja dilewati, jadi diambil dari sana, dicocokkan per part.
        */
       const tujuanPerPart = new Map<string, string>();
+      const jenisTujuanPerPart = new Map<string, NonNullable<typeof baris[number]['slocKind']>>();
       for (const b of anggota) {
         const arah = sapMovementFor(b.mutationType);
         if (arah && !arah.kirim && Number(b.qty) > 0 && b.partNumber && b.slocCode) {
           tujuanPerPart.set(b.partNumber, b.slocCode);
+          if (b.slocKind) jenisTujuanPerPart.set(b.partNumber, b.slocKind);
         }
       }
 
@@ -327,6 +397,20 @@ export class SapOutboxService {
           slocFrom: keluar ? b.slocCode : null,
           slocTo: keluar ? (tujuanPerPart.get(b.partNumber ?? '') ?? null) : b.slocCode,
 
+          /*
+           * JENIS kedua SLOC ikut disimpan, bukan hanya kodenya.
+           *
+           * Dipakai releaseHeld() untuk memeriksa ulang apakah perpindahan ini
+           * punya padanan dokumen di SAP. Tanpa jenisnya, pemeriksaan itu
+           * harus membaca master lagi — dan master BOLEH berubah setelah
+           * dokumen dibuat, sehingga jawabannya bisa berbeda dari keadaan saat
+           * barangnya benar-benar berpindah.
+           */
+          slocFromKind: keluar ? (b.slocKind ?? null) : null,
+          slocToKind: keluar
+            ? (jenisTujuanPerPart.get(b.partNumber ?? '') ?? null)
+            : (b.slocKind ?? null),
+
           /** Bertanda, sesuai buku besar kita. */
           qty: b.qty,
 
@@ -344,6 +428,37 @@ export class SapOutboxService {
         };
       });
 
+      /*
+       * ── Perpindahan SLOC yang tidak ada di blueprint PP ───────────────────
+       *
+       * Satu-satunya transfer yang punya dokumen SAP adalah WH -> WP (PP-PE-01
+       * Component Stock Transfer). Yang lain gagal dengan dua cara yang
+       * sama-sama tidak memunculkan galat di sisi kita:
+       *
+       *   pulling FG -> ST   ST70/ST80/ST90 tidak ada di SAP sama sekali, jadi
+       *                      dokumennya ditolak dan menumpuk sebagai REJECTED
+       *                      yang tidak ada yang bisa memperbaiki;
+       *   WP -> FG           barang jadi sudah masuk FG lewat goods receipt
+       *                      dari confirmation, jadi 311 di atasnya membuat
+       *                      barang yang sama masuk DUA KALI.
+       *
+       * Dilewati dengan sebabnya tertulis. Yang polanya tidak dikenal —
+       * mis. FG -> WH — ditahan, sebab itu pertanyaan untuk tim SAP, bukan
+       * sesuatu yang boleh diputuskan di sini.
+       */
+      const transferTakSah =
+        docType === 'TRANSFER'
+          ? barisKirim
+              .map((b) =>
+                periksaTransferSloc({
+                  dariKind: b.slocFromKind,
+                  keKind: b.slocToKind,
+                  dariCode: b.slocFrom,
+                  keCode: b.slocTo,
+                }),
+              )
+              .find((k) => !k.kirim)
+          : undefined;
       /*
        * SLOC yang tidak lengkap MENAHAN dokumen, bukan dikirim dengan kolom
        * kosong. SAP tidak bisa memposting 311 tanpa tujuan, dan baris yang
@@ -385,9 +500,15 @@ export class SapOutboxService {
         }
       }
       const lengkap =
-        siap && kurangSloc.length === 0 && !kurangKonteks && !menungguProduksi && !receivingHold;
+        siap &&
+        kurangSloc.length === 0 &&
+        !kurangKonteks &&
+        !menungguProduksi &&
+        !receivingHold &&
+        !transferTakSah;
       const alasanTahan = [
         receivingHold,
+        transferTakSah?.alasan ?? null,
         siap ? null : `movement type belum diputuskan untuk: ${belum.join(', ')}`,
         kurangSloc.length > 0 ? kurangSloc.join('; ') : null,
         kurangKonteks ? 'work center dari line scan kosong' : null,
@@ -405,9 +526,13 @@ export class SapOutboxService {
         status:
           receiving?.aresOrderId && receiving.status === 'CANCELLED'
             ? 'SKIPPED'
-            : lengkap
-              ? 'PENDING'
-              : 'HELD',
+            : // Perpindahan yang MEMANG tidak punya dokumen SAP dilewati, bukan
+              // ditahan: tidak ada keputusan siapa pun yang akan membuatnya sah.
+              transferTakSah?.sengaja
+              ? 'SKIPPED'
+              : lengkap
+                ? 'PENDING'
+                : 'HELD',
         lastError:
           receiving?.aresOrderId && receiving.status === 'CANCELLED'
             ? 'Receiving dibatalkan'
@@ -432,6 +557,7 @@ export class SapOutboxService {
 
       if (!baru) continue;
       if (receiving?.aresOrderId && receiving.status === 'CANCELLED') hasil.skipped++;
+      else if (transferTakSah?.sengaja) hasil.skipped++;
       else if (lengkap) hasil.pending++;
       else hasil.held++;
     }
@@ -486,10 +612,36 @@ export class SapOutboxService {
           qty: string | number;
           slocFrom: string | null;
           slocTo: string | null;
+          slocFromKind?: LocationKind | null;
+          slocToKind?: LocationKind | null;
           partNumber: string | null;
         }>;
       };
       const lines = payload.lines ?? [];
+
+      /*
+       * Perpindahan yang tidak punya padanan dokumen di SAP tetap ditahan.
+       *
+       * Tanpa pemeriksaan ini, dokumen yang ditahan karena polanya tidak
+       * dikenal akan terlepas sendiri begitu movement type-nya terisi — lalu
+       * didorong ke staging dan ditolak di sana, dengan sebab aslinya sudah
+       * terhapus dari LAST_ERROR. Jenis SLOC dibaca dari payload, yaitu
+       * keadaan saat barangnya benar-benar berpindah, bukan dari master yang
+       * sudah boleh berubah sejak itu.
+       */
+      if (
+        row.docType === 'TRANSFER' &&
+        lines.some(
+          (l) =>
+            !periksaTransferSloc({
+              dariKind: l.slocFromKind ?? null,
+              keKind: l.slocToKind ?? null,
+              dariCode: l.slocFrom,
+              keCode: l.slocTo,
+            }).kirim,
+        )
+      )
+        continue;
       if (row.docType === 'TRANSFER' && row.sourceTable === 'TT_HISTORY_SCAN' && !row.movementType)
         continue;
       if (row.docType === 'TRANSFER' && row.sourceTable === 'TT_HISTORY_SCAN') {
@@ -542,6 +694,69 @@ export class SapOutboxService {
     }
     if (dilepas > 0) this.logger.log(`${dilepas} dokumen tertahan dilepas ke antrean kirim`);
     return { dilepas };
+  }
+
+  /**
+   * NG yang SAP tidak akan pernah tahu — daftar pekerjaan PP-PE-06.
+   *
+   * ── Kenapa ini perlu ada sebagai daftar ─────────────────────────────────────
+   *
+   * Menurut blueprint (PP-PE-02 dan PP-PE-03 langkah 6), SAP-lah yang
+   * memposting barang NG ke storage location reject, dan ia melakukannya dari
+   * KUANTITAS NG yang kita laporkan pada baris hasil produksi — kolom
+   * INT_NG_PRC dan INT_TOTAL_NG di TT_PRODUCTION_RESULT.
+   *
+   * Dua kolom itu masih kita kirim bernilai 0, dan itu DISENGAJA: arti
+   * keduanya belum dipastikan (lihat catatan di staging-push.service.ts), dan
+   * mengisinya dengan tebakan bisa mengubah kuantitas goods receipt di SAP.
+   * Akibatnya NG tidak sampai ke sana.
+   *
+   * Yang berbahaya bukan keadaan itu, melainkan DIAMNYA. Baris-baris di bawah
+   * adalah NG yang barang baiknya sudah dikonfirmasi ke SAP, sehingga stok di
+   * sana lebih banyak daripada yang sebenarnya ada di lantai. Koreksinya
+   * PP-PE-06 Cancel Production Booking, dan sampai jalur itu dibangun ia
+   * dikerjakan orang di SAP — jadi minimal harus TERLIHAT, bukan menjadi
+   * selisih yang baru ketemu saat stock opname.
+   */
+  async ngPerluKoreksi(batas = 200) {
+    const rows = await this.db
+      .select({
+        ngId: ngRecords.id,
+        occurredAt: ngRecords.occurredAt,
+        qty: ngRecords.qty,
+        partNumber: parts.partNumber,
+        partName: parts.name,
+        serialNumber: ngRecords.serialNumber,
+        lineCode: lines.code,
+        processType: ngRecords.processType,
+        scanEventId: ngRecords.scanEventId,
+        outboxId: sapOutbox.id,
+        outboxStatus: sapOutbox.status,
+        stagingNumber: sapOutbox.stagingNumber,
+      })
+      .from(ngRecords)
+      .innerJoin(sapOutbox, eq(sapOutbox.sourceId, ngRecords.scanEventId))
+      .leftJoin(parts, eq(ngRecords.partId, parts.id))
+      .leftJoin(lines, eq(ngRecords.lineId, lines.id))
+      .where(
+        and(
+          sql`${ngRecords.cancelledAt} IS NULL`,
+          sql`${ngRecords.scanEventId} IS NOT NULL`,
+          eq(sapOutbox.sourceTable, 'TT_HISTORY_SCAN'),
+          eq(sapOutbox.docType, 'PRODUCTION'),
+          inArray(sapOutbox.status, ['SENT', 'CONFIRMED']),
+        ),
+      )
+      .orderBy(desc(ngRecords.occurredAt))
+      .limit(batas);
+
+    return {
+      jumlah: rows.length,
+      catatan:
+        'Hasil produksi barang ini sudah dikonfirmasi ke SAP, sedangkan NG-nya belum. ' +
+        'Koreksi lewat PP-PE-06 Cancel Production Booking di SAP.',
+      data: rows,
+    };
   }
 
   /** Ringkasan per status, untuk layar pemantauan. */

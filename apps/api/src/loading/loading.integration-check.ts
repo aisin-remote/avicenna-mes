@@ -250,8 +250,17 @@ async function main() {
     );
   assert(gi);
   assert.equal(gi.isSimulation, true, 'Fixture tidak masuk antrean push produksi');
-  await db.execute(sql`UPDATE sap."TT_SAP_OUTBOX" o JOIN logistics."TT_DELIVERY" d ON o."INT_SOURCE_ID" = d."INT_ID"
-    SET o."FLG_SIMULATION" = 1 WHERE o."CHR_SOURCE_TABLE" = 'TT_DELIVERY' AND d."CHR_DEL_NO" LIKE 'LL-TRIAL-%'`);
+  /*
+   * UPDATE ... FROM, bukan UPDATE ... JOIN: bentuk kedua itu MySQL dan
+   * Postgres menolaknya sebagai galat sintaks. Nilainya pun boolean sungguhan
+   * di sini, bukan 1.
+   */
+  await db.execute(sql`UPDATE sap."TT_SAP_OUTBOX" o
+    SET "FLG_SIMULATION" = true
+    FROM logistics."TT_DELIVERY" d
+    WHERE o."INT_SOURCE_ID" = d."INT_ID"
+      AND o."CHR_SOURCE_TABLE" = 'TT_DELIVERY'
+      AND d."CHR_DEL_NO" LIKE 'LL-TRIAL-%'`);
   assert.equal((await outbox.simulateDelivery(gi.id, 'REJECTED')).status, 'REJECTED');
   assert.equal(
     (await service.list({ page: 1, perPage: 100, query: number, attention: 'only' })).data.length,
@@ -268,12 +277,19 @@ async function main() {
     history.scans.some((event) => (event.meta as { reason?: string })?.reason === 'Koreksi trial'),
   );
   assert.equal(history.movements.filter((event) => event.type === 'DELIVERY_OUT').length, 2);
+  /*
+   * Nama kolom DIKUTIP, dan hasilnya dibaca lewat .rows.
+   *
+   * Keduanya sisa MySQL: tanpa kutip, Postgres mencari `flt_qty` huruf kecil
+   * dan gagal; dan [0] pada QueryResult node-postgres selalu undefined,
+   * sehingga saldonya terbaca NaN alih-alih angka yang diperiksa.
+   */
   const [balance] =
     (
       (await db.execute(
-        sql`SELECT SUM(FLT_QTY) AS qty FROM inventory."TT_STOCK_MUTATION" WHERE INT_PART_ID = ${part.id}`,
-      )) as unknown as Array<Array<{ qty: string }>>
-    )[0] ?? [];
+        sql`SELECT SUM("FLT_QTY") AS qty FROM inventory."TT_STOCK_MUTATION" WHERE "INT_PART_ID" = ${part.id}`,
+      )) as unknown as { rows?: Array<{ qty: string }> }
+    ).rows ?? [];
   assert.equal(Number(balance?.qty), 20);
   await db
     .update(deliverySyncs)

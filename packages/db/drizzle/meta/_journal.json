@@ -8,6 +8,13 @@
       "when": 1791873513791,
       "tag": "0000_modern_sally_floyd",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792553682613,
+      "tag": "0001_naive_champions",
+      "breakpoints": true
     }
   ]
 }

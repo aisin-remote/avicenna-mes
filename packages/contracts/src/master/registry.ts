@@ -44,20 +44,24 @@ export type MasterEntity = (typeof MASTER_ENTITIES)[number];
  * tidak menyebut sebabnya.
  */
 export { PROCESS_TYPES, PROCESS_GROUPS, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
-import { PROCESS_TYPES, PROCESS_GROUPS, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
+import {
+  PROCESS_TYPES,
+  PROCESS_GROUPS,
+  SCAN_MODES,
+  SCAN_MODE_LABELS,
+  LOCATION_KINDS,
+} from '../common';
+/*
+ * LOCATION_KINDS pernah ditulis ulang di sini, dan itu salinan KETIGA — satu
+ * di common, satu di skema database, satu di sini. Pilihan di formulir master
+ * karena itu bisa menyimpang dari nilai yang diterima kolomnya tanpa satu pun
+ * galat saat build.
+ */
+export { LOCATION_KINDS };
 export const KANBAN_TYPES = ['REGULER', 'SPARE'] as const;
 export const KANBAN_OWNERS = ['INTERNAL', 'CUSTOMER'] as const;
 export type KanbanOwner = (typeof KANBAN_OWNERS)[number];
 export const TOOLING_KINDS = ['MOLD', 'DIES', 'JIG'] as const;
-export const LOCATION_KINDS = [
-  'WAREHOUSE',
-  'WIP',
-  'FINISH_GOOD',
-  'STAGING',
-  'CHUTE',
-  'NG',
-  'TRANSIT',
-] as const;
 export const PART_TYPES = ['RAW_MATERIAL', 'COMPONENT', 'WIP', 'FINISHED_GOOD'] as const;
 export const SOURCE_TYPES = ['PURCHASED', 'MANUFACTURED'] as const;
 export const TRACKING_MODES = ['SERIAL', 'LOT', 'QUANTITY'] as const;

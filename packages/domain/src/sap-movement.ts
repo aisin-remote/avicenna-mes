@@ -75,7 +75,37 @@ export const SAP_MOVEMENTS: Record<string, SapMovement> = {
     alasan: 'backflush dilakukan SAP sendiri saat GR (REM Profile Z001)',
   },
   DELIVERY_OUT: { docType: 'DELIVERY', movementType: '601', kirim: true },
-  NG_OUT: { docType: 'SCRAP', movementType: '551', kirim: true },
+  /*
+   * TIDAK dikirim sebagai dokumen tersendiri — dan dua hal sekaligus pernah
+   * salah di sini.
+   *
+   * 1. SIAPA yang memposting. Blueprint PP AIIA, PP-PE-02 dan PP-PE-03 langkah
+   *    6: "Post to Storage Location Scrapping — System | SAP (Background Job)".
+   *    Yang kita lakukan hanya MELAPORKAN kuantitas NG; salurannya sudah ada
+   *    di staging berupa INT_NG_PRC dan INT_TOTAL_NG pada baris hasil produksi
+   *    yang sama. Mengirim dokumen scrap sendiri berarti barangnya dibuang dua
+   *    kali.
+   *
+   * 2. ARAHNYA. 551 adalah penghapusan nilai (scrapping), sedangkan blueprint
+   *    menyebut barang NG MASUK ke storage location reject — RE70/RE80/RE90
+   *    ada di Tabel 6 sebagai SLOC sungguhan. Itu perpindahan, bukan
+   *    penghapusan. Angka 551 karena itu dibuang, bukan dipertahankan seperti
+   *    261: untuk 261 kita tahu SAP memakainya, untuk ini tidak.
+   *
+   * Yang belum tertangani dan tidak boleh disembunyikan: NG yang dicatat
+   * SETELAH baris hasil produksinya terkirim tidak bisa lagi menyusul ke dalam
+   * baris itu. Koreksinya PP-PE-06 Cancel Production Booking, dan jalur itu
+   * belum dibangun — lihat ngPerluKoreksi() di SapOutboxService, yang
+   * memunculkannya alih-alih membiarkannya hilang.
+   */
+  NG_OUT: {
+    docType: 'SCRAP',
+    movementType: null,
+    kirim: false,
+    alasan:
+      'SAP memposting sendiri ke SLOC reject dari qty NG pada baris hasil produksi ' +
+      '(PP-PE-02/03 langkah 6)',
+  },
   ADJUSTMENT: { docType: 'ADJUSTMENT', movementType: '309', kirim: true },
   STOCK_TAKE: {
     docType: 'ADJUSTMENT',

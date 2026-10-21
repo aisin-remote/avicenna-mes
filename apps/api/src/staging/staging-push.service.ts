@@ -276,6 +276,31 @@ export class StagingPushService {
       [C.qtyOk]: hasil.qtyAbsolute,
       [C.qtyTotal]: hasil.qtyAbsolute,
       [C.qtyActual]: hasil.qtyAbsolute,
+      /*
+       * ── Dua kolom NG, sengaja masih 0 ──────────────────────────────────────
+       *
+       * Inilah saluran yang blueprint sediakan untuk NG: menurut PP-PE-02 dan
+       * PP-PE-03 langkah 6, SAP memposting barang NG ke storage location reject
+       * dari kuantitas yang DILAPORKAN di sini — bukan dari dokumen scrap
+       * tersendiri. Karena itu NG_OUT tidak lagi dikirim sebagai dokumen
+       * (lihat sap-movement.ts).
+       *
+       * Yang menahan pengisiannya bukan kemalasan, melainkan dua pertanyaan
+       * yang belum dijawab tim SAP, dan salah menebaknya mengubah ANGKA GOODS
+       * RECEIPT di SAP:
+       *
+       *   1. Pembagian keduanya. INT_NG_PRC ("NG proses") versus INT_TOTAL_NG
+       *      ("total NG") — kalau SAP menjumlahkan keduanya, mengisi angka yang
+       *      sama di dua kolom berarti scrap dua kali lipat.
+       *   2. Hubungannya dengan INT_QTY_OK dan INT_TOTAL_QTY. Bila SAP
+       *      meng-GR sebesar TOTAL_QTY - TOTAL_NG, mengisi NG tanpa menaikkan
+       *      TOTAL_QTY membuat penerimaan barang jadi berkurang tanpa sebab.
+       *
+       * Sampai keduanya dipastikan, NG tetap 0 DAN kesenjangannya ditampilkan
+       * — lihat GET /sap/ng-perlu-koreksi, yang mendaftar NG yang hasil
+       * produksinya sudah dikonfirmasi SAP. Spesifikasi antarmukanya ada di
+       * AII dan masih harus diminta.
+       */
       [C.ngProcess]: 0,
       [C.ngTotal]: 0,
       [C.tanggalEntry]: keTanggalStaging(sekarang),

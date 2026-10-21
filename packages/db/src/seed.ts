@@ -2,7 +2,12 @@ import './load-env';
 import bcrypt from 'bcryptjs';
 import { getDb, closeDb } from './client';
 import { eq, inArray, notInArray } from 'drizzle-orm';
-import { MENU_ITEMS, modeScanBawaan } from '@avicenna/contracts';
+import {
+  MENU_ITEMS,
+  menghasilkanFinishGood,
+  modeScanBawaan,
+  type ProcessType,
+} from '@avicenna/contracts';
 import {
   plants,
   roles,
@@ -186,10 +191,34 @@ async function main() {
   const slocJenis = (plantId: number, kind: string) =>
     locationRows.find((l) => l.plantId === plantId && l.kind === kind)?.id ?? null;
 
-  const lineDefaults = (plantId: number) => ({
+  /*
+   * SLOC bawaan sebuah lini — DITENTUKAN JENIS PROSESNYA.
+   *
+   * Sebelumnya setiap lini diberi WIP -> FINISH_GOOD tanpa kecuali, dan itu
+   * salah untuk separuh lini: menurut Blueprint PP AIIA, hanya langkah yang
+   * menghasilkan BARANG JADI yang hasilnya masuk SLOC FG. Hasil langkah
+   * setengah jadi — casting WIP, machining WIP, injection, painting — tetap
+   * tinggal di SLOC WIP (WP70/WP80/WP90, yang di blueprint pun dinamai
+   * "SFG"), lalu dikonsumsi langkah berikutnya dari situ.
+   *
+   * Akibat kalau dibiarkan: stok setengah jadi tercatat di FG80 di sini
+   * sedangkan SAP menaruhnya di WP80 — SAP mengambil SLOC-nya dari material
+   * master, bukan dari yang kita kirim — dan dua angka itu tidak akan pernah
+   * bisa dicocokkan. Tidak ada galat yang muncul; yang muncul hanya saldo FG
+   * yang terus menggelembung.
+   *
+   * Asalnya tetap WIP untuk semua lini: komponen dipindahkan ke WP lebih dulu
+   * lewat PP-PE-01 Component Stock Transfer, dan produksi mengonsumsinya dari
+   * sana.
+   */
+  const lineDefaults = (plantId: number, processType: ProcessType) => ({
     plantId,
+    processType,
     inputLocationId: slocJenis(plantId, 'WIP'),
-    outputLocationId: slocJenis(plantId, 'FINISH_GOOD'),
+    outputLocationId: slocJenis(
+      plantId,
+      menghasilkanFinishGood(processType) ? 'FINISH_GOOD' : 'WIP',
+    ),
   });
 
   await insertMissing(
@@ -198,73 +227,63 @@ async function main() {
     ['plantId', 'code'],
     [
       {
-        ...lineDefaults(unit.id),
+        ...lineDefaults(unit.id, 'CASTING_WIP'),
         code: 'DC-01',
         name: 'Die Casting 1 (WIP)',
-        processType: 'CASTING_WIP' as const,
         sortOrder: 1,
       },
       {
-        ...lineDefaults(unit.id),
+        ...lineDefaults(unit.id, 'CASTING_FG'),
         code: 'DC-02',
         name: 'Die Casting 2 (FG)',
-        processType: 'CASTING_FG' as const,
         sortOrder: 2,
       },
       {
-        ...lineDefaults(unit.id),
+        ...lineDefaults(unit.id, 'MACHINING_WIP'),
         code: 'MC-01',
         name: 'Machining 1 (WIP)',
-        processType: 'MACHINING_WIP' as const,
         sortOrder: 3,
       },
       {
-        ...lineDefaults(unit.id),
+        ...lineDefaults(unit.id, 'MACHINING_FG'),
         code: 'MC-02',
         name: 'Machining 2 (FG)',
-        processType: 'MACHINING_FG' as const,
         sortOrder: 4,
       },
       {
-        ...lineDefaults(unit.id),
+        ...lineDefaults(unit.id, 'ASSEMBLING_UNIT'),
         code: 'AS-01',
         name: 'Assembling 1',
-        processType: 'ASSEMBLING_UNIT' as const,
         sortOrder: 5,
       },
       {
-        ...lineDefaults(unit.id),
+        ...lineDefaults(unit.id, 'MELTING'),
         code: 'ML-01',
         name: 'Melting 1',
-        processType: 'MELTING' as const,
         sortOrder: 0,
       },
       {
-        ...lineDefaults(body.id),
+        ...lineDefaults(body.id, 'INJECTION'),
         code: 'INJ-01',
         name: 'Injection 1',
-        processType: 'INJECTION' as const,
         sortOrder: 1,
       },
       {
-        ...lineDefaults(body.id),
+        ...lineDefaults(body.id, 'INJECTION'),
         code: 'INJ-02',
         name: 'Injection 2',
-        processType: 'INJECTION' as const,
         sortOrder: 2,
       },
       {
-        ...lineDefaults(body.id),
+        ...lineDefaults(body.id, 'PAINTING'),
         code: 'PT-01',
         name: 'Painting 1',
-        processType: 'PAINTING' as const,
         sortOrder: 3,
       },
       {
-        ...lineDefaults(body.id),
+        ...lineDefaults(body.id, 'ASSEMBLING_BODY'),
         code: 'AS-02',
         name: 'Assembling 2',
-        processType: 'ASSEMBLING_BODY' as const,
         sortOrder: 4,
       },
     ],
@@ -274,11 +293,13 @@ async function main() {
    * Line yang sudah ada dari seed lama belum punya SLOC. Diisi di sini, bukan
    * lewat insertMissing yang memang hanya menambah baris baru.
    */
-  for (const line of await db.select().from(lines)) {
+  const semuaLine = await db.select().from(lines);
+  for (const line of semuaLine) {
     if (line.inputLocationId && line.outputLocationId) continue;
-    const wip = line.inputLocationId ?? slocJenis(line.plantId, 'WIP');
-    const fg = line.outputLocationId ?? slocJenis(line.plantId, 'FINISH_GOOD');
-    if (!wip || !fg) {
+    const jenisKeluar = menghasilkanFinishGood(line.processType) ? 'FINISH_GOOD' : 'WIP';
+    const masuk = line.inputLocationId ?? slocJenis(line.plantId, 'WIP');
+    const keluar = line.outputLocationId ?? slocJenis(line.plantId, jenisKeluar);
+    if (!masuk || !keluar) {
       // Dilaporkan, bukan dilempar: pabrik yang SLOC-nya belum lengkap tidak
       // boleh menggagalkan seluruh seed.
       console.warn(`[seed]   ! line ${line.code}: SLOC pabriknya belum lengkap, dilewati`);
@@ -286,9 +307,38 @@ async function main() {
     }
     await db
       .update(lines)
-      .set({ inputLocationId: wip, outputLocationId: fg })
+      .set({ inputLocationId: masuk, outputLocationId: keluar })
       .where(eq(lines.id, line.id));
     console.log(`[seed]   ~ SLOC line ${line.code} dilengkapi`);
+  }
+
+  /*
+   * ── Lini yang SLOC keluarnya bertentangan dengan jenis prosesnya ──────────
+   *
+   * Hanya DILAPORKAN, tidak diperbaiki. SLOC lini adalah master yang boleh
+   * diubah orang lewat layar; menimpanya di sini berarti seed membatalkan
+   * keputusan yang sengaja dibuat, dan lebih buruk lagi: memindahkan saldo
+   * stok ke SLOC lain tanpa satu pun mutasi yang mencatat perpindahannya.
+   *
+   * Database yang sudah berisi dari seed lama PASTI kena: dulu setiap lini
+   * diberi WIP -> FINISH_GOOD tanpa kecuali. Perbaikannya lewat layar master
+   * lini, dan dokumen SAP-nya ditahan sendiri oleh pengumpul outbox sampai itu
+   * dibetulkan — jadi tidak ada yang diam-diam terkirim salah.
+   */
+  const lokasiPerId = new Map(locationRows.map((l) => [l.id, l]));
+  const bentrok = (await db.select().from(lines)).filter((line) => {
+    const keluar = line.outputLocationId ? lokasiPerId.get(line.outputLocationId) : null;
+    if (!keluar) return false;
+    const wajib = menghasilkanFinishGood(line.processType) ? 'FINISH_GOOD' : 'WIP';
+    return keluar.kind !== wajib;
+  });
+  for (const line of bentrok) {
+    const keluar = lokasiPerId.get(line.outputLocationId!);
+    const wajib = menghasilkanFinishGood(line.processType) ? 'FINISH_GOOD' : 'WIP';
+    console.warn(
+      `[seed]   ! line ${line.code} (${line.processType}) keluar ke ${keluar?.code} ` +
+        `berjenis ${keluar?.kind}, mestinya ${wajib} — perbaiki di master lini`,
+    );
   }
 
   /*

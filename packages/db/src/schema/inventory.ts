@@ -1,6 +1,7 @@
 import { date, decimal, index, integer, jsonb, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { daftarNilai, enumCol, fk, inventorySchema, pk, timestamps } from './_shared';
+import { LOCATION_KINDS } from '@avicenna/contracts';
 import { parts, lines } from './master';
 import { plants, users } from './org';
 
@@ -14,34 +15,18 @@ export const locations = inventorySchema.table(
     code: varchar('CHR_CODE', { length: 32 }).notNull(),
     name: varchar('CHR_NAME', { length: 128 }).notNull(),
     /*
-     * Jenis lokasi. Mengikuti SLOC pada rantai yang dipakai SAP:
-     *   WAREHOUSE  gudang komponen & raw material  (WH00)
-     *   WIP        barang setengah jadi di line    (WP01)
-     *   FINISH_GOOD barang jadi                    (PP02)
-     *   STAGING    sudah dipick, menunggu truk     (PP04)
-     * CHUTE, NG, dan TRANSIT tidak punya padanan SLOC dan tidak dikirim ke SAP.
+     * Jenis lokasi — daftarnya di @avicenna/contracts, lihat LOCATION_KINDS.
+     *
+     * Empat di antaranya SLOC SAP sungguhan menurut Tabel 6 Blueprint PP AIIA:
+     * WAREHOUSE (WH70/80/90), WIP (WP*), FINISH_GOOD (FG*), dan NG (RE*).
+     * STAGING, CHUTE, dan TRANSIT hanya ada di sini dan tidak pernah boleh
+     * muncul sebagai asal atau tujuan dokumen SAP.
      */
-    kind: enumCol('CHR_KIND', [
-      'WAREHOUSE',
-      'WIP',
-      'FINISH_GOOD',
-      'STAGING',
-      'CHUTE',
-      'NG',
-      'TRANSIT',
-    ]).notNull(),
+    kind: enumCol('CHR_KIND', LOCATION_KINDS).notNull(),
     ...timestamps,
   },
   (t) => [uniqueIndex('TM_LOCATION_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
-    daftarNilai('TM_LOCATION_CHR_KIND_CHK', t.kind, [
-      'WAREHOUSE',
-      'WIP',
-      'FINISH_GOOD',
-      'STAGING',
-      'CHUTE',
-      'NG',
-      'TRANSIT',
-    ]),
+    daftarNilai('TM_LOCATION_CHR_KIND_CHK', t.kind, LOCATION_KINDS),
   ],
 );
 

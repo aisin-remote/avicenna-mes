@@ -4,15 +4,17 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { and, or, like, eq, asc, desc, count, sql, type Database } from '@avicenna/db';
-import { getMasterTable } from '@avicenna/db';
+import { and, or, like, eq, asc, desc, count, inArray, sql, type Database } from '@avicenna/db';
+import { getMasterTable, locations } from '@avicenna/db';
 import { sebabGalatDb } from '@avicenna/db';
 import {
   getEntityDef,
   buildCreateSchema,
   buildUpdateSchema,
   type MasterEntity,
+  type ProcessType,
 } from '@avicenna/contracts';
+import { kelasHasilSap, periksaHasilProduksi, periksaTransferSloc } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 import { validationError } from '../common/validation-error';
 
@@ -252,12 +254,128 @@ export class MasterService {
     }
   }
 
+  /**
+   * Aturan SLOC yang diturunkan dari Blueprint SAP PP AIIA.
+   *
+   * ── Kenapa di sini, bukan di pengumpul outbox ───────────────────────────────
+   *
+   * Karena yang salah adalah KONFIGURASINYA, bukan dokumennya. Hasil scan yang
+   * mendarat di SLOC keliru sudah tercatat di buku besar sebelum dokumen SAP
+   * dibuat; menahan dokumennya tidak memindahkan stok yang sudah salah, hanya
+   * menambah baris HELD yang tidak akan pernah bisa dilepas. Yang menolong
+   * justru menolak konfigurasinya lebih dulu, dengan menyebut kolom mana yang
+   * salah dan apa yang blueprint tetapkan.
+   *
+   * Diperiksa HANYA bila kolom yang relevan memang sedang diubah. Menjadikannya
+   * syarat setiap penyimpanan berarti mengganti nama lini pun ditolak selama
+   * SLOC-nya masih warisan yang salah — dan orang yang sedang memperbaiki hal
+   * lain pukul dua pagi tidak punya cara maju.
+   */
+  private async pastikanSlocSesuaiBlueprint(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ) {
+    if (entity !== 'lines' && entity !== 'route-processes') return;
+
+    const nilai = <T>(nama: string): T | null | undefined =>
+      (values[nama] !== undefined ? values[nama] : barisLama?.[nama]) as T | null | undefined;
+
+    const proses = nilai<ProcessType>('processType');
+    if (!proses) return;
+
+    const menyentuhKeluar = values.outputLocationId !== undefined || barisLama === undefined;
+    const menyentuhSap =
+      values.sapProductionEnabled !== undefined ||
+      values.sapTransferEnabled !== undefined ||
+      values.transferLocationId !== undefined;
+    if (!menyentuhKeluar && !menyentuhSap) return;
+
+    const keluarId = nilai<number>('outputLocationId') ?? null;
+    const transferId = nilai<number>('transferLocationId') ?? null;
+    const idLokasi = [keluarId, transferId].filter((v): v is number => typeof v === 'number');
+    const barisLokasi = idLokasi.length
+      ? await this.db
+          .select({ id: locations.id, code: locations.code, kind: locations.kind })
+          .from(locations)
+          .where(inArray(locations.id, idLokasi))
+      : [];
+    const petaLokasi = new Map(barisLokasi.map((l) => [l.id, l]));
+    const keluar = keluarId ? petaLokasi.get(keluarId) : null;
+    const transfer = transferId ? petaLokasi.get(transferId) : null;
+
+    const details: Array<{ field: string; message: string }> = [];
+
+    /*
+     * SLOC keluar vs kelas hasil langkah ini.
+     *
+     * Yang ditolak hanya PERTENTANGAN — SFG yang keluar ke gudang barang jadi,
+     * atau sebaliknya. Proses yang memang tidak punya padanan di SAP (Melting)
+     * dilewati: SLOC-nya bebas, sebab tidak ada dokumen SAP yang dibuat.
+     */
+    if (keluar && menyentuhKeluar) {
+      const keputusan = periksaHasilProduksi({
+        proses,
+        slocKind: keluar.kind,
+        slocCode: keluar.code,
+      });
+      if (!keputusan.kirim && !keputusan.sengaja && keputusan.alasan) {
+        details.push({ field: 'outputLocationId', message: keputusan.alasan });
+      }
+    }
+
+    if (entity === 'route-processes') {
+      const pushProduksi = Boolean(nilai<boolean>('sapProductionEnabled'));
+      const pushTransfer = Boolean(nilai<boolean>('sapTransferEnabled'));
+
+      // Proses tanpa padanan material di SAP tidak bisa punya izin push.
+      if (pushProduksi && kelasHasilSap(proses) === null) {
+        const keputusan = periksaHasilProduksi({ proses, slocKind: keluar?.kind ?? null });
+        details.push({
+          field: 'sapProductionEnabled',
+          message: `Push hasil produksi tidak bisa diaktifkan: ${keputusan.alasan ?? ''}`.trim(),
+        });
+      }
+
+      /*
+       * Transfer SLOC: blueprint PP hanya mengenal WH -> WP (PP-PE-01).
+       * Sisanya akan ditolak SAP atau diterima lalu menggandakan perpindahan,
+       * jadi izinnya ditolak di sini — bukan dibiarkan sampai dokumennya
+       * menumpuk sebagai REJECTED yang tidak ada yang bisa memperbaiki.
+       */
+      if (pushTransfer && keluar && transfer) {
+        const keputusan = periksaTransferSloc({
+          dariKind: keluar.kind,
+          keKind: transfer.kind,
+          dariCode: keluar.code,
+          keCode: transfer.code,
+        });
+        if (!keputusan.kirim && keputusan.alasan) {
+          details.push({
+            field: 'sapTransferEnabled',
+            message: `Push transfer ke SAP tidak bisa diaktifkan: ${keputusan.alasan}`,
+          });
+        }
+      }
+    }
+
+    if (details.length > 0) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'ValidationError',
+        message: 'Data yang dikirim tidak valid',
+        details,
+      });
+    }
+  }
+
   async create(entity: MasterEntity, body: unknown) {
     const parsed = buildCreateSchema(entity).safeParse(body);
     if (!parsed.success) throw validationError(parsed.error);
 
     await this.pastikanSatuPabrik(entity, parsed.data as Record<string, unknown>);
     await this.pastikanRuteProsesWajar(entity, parsed.data as Record<string, unknown>);
+    await this.pastikanSlocSesuaiBlueprint(entity, parsed.data as Record<string, unknown>);
 
     const table = this.table(entity);
     try {
@@ -284,6 +402,7 @@ export class MasterService {
     const barisLama = await this.findOne(entity, id);
     await this.pastikanSatuPabrik(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanRuteProsesWajar(entity, values, barisLama as Record<string, unknown>);
+    await this.pastikanSlocSesuaiBlueprint(entity, values, barisLama as Record<string, unknown>);
 
     try {
       await this.db.update(table).set(values).where(eq(table.id, id));

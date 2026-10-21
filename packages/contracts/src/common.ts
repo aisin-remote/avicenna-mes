@@ -15,6 +15,33 @@ export const processTypeSchema = z.enum([
   'INJECTION',
   'PAINTING',
   'ASSEMBLING_BODY',
+  /*
+   * ── Electric (plant 900) ──────────────────────────────────────────────────
+   *
+   * Kelimanya diambil dari Tabel 16 "Person Responsible" Blueprint SAP PP AIIA:
+   * MNT Mounting, INS Inspection, VAC Vacuum, ASY Assembly, ANT Antena. Itulah
+   * daftar LENGKAP bagian produksi pabrik Electric menurut SAP — bukan dugaan.
+   *
+   * Dua di antaranya diberi akhiran supaya tidak terbaca sebagai hal lain:
+   *   ASSEMBLING_ELEC   tiga pabrik masing-masing punya "Assembly"; tanpa
+   *                     akhiran, hasil ketiganya bercampur di laporan dan tidak
+   *                     ada cara memisahkannya kembali.
+   *   INSPECTION_ELEC   "inspection" di sistem ini sudah berarti sesi
+   *                     pemeriksaan kualitas (TT_INSPECTION_H). Nilai bernama
+   *                     INSPECTION akan dibaca sebagai itu, padahal yang
+   *                     dimaksud di sini LANGKAH PRODUKSI dengan work center
+   *                     sendiri.
+   *
+   * URUTAN RUTE Electric TIDAK ada di blueprint — yang ada hanya daftar bagian.
+   * Jadi jangan menyimpulkan Mounting → Inspection → Vacuum → Assembly →
+   * Antena dari urutan di bawah; rute tetap melekat pada part lewat
+   * TM_PROCESS_PARTS, dan rute Electric yang sebenarnya masih harus diminta.
+   */
+  'MOUNTING',
+  'INSPECTION_ELEC',
+  'VACUUM',
+  'ASSEMBLING_ELEC',
+  'ANTENNA',
   'DELIVERY',
 ]);
 export type ProcessType = z.infer<typeof processTypeSchema>;
@@ -49,6 +76,18 @@ export const FINISH_GOOD_PROCESSES = [
   'MACHINING_FG',
   'ASSEMBLING_UNIT',
   'ASSEMBLING_BODY',
+  /*
+   * ASSEMBLING_ELEC ikut DI SINI sebagai DUGAAN, bukan temuan blueprint.
+   *
+   * Di Body maupun Unit, Assembly adalah langkah terakhir sebelum Delivery,
+   * jadi bagian "ASY" di Electric diperlakukan sama. Rute Electric sendiri
+   * belum ada di blueprint; kalau nanti ternyata Antena yang menutup rute,
+   * yang berubah hanya daftar ini.
+   *
+   * Taruhannya kecil: daftar ini hanya dipakai pemeriksaan KEWAJARAN rute,
+   * bukan penentu izin scan — itu milik metode scan di TM_ROUTE_PROCESS.
+   */
+  'ASSEMBLING_ELEC',
 ] as const satisfies readonly ProcessType[];
 
 /**
@@ -74,8 +113,44 @@ export const PROCESS_LABELS: Record<ProcessType, string> = {
   INJECTION: 'Injection',
   PAINTING: 'Painting',
   ASSEMBLING_BODY: 'Assembling (Body)',
+  MOUNTING: 'Mounting',
+  INSPECTION_ELEC: 'Inspection (Electric)',
+  VACUUM: 'Vacuum',
+  ASSEMBLING_ELEC: 'Assembling (Electric)',
+  ANTENNA: 'Antena',
   DELIVERY: 'Delivery',
 };
+
+/**
+ * Jenis SLOC — satu-satunya daftarnya, diimpor skema database MAUPUN domain.
+ *
+ * Ditaruh di kontrak karena dua sisi membutuhkannya: TM_LOCATION.CHR_KIND yang
+ * menyimpannya, dan aturan SAP di @avicenna/domain yang memutuskan perpindahan
+ * mana yang punya padanan di SAP. Ditulis dua kali, satu hari yang satu
+ * bertambah dan yang lain tidak — lalu jenis baru lolos dari seluruh
+ * pemeriksaan tanpa satu pun galat.
+ *
+ *   WAREHOUSE   gudang komponen & raw material   WH70/WH80/WH90
+ *   WIP         setengah jadi di line            WP70/WP80/WP90
+ *   FINISH_GOOD barang jadi                      FG70/FG80/FG90
+ *   NG          reject                           RE70/RE80/RE90
+ *   STAGING     sudah dipick, menunggu truk      ST70/ST80/ST90 — MILIK KITA
+ *   CHUTE       chute di lini                    tidak ada di SAP
+ *   TRANSIT     dalam perjalanan antar pabrik    tidak ada di SAP
+ *
+ * Empat yang pertama adalah SLOC SAP sungguhan (Tabel 6 Blueprint PP AIIA).
+ * Tiga sisanya hanya ada di sini.
+ */
+export const LOCATION_KINDS = [
+  'WAREHOUSE',
+  'WIP',
+  'FINISH_GOOD',
+  'STAGING',
+  'CHUTE',
+  'NG',
+  'TRANSIT',
+] as const;
+export type LocationKind = (typeof LOCATION_KINDS)[number];
 
 export const idSchema = z.coerce.number().int().positive();
 
@@ -114,6 +189,15 @@ export const PROCESS_GROUPS = [
   'ASSEMBLING',
   'INJECTION',
   'PAINTING',
+  /*
+   * Grup Electric. ASSEMBLING sengaja TIDAK dipecah per pabrik: grup adalah
+   * lingkup ROLE, dan "assembling leader" memang satu jabatan — sedangkan
+   * jenis prosesnya tetap terpisah supaya angkanya tidak bercampur.
+   */
+  'MOUNTING',
+  'INSPECTION',
+  'VACUUM',
+  'ANTENNA',
   'DELIVERY',
 ] as const;
 export type ProcessGroup = (typeof PROCESS_GROUPS)[number];
