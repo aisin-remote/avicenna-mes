@@ -108,6 +108,35 @@ services:
     restart: "no"
 
 
+  # ── Selaraskan database lama dengan Blueprint SAP PP ──────────────────────
+  #
+  #     docker compose -f docker/compose.app.yml --profile tools run --rm selaraskan
+  #         (uji coba: melaporkan apa yang AKAN berubah, tanpa menulis)
+  #
+  #     docker compose -f docker/compose.app.yml --profile tools run --rm \
+  #       selaraskan node node_modules/@avicenna/db/dist/selaraskan-blueprint.js --tulis
+  #
+  # Dijalankan SEKALI setelah deploy yang membawa kode SAP pabrik. Ia mengisi
+  # CHR_SAP_CODE, membuat pabrik Electric, MENGGANTI NAMA SLOC lama ke kode per
+  # pabrik (id dipertahankan, jadi seluruh mutasi dan saldo ikut), membetulkan
+  # SLOC keluaran lini, dan mendaftarkan proses Electric.
+  #
+  # Tanpa ini, database yang sudah berisi tetap memakai WH00/WP01/PP02 dan
+  # setiap lini WIP mengeluarkan hasilnya ke gudang barang jadi — seed TIDAK
+  # akan memperbaikinya, ia justru menambahkan kode baru di sebelah yang lama.
+  selaraskan:
+    image: avicenna-api:${TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    container_name: avicenna-selaraskan
+    profiles: [tools]
+    command: ["node", "node_modules/@avicenna/db/dist/selaraskan-blueprint.js"]
+    environment:
+      <<: *app-env
+    networks: [avicenna]
+    restart: "no"
+
   api:
     image: avicenna-api:${TAG:-latest}
     build:
