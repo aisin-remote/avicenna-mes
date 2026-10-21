@@ -52,8 +52,18 @@ const SLOC_PABRIK: Array<{ kind: LocationKind; awalan: string; nama: string }> =
   { kind: 'STAGING', awalan: 'ST', nama: 'Staging & Shipping' },
 ];
 
-/** Proses pabrik Electric — Tabel 16 blueprint, dikurangi ASY yang satu lini dengan INS. */
-const PROSES_ELEC = ['MOUNTING', 'INSPECTION_ELEC', 'VACUUM', 'ANTENNA'] as const;
+/**
+ * Proses pabrik Electric — Tabel 16 blueprint, dikurangi ASY yang satu lini
+ * dengan Inspection, ditambah pemecahan WIP/FG pada Inspection dan Vacuum.
+ */
+const PROSES_ELEC = [
+  'MOUNTING',
+  'INSPECTION_WIP',
+  'INSPECTION_FG',
+  'VACUUM_WIP',
+  'VACUUM_FG',
+  'ANTENNA',
+] as const;
 
 type Catatan = { tindakan: string; rincian: string };
 
@@ -229,19 +239,30 @@ async function main() {
         ),
       );
       const wip = cariSloc(elec.id, 'WIP');
+      const fg = cariSloc(elec.id, 'FINISH_GOOD');
       for (const proses of PROSES_ELEC) {
         if (sudahAda.has(proses)) continue;
+        /*
+         * Lini FG mengeluarkan hasilnya ke SLOC barang jadi, lini WIP tetap di
+         * SLOC WIP — aturan yang sama dengan lini mana pun, lihat
+         * periksaHasilProduksi(). Metode scan-nya pun berbeda: di lini FG
+         * kanban ditempel, jadi PART_KANBAN.
+         */
+        const fgLini = menghasilkanFinishGood(proses);
+        const keluar = fgLini ? fg : wip;
         dilakukan.push({
           tindakan: `rute proses ${elec.code}`,
-          rincian: `${proses} didaftarkan${wip ? `, SLOC ${wip.code} → ${wip.code}` : ''}`,
+          rincian:
+            `${proses} didaftarkan` +
+            (wip && keluar ? `, SLOC ${wip.code} → ${keluar.code}` : ''),
         });
         if (tulis) {
           await tx.insert(routeProcesses).values({
             plantId: elec.id,
             processType: proses,
-            scanMode: 'PART_SAJA',
+            scanMode: fgLini ? 'PART_KANBAN' : 'PART_SAJA',
             inputLocationId: wip?.id ?? null,
-            outputLocationId: wip?.id ?? null,
+            outputLocationId: keluar?.id ?? null,
           });
         }
       }

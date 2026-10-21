@@ -32,8 +32,12 @@ const GRUP: Record<ProcessType, ProcessGroup> = {
   INJECTION: 'INJECTION',
   PAINTING: 'PAINTING',
   MOUNTING: 'MOUNTING',
-  INSPECTION_ELEC: 'INSPECTION',
-  VACUUM: 'VACUUM',
+  // Lini WIP dan lini FG berbagi satu grup: lingkup role memang per bagian,
+  // bukan per lini — "inspection leader" satu orang untuk keduanya.
+  INSPECTION_WIP: 'INSPECTION',
+  INSPECTION_FG: 'INSPECTION',
+  VACUUM_WIP: 'VACUUM',
+  VACUUM_FG: 'VACUUM',
   ANTENNA: 'ANTENNA',
   DELIVERY: 'DELIVERY',
 };

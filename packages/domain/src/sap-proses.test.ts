@@ -32,10 +32,19 @@ describe('kelasHasilSap', () => {
    * Electric tidak menutup rute: hasilnya dirakit di Assembling Body, jadi
    * keempat langkahnya menghasilkan barang setengah jadi.
    */
-  it('seluruh langkah Electric menghasilkan setengah jadi', () => {
+  /*
+   * Electric punya dua macam keluaran: lini FG-nya menutup rute, sedangkan
+   * Antena diteruskan ke Assembling Body di pabrik lain.
+   */
+  it('lini FG Electric menghasilkan barang jadi, lini WIP-nya tidak', () => {
+    expect(kelasHasilSap('INSPECTION_WIP')).toBe('SFG');
+    expect(kelasHasilSap('INSPECTION_FG')).toBe('FG');
+    expect(kelasHasilSap('VACUUM_WIP')).toBe('SFG');
+    expect(kelasHasilSap('VACUUM_FG')).toBe('FG');
+  });
+
+  it('mounting dan antena menghasilkan setengah jadi', () => {
     expect(kelasHasilSap('MOUNTING')).toBe('SFG');
-    expect(kelasHasilSap('INSPECTION_ELEC')).toBe('SFG');
-    expect(kelasHasilSap('VACUUM')).toBe('SFG');
     expect(kelasHasilSap('ANTENNA')).toBe('SFG');
   });
 

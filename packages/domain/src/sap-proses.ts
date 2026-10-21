@@ -46,7 +46,8 @@ export type KelasHasilSap = 'SFG' | 'FG' | null;
  *
  * ASY Assembly tercatat juga untuk plant 900 di tabel itu, tetapi di lapangan
  * dikerjakan di lini yang sama dengan Inspection — karena itu tidak ada jenis
- * proses tersendiri untuknya. Lihat catatan di processTypeSchema.
+ * proses tersendiri untuknya. Inspection dan Vacuum sendiri masing-masing punya
+ * lini WIP dan lini FG. Lihat catatan di processTypeSchema.
  *
  * ── MELTING tidak ada di daftar itu ─────────────────────────────────────────
  *
@@ -63,16 +64,19 @@ export type KelasHasilSap = 'SFG' | 'FG' | null;
  * PP-PE-02, lini FG menjadi PP-PE-03. SAP menerima keduanya sebagai
  * confirmation pada work center masing-masing.
  *
- * ── Seluruh langkah Electric 'SFG', dan itu memang keadaannya ──────────────
+ * ── Electric punya dua macam keluaran sekaligus ─────────────────────────────
  *
- * Pabrik Electric tidak menutup rute: ada part yang setelah selesai di Antena
- * lanjut dirakit di Assembling Body, jadi keluaran Electric adalah barang
- * setengah jadi yang dikonsumsi pabrik lain.
+ * Inspection dan Vacuum masing-masing punya lini WIP dan lini FG, persis
+ * seperti Casting dan Machining: yang FG menutup rute dan hasilnya barang
+ * jadi, yang WIP diteruskan ke langkah berikutnya.
  *
- * Kalau kelak ada part Electric yang dikirim langsung ke customer, yang
- * menjawabnya bukan tabel ini melainkan POSISI langkah itu di rute part —
- * lihat kelasHasilSap() di bawah. Hal yang sama berlaku untuk INJECTION:
- * sebuah part bisa berhenti di sana dan langsung dikirim.
+ * Antena tetap 'SFG' karena part yang selesai di sana lanjut dirakit di
+ * Assembling Body — pabrik yang BERBEDA. Jadi yang menentukan kelas hasil di
+ * pabrik ini bukan pabriknya, melainkan lini tempat barang terakhir dikerjakan.
+ *
+ * Dan itu pun masih bisa dikalahkan POSISI langkah di rute part — lihat
+ * kelasHasilSap() di bawah. Hal yang sama berlaku untuk INJECTION: sebuah part
+ * bisa berhenti di sana dan langsung dikirim ke customer.
  */
 const KELAS_HASIL: Record<ProcessType, KelasHasilSap> = {
   MELTING: null,
@@ -85,8 +89,10 @@ const KELAS_HASIL: Record<ProcessType, KelasHasilSap> = {
   PAINTING: 'SFG',
   ASSEMBLING_BODY: 'FG',
   MOUNTING: 'SFG',
-  INSPECTION_ELEC: 'SFG',
-  VACUUM: 'SFG',
+  INSPECTION_WIP: 'SFG',
+  INSPECTION_FG: 'FG',
+  VACUUM_WIP: 'SFG',
+  VACUUM_FG: 'FG',
   ANTENNA: 'SFG',
   // Delivery bukan produksi: itu modul SD, bukan PP.
   DELIVERY: null,

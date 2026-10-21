@@ -14,6 +14,7 @@ export const processTypeSchema = z.enum([
   'ASSEMBLING_UNIT',
   'INJECTION',
   'PAINTING',
+  'ASSEMBLING_BODY',
   /*
    * ── Electric (plant 900) ──────────────────────────────────────────────────
    *
@@ -22,33 +23,34 @@ export const processTypeSchema = z.enum([
    *
    * ASY Assembly ada di tabel blueprint itu TETAPI TIDAK ada di sini: di
    * lapangan assembly Electric dikerjakan di LINI YANG SAMA dengan Inspection,
-   * jadi ia bukan langkah tersendiri. Dibuat sebagai jenis proses sendiri, ia
-   * akan menjadi kolom yang tidak pernah dipakai di matriks rute dan nilai enum
-   * yang tidak pernah muncul di data — dan suatu hari ada yang mengisinya
-   * karena "ada di blueprint". Kalau kelak SAP membuat work center di bawah ASY
-   * untuk plant 900, pasangannya di sini adalah INSPECTION_ELEC.
+   * jadi ia bukan langkah tersendiri. Kalau kelak SAP membuat work center di
+   * bawah ASY untuk plant 900, pasangannya di sini Inspection.
    *
-   * INSPECTION_ELEC diberi akhiran karena "inspection" di sistem ini sudah
-   * berarti sesi pemeriksaan kualitas (TT_INSPECTION_H). Nilai bernama
-   * INSPECTION akan dibaca sebagai itu, padahal yang dimaksud di sini LANGKAH
-   * PRODUKSI dengan work center sendiri.
+   * ── Inspection dan Vacuum masing-masing punya lini WIP dan lini FG ────────
    *
-   * ── URUTAN di daftar ini BERMAKNA, tetapi bukan sebagai rute ──────────────
+   * Sama seperti Casting dan Machining: keduanya LINI YANG BERBEDA secara
+   * fisik, bukan sifat turunan dari rute. Part yang berhenti di situ dikerjakan
+   * di lini FG — di sanalah kanban ditempel — sedangkan yang masih berlanjut
+   * dikerjakan di lini WIP. Menyatukannya membuat hasil keduanya bercampur, dan
+   * tidak ada cara memisahkannya kembali setelah datanya masuk.
    *
-   * Rute tetap melekat pada part (TM_PROCESS_PARTS.INT_SEQ_NO). Yang diturunkan
-   * dari urutan di sini adalah URUTAN KOLOM pada matriks rute, dan matriks itu
-   * menyusun rute baru mengikuti kolomnya — jadi urutan di bawah adalah
-   * BAWAAN yang ditawarkan ke orang, bukan kebenaran tentang satu part.
+   * Mounting dan Antena TIDAK dipecah: sepanjang yang diketahui, keduanya tidak
+   * punya pasangan lini FG. Begitu ternyata punya, yang bertambah dua nilai di
+   * sini — bukan rancangan yang harus dibongkar.
    *
-   * Karena itu blok Electric ditaruh SEBELUM ASSEMBLING_BODY: ada part yang
-   * setelah selesai di Antena lanjut dirakit di Assembling Body. Dengan urutan
-   * ini, matriks menawarkan ANTENNA lebih dulu, bukan sebaliknya.
+   * ── Urutan di daftar ini TIDAK menentukan urutan rute ─────────────────────
+   *
+   * Rute melekat pada part lewat TM_PROCESS_PARTS.INT_SEQ_NO, dan matriks rute
+   * menyusunnya dari URUTAN KLIK. Yang diturunkan dari urutan di bawah hanyalah
+   * urutan KOLOM di layar — pengelompokan per pabrik supaya enak dibaca, bukan
+   * pernyataan tentang jalannya barang.
    */
   'MOUNTING',
-  'INSPECTION_ELEC',
-  'VACUUM',
+  'INSPECTION_WIP',
+  'INSPECTION_FG',
+  'VACUUM_WIP',
+  'VACUUM_FG',
   'ANTENNA',
-  'ASSEMBLING_BODY',
   'DELIVERY',
 ]);
 export type ProcessType = z.infer<typeof processTypeSchema>;
@@ -84,14 +86,15 @@ export const FINISH_GOOD_PROCESSES = [
   'ASSEMBLING_UNIT',
   'ASSEMBLING_BODY',
   /*
-   * Tidak ada langkah Electric di sini, dan itu BUKAN kelalaian.
+   * Electric menutup rute di lini FG-nya sendiri — Inspection FG dan Vacuum FG.
    *
-   * Pabrik Electric tidak menutup rute: hasilnya dirakit di Assembling Body,
-   * jadi langkah terakhir yang menghasilkan barang jadi tetap milik Body.
-   * Kalau kelak ada part Electric yang dikirim langsung ke customer, yang
-   * menjawabnya bukan daftar ini melainkan POSISI langkah itu di rute part —
-   * lihat kelasHasilSap(proses, langkahTerakhir).
+   * Yang TIDAK menutup rute adalah Antena: part yang selesai di sana lanjut
+   * dirakit di Assembling Body, pabrik yang berbeda. Jadi pabrik Electric punya
+   * dua macam keluaran sekaligus, dan yang membedakannya bukan pabriknya
+   * melainkan LINI tempat barang itu terakhir dikerjakan.
    */
+  'INSPECTION_FG',
+  'VACUUM_FG',
 ] as const satisfies readonly ProcessType[];
 
 /**
@@ -118,8 +121,10 @@ export const PROCESS_LABELS: Record<ProcessType, string> = {
   PAINTING: 'Painting',
   ASSEMBLING_BODY: 'Assembling (Body)',
   MOUNTING: 'Mounting',
-  INSPECTION_ELEC: 'Inspection (Electric)',
-  VACUUM: 'Vacuum',
+  INSPECTION_WIP: 'Inspection WIP',
+  INSPECTION_FG: 'Inspection FG',
+  VACUUM_WIP: 'Vacuum WIP',
+  VACUUM_FG: 'Vacuum FG',
   ANTENNA: 'Antena',
   DELIVERY: 'Delivery',
 };

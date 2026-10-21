@@ -247,7 +247,21 @@ export function MatriksRute({
           </thead>
           <tbody>
             {terlihat.map((b) => {
-              const urut = proses.filter((p) => p in b.rute);
+              /*
+               * Urutan dibaca dari NOMOR URUTNYA, bukan dari urutan kolom.
+               *
+               * Sebelumnya `proses.filter(...)`, dan itu membuat angka di kotak
+               * berbohong: rutenya tersimpan sesuai urutan klik, tetapi yang
+               * terbaca tetap urutan kiri-ke-kanan. Orang yang menyusun rute
+               * tidak punya cara melihat bahwa kehendaknya sudah tersimpan —
+               * satu-satunya umpan baliknya justru menampilkan yang sebaliknya.
+               *
+               * Kolom "Rute" di ujung kanan memakai daftar yang sama, jadi
+               * keduanya ikut benar sekaligus.
+               */
+              const urut = Object.entries(b.rute)
+                .sort(([, a], [, z]) => a - z)
+                .map(([nama]) => nama);
               return (
                 <tr key={b.partId} className="border-b border-line last:border-0">
                   <td className="bg-card px-3 py-2 align-top whitespace-nowrap sm:sticky sm:left-0">

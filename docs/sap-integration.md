@@ -452,9 +452,11 @@ Dipetakan ke jenis proses di sistem ini:
 | `INJECTION` | 700 | INJ Injection | SFG¹ | WP70 |
 | `PAINTING` | 700 | PTG Painting | SFG¹ | WP70 |
 | `ASSEMBLING_BODY` | 700 | ASY Assembly | FG | FG70 |
-| `MOUNTING` | 900 | MNT Mounting | SFG² | WP90 |
-| `INSPECTION_ELEC` | 900 | INS Inspection + ASY Assembly | SFG² | WP90 |
-| `VACUUM` | 900 | VAC Vacuum | SFG² | WP90 |
+| `MOUNTING` | 900 | MNT Mounting | SFG | WP90 |
+| `INSPECTION_WIP` | 900 | INS Inspection + ASY Assembly | SFG | WP90 |
+| `INSPECTION_FG` | 900 | INS Inspection + ASY Assembly | FG | FG90 |
+| `VACUUM_WIP` | 900 | VAC Vacuum | SFG | WP90 |
+| `VACUUM_FG` | 900 | VAC Vacuum | FG | FG90 |
 | `ANTENNA` | 900 | ANT Antena | SFG² | WP90 |
 | `DELIVERY` | semua | — _modul SD_ | — | tidak didorong |
 
@@ -462,10 +464,15 @@ Dipetakan ke jenis proses di sistem ini:
 Injection menjadi barang jadi di situ — lihat `kelasHasilSap()` yang menerima
 `langkahTerakhir`.
 
-² **Electric tidak menutup rute.** Keluarannya barang setengah jadi yang
-dirakit di Assembling Body, jadi keempat langkahnya SFG. Kalau kelak ada part
-Electric yang dikirim langsung ke customer, yang menjawabnya bukan tabel ini
-melainkan posisi langkah itu di rute part.
+² **Antena tidak menutup rute**: part yang selesai di sana lanjut dirakit di
+Assembling Body — pabrik yang berbeda. Inspection dan Vacuum sebaliknya, punya
+lini FG masing-masing yang memang menutup rute.
+
+Jadi yang menentukan kelas hasil di pabrik ini bukan pabriknya, melainkan LINI
+tempat barang terakhir dikerjakan — persis seperti Casting dan Machining di
+pabrik Unit. Mounting dan Antena tidak dipecah WIP/FG karena sepanjang yang
+diketahui keduanya tidak punya pasangan lini FG; begitu ternyata punya, yang
+bertambah dua nilai enum, bukan rancangan yang dibongkar.
 
 **ASY Assembly ada di Tabel 16 blueprint tetapi TIDAK menjadi jenis proses
 sendiri di sini**: di lapangan assembly Electric dikerjakan di lini yang sama
@@ -473,11 +480,11 @@ dengan Inspection. Dibuatkan jenis sendiri, ia akan menjadi kolom yang tidak
 pernah dipakai di matriks rute dan nilai enum yang tidak pernah muncul di data
 — lalu suatu hari ada yang mengisinya karena "ada di blueprint". Kalau SAP
 membuat work center di bawah ASY untuk plant 900, pasangannya di sini
-`INSPECTION_ELEC`.
+Inspection.
 
-Keempat jenis proses Electric **sudah ada di enum**, tapi pabrik 900 belum punya
-lini maupun part — kode work center-nya belum kita ketahui, dan menebaknya
-berarti membuat master yang harus dibongkar lagi.
+Keenam jenis proses Electric **sudah ada di enum** beserta rute prosesnya, tapi
+pabrik 900 baru punya dua lini contoh — kode work center yang sebenarnya belum
+kita ketahui, dan menebaknya berarti membuat master yang harus dibongkar lagi.
 
 ### Rute boleh melintasi pabrik — modelnya yang belum ada
 
@@ -518,24 +525,17 @@ Dua model yang mungkin, dan pilihannya belum diambil:
 | Tarik master | bertentangan: `TM_PROCESS_PARTS` staging berkunci (part, plant) | sejalan — memang menghasilkan dua baris |
 | Yang harus diubah | `plantId` per langkah, resolusi SLOC, validasi scan | dokumen perpindahan antar plant, penyambung genealogy |
 
-### Satu penamaan yang diberi akhiran, dan kenapa
+### Urutan jenis proses di enum TIDAK menentukan rute
 
-`INSPECTION_ELEC`, karena "inspection" di sistem ini sudah berarti sesi
-pemeriksaan kualitas (`TT_INSPECTION_H`) — nilai bernama `INSPECTION` akan
-dibaca sebagai itu, padahal yang dimaksud langkah produksi dengan work center
-sendiri.
+Rute melekat pada part lewat `TM_PROCESS_PARTS.INT_SEQ_NO`, dan matriks rute
+menyusunnya dari **urutan klik**. Yang diturunkan dari urutan `PROCESS_TYPES`
+hanyalah urutan KOLOM di layar — pengelompokan per pabrik supaya enak dibaca.
 
-### Urutan jenis proses di enum ikut bermakna
-
-Bukan sebagai rute: rute tetap melekat pada part lewat
-`TM_PROCESS_PARTS.INT_SEQ_NO`. Yang diturunkan dari urutan `PROCESS_TYPES`
-adalah **urutan kolom matriks rute**, dan matriks itu menyusun rute baru
-mengikuti kolomnya — jadi urutan enum adalah bawaan yang ditawarkan ke orang.
-
-Karena itu blok Electric ditaruh **sebelum** `ASSEMBLING_BODY`: ada part yang
-setelah Antena lanjut dirakit di Assembling Body, dan dengan urutan ini matriks
-menawarkan `ANTENNA` lebih dulu. Lewat API, urutan bebas sepenuhnya — yang
-dikirim adalah daftar terurut.
+Sempat tidak begitu: matriks dulu menyusun ulang rute dari urutan kolom, dan
+akibatnya rute seperti Antena → Assembling Body mustahil dinyatakan. Setelah
+urutan mengikuti klik, kolom bebas ditata menurut keterbacaan — karena itu
+`ASSEMBLING_BODY` kembali berdampingan dengan Injection dan Painting, dan blok
+Electric berdiri sendiri di belakangnya.
 
 ### SLOC hasil produksi datang dari material master, bukan dari kita
 
