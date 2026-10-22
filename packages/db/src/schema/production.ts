@@ -1,7 +1,26 @@
-import { date, foreignKey, index, integer, jsonb, time, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import {
+  date,
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  time,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { PROCESS_TYPES, daftarNilai, enumCol, fk, pk, productionSchema, timestamps } from './_shared';
-import { lines, parts, customers, machines } from './master';
+import {
+  PROCESS_TYPES,
+  daftarNilai,
+  enumCol,
+  fk,
+  pk,
+  productionSchema,
+  timestamps,
+  type ProcessType,
+} from './_shared';
+import { lines, parts, customers, machines, processTypes } from './master';
 import { plants, users, devices } from './org';
 
 /**
@@ -39,7 +58,9 @@ export const productionPlans = productionSchema.table(
     deliveryTime: time('DTM_DELIVERY_TIME'),
     actualStartAt: timestamp('DTM_ACTUAL_START_AT', { withTimezone: true, mode: 'date' }),
     actualEndAt: timestamp('DTM_ACTUAL_END_AT', { withTimezone: true, mode: 'date' }),
-    planSource: enumCol('CHR_PLAN_SOURCE', ['MANUAL', 'IMPORT', 'STATIC_SEQ', 'API']).notNull().default('MANUAL'),
+    planSource: enumCol('CHR_PLAN_SOURCE', ['MANUAL', 'IMPORT', 'STATIC_SEQ', 'API'])
+      .notNull()
+      .default('MANUAL'),
     status: enumCol('CHR_STATUS', ['DRAFT', 'RELEASED', 'RUNNING', 'DONE', 'CANCELLED'])
       .notNull()
       .default('DRAFT'),
@@ -49,9 +70,20 @@ export const productionPlans = productionSchema.table(
     index('TT_PRODUCTION_PLAN_DATE_LINE_IDX').on(t.planDate, t.lineId),
     index('TT_PRODUCTION_PLAN_PART_DATE_IDX').on(t.partId, t.planDate),
     uniqueIndex('TT_PRODUCTION_PLAN_SLOT_UNIQUE').on(t.lineId, t.planDate, t.cycle, t.seqNo),
-  
-    daftarNilai('TT_PRODUCTION_PLAN_CHR_PLAN_SOURCE_CHK', t.planSource, ['MANUAL', 'IMPORT', 'STATIC_SEQ', 'API']),
-    daftarNilai('TT_PRODUCTION_PLAN_CHR_STATUS_CHK', t.status, ['DRAFT', 'RELEASED', 'RUNNING', 'DONE', 'CANCELLED']),
+
+    daftarNilai('TT_PRODUCTION_PLAN_CHR_PLAN_SOURCE_CHK', t.planSource, [
+      'MANUAL',
+      'IMPORT',
+      'STATIC_SEQ',
+      'API',
+    ]),
+    daftarNilai('TT_PRODUCTION_PLAN_CHR_STATUS_CHK', t.status, [
+      'DRAFT',
+      'RELEASED',
+      'RUNNING',
+      'DONE',
+      'CANCELLED',
+    ]),
   ],
 );
 
@@ -84,7 +116,9 @@ export const scanEvents = productionSchema.table(
       .notNull()
       .references(() => plants.id),
     kind: enumCol('CHR_KIND', SCAN_KINDS).notNull(),
-    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES),
+    processType: varchar('CHR_PROCESS_TYPE', { length: 32 })
+      .$type<ProcessType>()
+      .references(() => processTypes.code),
     lineId: fk('INT_LINE_ID').references(() => lines.id),
     partId: fk('INT_PART_ID').references(() => parts.id),
     machineId: fk('INT_MACHINE_ID').references(() => machines.id),
@@ -144,9 +178,8 @@ export const scanEvents = productionSchema.table(
      * TERAKHIR pada sebuah barang (pencatatan NG) tidak perlu mengurutkan lagi.
      */
     index('TT_HISTORY_SCAN_RAW_PROCESS_IDX').on(t.rawCode, t.processType, t.scannedAt),
-  
+
     daftarNilai('TT_HISTORY_SCAN_CHR_KIND_CHK', t.kind, SCAN_KINDS),
-    daftarNilai('TT_HISTORY_SCAN_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
   ],
 );
 

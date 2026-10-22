@@ -1,8 +1,17 @@
 import { index, integer, jsonb, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { PROCESS_TYPES, daftarNilai, enumCol, fk, pk, qualitySchema, timestamps } from './_shared';
+import {
+  PROCESS_TYPES,
+  daftarNilai,
+  enumCol,
+  fk,
+  pk,
+  qualitySchema,
+  timestamps,
+  type ProcessType,
+} from './_shared';
 import { PROCESS_GROUPS } from '@avicenna/contracts';
-import { parts, lines, machines } from './master';
+import { parts, lines, machines, processTypes } from './master';
 import { kanbans } from './kanban';
 import { scanEvents } from './production';
 import { plants, users } from './org';
@@ -36,7 +45,7 @@ export const ngMasters = qualitySchema.table(
   (t) => [
     uniqueIndex('TM_NG_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
     index('TM_NG_GROUP_IDX').on(t.plantId, t.processGroup, t.sortOrder),
-  
+
     daftarNilai('TM_NG_CHR_PROCESS_GROUP_CHK', t.processGroup, PROCESS_GROUPS),
     daftarNilai('TM_NG_CHR_IS_ACTIVE_CHK', t.isActive, ['0', '1']),
   ],
@@ -55,7 +64,10 @@ export const qualityInspections = qualitySchema.table(
       .references(() => parts.id),
     lineId: fk('INT_LINE_ID').references(() => lines.id),
     machineId: fk('INT_MACHINE_ID').references(() => machines.id),
-    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    processType: varchar('CHR_PROCESS_TYPE', { length: 32 })
+      .$type<ProcessType>()
+      .references(() => processTypes.code)
+      .notNull(),
     inspectedAt: timestamp('DTM_INSPECTED_AT', { withTimezone: true, mode: 'date' }).notNull(),
     shift: enumCol('CHR_SHIFT', ['1', '2', '3']),
     checkedQty: integer('INT_CHECKED_QTY').notNull().default(0),
@@ -68,8 +80,6 @@ export const qualityInspections = qualitySchema.table(
   (t) => [
     index('TT_INSPECTION_H_PART_TIME_IDX').on(t.partId, t.inspectedAt),
     index('TT_INSPECTION_H_LINE_TIME_IDX').on(t.lineId, t.inspectedAt),
-  
-    daftarNilai('TT_INSPECTION_H_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
     daftarNilai('TT_INSPECTION_H_CHR_SHIFT_CHK', t.shift, ['1', '2', '3']),
   ],
 );
@@ -169,7 +179,9 @@ export const ngRecords = qualitySchema.table(
       .notNull()
       .references(() => parts.id),
     lineId: fk('INT_LINE_ID').references(() => lines.id),
-    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES),
+    processType: varchar('CHR_PROCESS_TYPE', { length: 32 })
+      .$type<ProcessType>()
+      .references(() => processTypes.code),
     ngMasterId: fk('INT_NG_MASTER_ID')
       .notNull()
       .references(() => ngMasters.id),
@@ -210,8 +222,6 @@ export const ngRecords = qualitySchema.table(
     index('TT_NG_LINE_TIME_IDX').on(t.lineId, t.occurredAt),
     index('TT_NG_SERIAL_IDX').on(t.serialNumber),
     index('TT_NG_KANBAN_IDX').on(t.kanbanId),
-  
-    daftarNilai('TT_NG_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
     daftarNilai('TT_NG_CHR_ORIGIN_CHK', t.origin, NG_ORIGINS),
     daftarNilai('TT_NG_CHR_SOURCE_CHK', t.source, NG_SOURCES),
   ],

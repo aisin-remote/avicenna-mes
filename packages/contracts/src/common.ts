@@ -159,6 +159,22 @@ export const PROCESS_LABELS: Record<ProcessType, string> = {
 };
 
 /**
+ * Kelas hasil sebuah langkah proses menurut SAP.
+ *
+ *   SFG   barang setengah jadi — confirmation PP-PE-02, hasil masuk SLOC WIP
+ *   FG    barang jadi          — confirmation PP-PE-03, hasil masuk SLOC FG
+ *   NONE  tidak ada padanannya di SAP; hasilnya dicatat di Avicenna saja
+ *
+ * Inilah yang dulu berupa DUA daftar terpisah di kode — FINISH_GOOD_PROCESSES
+ * dan KELAS_HASIL — yang isinya harus selalu sejalan. Disatukan menjadi satu
+ * nilai supaya keduanya tidak bisa bertentangan: "menghasilkan barang jadi"
+ * PERSIS sama dengan kelas FG, dan sekarang itu satu kolom, bukan dua daftar
+ * yang kebetulan cocok.
+ */
+export const SAP_CLASSES = ['SFG', 'FG', 'NONE'] as const;
+export type SapClass = (typeof SAP_CLASSES)[number];
+
+/**
  * Jenis SLOC — satu-satunya daftarnya, diimpor skema database MAUPUN domain.
  *
  * Ditaruh di kontrak karena dua sisi membutuhkannya: TM_LOCATION.CHR_KIND yang

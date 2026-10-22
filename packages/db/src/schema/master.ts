@@ -1,7 +1,19 @@
 import { boolean, index, integer, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { PART_TYPES, PROCESS_TYPES, SOURCE_TYPES, TRACKING_MODES, daftarNilai, enumCol, fk, masterSchema, pk, timestamps } from './_shared';
-import { SCAN_MODE_ENUM } from '@avicenna/contracts';
+import {
+  PART_TYPES,
+  PROCESS_TYPES,
+  SOURCE_TYPES,
+  TRACKING_MODES,
+  daftarNilai,
+  enumCol,
+  fk,
+  masterSchema,
+  pk,
+  timestamps,
+  type ProcessType,
+} from './_shared';
+import { PROCESS_GROUPS, SAP_CLASSES, SCAN_MODE_ENUM } from '@avicenna/contracts';
 import { plants } from './org';
 
 /** Line produksi. Satu line terikat pada satu pabrik dan satu jenis proses. */
@@ -14,7 +26,10 @@ export const lines = masterSchema.table(
       .references(() => plants.id),
     code: varchar('CHR_CODE', { length: 32 }).notNull(),
     name: varchar('CHR_NAME', { length: 128 }).notNull(),
-    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    processType: varchar('CHR_PROCESS_TYPE', { length: 32 })
+      .$type<ProcessType>()
+      .references(() => processTypes.code)
+      .notNull(),
     /**
      * Penimpa METODE SCAN untuk lini ini. Kosong = ikut master Rute Proses.
      *
@@ -51,8 +66,6 @@ export const lines = masterSchema.table(
   (t) => [
     uniqueIndex('TM_LINE_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
     index('TM_LINE_PROCESS_IDX').on(t.processType),
-  
-    daftarNilai('TM_LINE_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
     daftarNilai('TM_LINE_CHR_SCAN_MODE_CHK', t.scanMode, SCAN_MODE_ENUM),
   ],
 );
@@ -96,7 +109,8 @@ export const customers = masterSchema.table(
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_CUST_CODE_UNIQUE').on(t.code),
+  (t) => [
+    uniqueIndex('TM_CUST_CODE_UNIQUE').on(t.code),
     daftarNilai('TM_CUST_CHR_PART_NUMBER_FORMAT_CHK', t.partNumberFormat, [
       'TMMIN',
       'SUZUKI',
@@ -145,7 +159,10 @@ export const parts = masterSchema.table(
      */
     project: varchar('CHR_PROJECT', { length: 32 }),
     name: varchar('CHR_PART_NAME', { length: 191 }).notNull(),
-    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    processType: varchar('CHR_PROCESS_TYPE', { length: 32 })
+      .$type<ProcessType>()
+      .references(() => processTypes.code)
+      .notNull(),
     /** Posisi part di rantai pasok — menentukan aturan apa yang berlaku baginya. */
     partType: enumCol('CHR_PART_TYPE', PART_TYPES).notNull().default('FINISHED_GOOD'),
     /** Dibeli atau diproduksi sendiri. */
@@ -169,11 +186,76 @@ export const parts = masterSchema.table(
     uniqueIndex('TM_PARTS_PLANT_PARTNUMBER_UNIQUE').on(t.plantId, t.partNumber),
     index('TM_PARTS_BACK_NUMBER_IDX').on(t.backNumber),
     index('TM_PARTS_LINE_IDX').on(t.lineId),
-  
-    daftarNilai('TM_PARTS_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
     daftarNilai('TM_PARTS_CHR_PART_TYPE_CHK', t.partType, PART_TYPES),
     daftarNilai('TM_PARTS_CHR_SOURCE_TYPE_CHK', t.sourceType, SOURCE_TYPES),
     daftarNilai('TM_PARTS_CHR_TRACKING_MODE_CHK', t.trackingMode, TRACKING_MODES),
+  ],
+);
+
+/**
+ * ─── JENIS PROSES — kosakata yang dulu ditanam di kode ──────────────────────
+ *
+ * Satu baris = satu LINI yang berbeda secara fisik: Casting WIP dan Casting FG
+ * adalah dua baris, bukan satu baris dengan penanda.
+ *
+ * ── Kenapa pindah dari enum ke tabel ────────────────────────────────────────
+ *
+ * Daftarnya berubah mengikuti pabrik, bukan mengikuti rilis. Dalam satu bulan
+ * ia bertambah pabrik Electric (empat proses), lalu Inspection dan Vacuum
+ * dipecah WIP/FG, lalu Injection dan Painting menyusul. Setiap kali: sunting
+ * enum, sunting tiga peta klasifikasi, tulis migrasi yang memindahkan nilai
+ * lama, lalu deploy. Orang yang tahu pabriknya harus menunggu orang yang tahu
+ * kodenya.
+ *
+ * ── Yang HILANG karena perpindahan ini, dan penggantinya ────────────────────
+ *
+ * Dulu `Record<ProcessType, …>` memaksa compiler menolak proses baru yang
+ * belum diklasifikasikan — itulah yang menangkap proses Electric yang lupa
+ * diberi kelas SFG/FG. Sekarang penjagaannya pindah ke KOLOM: ketiganya
+ * NOT NULL tanpa bawaan, jadi baris baru tidak bisa lahir tanpa menjawab
+ * pertanyaan yang sama.
+ *
+ *   CHR_SAP_CLASS    menentukan SLOC hasil DAN dokumen SAP-nya
+ *   CHR_PROCESS_GROUP  lingkup role — siapa boleh men-scan di lini ini
+ *   CHR_SCAN_MODE    metode scan bawaan; rute per pabrik boleh menimpanya
+ *
+ * ── Kodenya, bukan id-nya, yang disimpan di tabel lain ──────────────────────
+ *
+ * Tujuh kolom CHR_PROCESS_TYPE di lima tabel menyimpan KODE-nya, dan
+ * menunjuk ke sini lewat foreign key. Menggantinya dengan id berarti menyunting
+ * setiap kueri yang membandingkan jenis proses, dan tidak ada yang didapat:
+ * kodenya sudah unik, sudah terbaca manusia, dan sudah terlanjur ada di
+ * seluruh data lama.
+ */
+export const processTypes = masterSchema.table(
+  'TM_PROCESS_TYPE',
+  {
+    id: pk(),
+    /** Dipakai sebagai nilai di seluruh kolom CHR_PROCESS_TYPE. */
+    code: varchar('CHR_CODE', { length: 32 }).notNull(),
+    /** Yang dibaca orang di kepala kolom dan di laporan. */
+    label: varchar('CHR_LABEL', { length: 64 }).notNull(),
+    processGroup: enumCol('CHR_PROCESS_GROUP', PROCESS_GROUPS).notNull(),
+    sapClass: enumCol('CHR_SAP_CLASS', SAP_CLASSES).notNull(),
+    /** Metode scan bawaan. TM_ROUTE_PROCESS boleh menimpanya per pabrik. */
+    scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM).notNull(),
+    /**
+     * Urutan kolom di matriks rute.
+     *
+     * BUKAN urutan rute: rute melekat pada part lewat INT_SEQ_NO, dan matriks
+     * menyusunnya dari urutan klik. Yang ini hanya pengelompokan di layar
+     * supaya enak dibaca — proses satu pabrik berdampingan.
+     */
+    sortOrder: integer('INT_SORT_ORDER').notNull().default(0),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('TM_PROCESS_TYPE_CODE_UNIQUE').on(t.code),
+    index('TM_PROCESS_TYPE_ORDER_IDX').on(t.sortOrder),
+    daftarNilai('TM_PROCESS_TYPE_CHR_PROCESS_GROUP_CHK', t.processGroup, PROCESS_GROUPS),
+    daftarNilai('TM_PROCESS_TYPE_CHR_SAP_CLASS_CHK', t.sapClass, SAP_CLASSES),
+    daftarNilai('TM_PROCESS_TYPE_CHR_SCAN_MODE_CHK', t.scanMode, SCAN_MODE_ENUM),
   ],
 );
 
@@ -213,7 +295,10 @@ export const partProcesses = masterSchema.table(
     partId: fk('INT_PART_ID')
       .notNull()
       .references(() => parts.id),
-    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    processType: varchar('CHR_PROCESS_TYPE', { length: 32 })
+      .$type<ProcessType>()
+      .references(() => processTypes.code)
+      .notNull(),
     /**
      * Urutan dalam rute part ini. Bukan urutan global.
      *
@@ -239,8 +324,6 @@ export const partProcesses = masterSchema.table(
     uniqueIndex('TM_PROCESS_PARTS_PART_PROCESS_UNIQUE').on(t.partId, t.processType),
     uniqueIndex('TM_PROCESS_PARTS_PART_SEQ_UNIQUE').on(t.partId, t.seqNo),
     index('TM_PROCESS_PARTS_PLANT_PROCESS_IDX').on(t.plantId, t.processType),
-  
-    daftarNilai('TM_PROCESS_PARTS_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
   ],
 );
 
@@ -268,7 +351,10 @@ export const routeProcesses = masterSchema.table(
     plantId: fk('INT_PLANT_ID')
       .notNull()
       .references(() => plants.id),
-    processType: enumCol('CHR_PROCESS_TYPE', PROCESS_TYPES).notNull(),
+    processType: varchar('CHR_PROCESS_TYPE', { length: 32 })
+      .$type<ProcessType>()
+      .references(() => processTypes.code)
+      .notNull(),
     /**
      * METODE SCAN lini ini — lihat SCAN_MODES di contracts.
      *
@@ -293,8 +379,8 @@ export const routeProcesses = masterSchema.table(
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_ROUTE_PROCESS_PLANT_PROCESS_UNIQUE').on(t.plantId, t.processType),
-    daftarNilai('TM_ROUTE_PROCESS_CHR_PROCESS_TYPE_CHK', t.processType, PROCESS_TYPES),
+  (t) => [
+    uniqueIndex('TM_ROUTE_PROCESS_PLANT_PROCESS_UNIQUE').on(t.plantId, t.processType),
     daftarNilai('TM_ROUTE_PROCESS_CHR_SCAN_MODE_CHK', t.scanMode, SCAN_MODE_ENUM),
   ],
 );
@@ -419,7 +505,8 @@ export const toolings = masterSchema.table(
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_TOOLING_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
+  (t) => [
+    uniqueIndex('TM_TOOLING_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
     daftarNilai('TM_TOOLING_CHR_KIND_CHK', t.kind, ['MOLD', 'DIES', 'JIG']),
   ],
 );

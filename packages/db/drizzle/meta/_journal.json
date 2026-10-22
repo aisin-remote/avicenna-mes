@@ -43,6 +43,13 @@
       "when": 1792630206937,
       "tag": "0005_solid_doorman",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792633997073,
+      "tag": "0006_many_celestials",
+      "breakpoints": true
     }
   ]
 }
