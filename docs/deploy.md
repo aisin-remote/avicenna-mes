@@ -87,6 +87,37 @@ daripada melayani di atas skema yang belum lengkap.
 
 Tumpukan data tidak disentuh.
 
+### Setelah deploy yang membawa jenis proses atau SLOC baru
+
+Migrasi hanya mengurus STRUKTUR. Yang mengurus isinya satu skrip tersendiri,
+dijalankan dari akar repo di server (`/home/avicenna`):
+
+```bash
+# 1. Uji coba — melaporkan apa yang AKAN berubah, tidak menulis apa pun.
+docker compose --env-file .env -f docker/compose.app.yml \
+  --profile tools run --rm selaraskan
+
+# 2. Kalau laporannya sudah cocok, baru menulis.
+docker compose --env-file .env -f docker/compose.app.yml \
+  --profile tools run --rm selaraskan \
+  node node_modules/@avicenna/db/dist/selaraskan-blueprint.js --tulis
+```
+
+Yang dikerjakannya: mengisi kode SAP pabrik, membuat pabrik yang belum ada,
+**mengganti nama** SLOC lama ke kode per pabrik (id dipertahankan, jadi seluruh
+mutasi dan saldo ikut pindah nama bersamanya), membetulkan SLOC keluaran lini
+sesuai jenis prosesnya, dan mendaftarkan rute proses yang belum ada — termasuk
+pasangan `_FG` untuk setiap `_WIP`.
+
+Aman diulang: dijalankan dua kali, yang kedua menjawab "tidak ada yang perlu
+diubah". Yang ambigu — dua SLOC berjenis sama, atau kode tujuan sudah dipakai —
+dilewati dan dilaporkan, bukan ditebak.
+
+**Jangan memakai `seed` untuk ini.** Seed hanya MENAMBAH: pada database yang
+SLOC-nya masih `WH00/WP01/PP02`, ia akan menambahkan `WH80/WP80/FG80` di
+sebelahnya, lalu saldo stok terbelah antara dua kode yang sebenarnya satu
+gudang yang sama — tanpa galat apa pun.
+
 ## Rilis otomatis (CI/CD)
 
 Server tidak bisa dihubungi GitHub dari internet (IP privat), jadi arusnya

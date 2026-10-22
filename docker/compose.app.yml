@@ -57,7 +57,7 @@ services:
   #
   # Berada di profil `tools`, jadi `up -d` biasa TIDAK menyentuhnya:
   #
-  #     docker compose -f docker/compose.app.yml --profile tools run --rm seed
+  #     docker compose --env-file .env -f docker/compose.app.yml --profile tools run --rm seed
   #
   # Kenapa tidak otomatis: seed mengisi master data (pabrik, lini, role, menu,
   # akun ADMIN). Dijalankan tiap kali wadah menyala, ia akan menimpa perubahan
@@ -82,10 +82,10 @@ services:
     restart: "no"
   # ── Pindah master dari MySQL lama — SEKALI, saat pindah database ──────────
   #
-  #     docker compose -f docker/compose.app.yml --profile tools run --rm pindah-master
+  #     docker compose --env-file .env -f docker/compose.app.yml --profile tools run --rm pindah-master
   #         (uji coba: melaporkan berapa baris yang akan pindah, tanpa menulis)
   #
-  #     docker compose -f docker/compose.app.yml --profile tools run --rm \
+  #     docker compose --env-file .env -f docker/compose.app.yml --profile tools run --rm \
   #       pindah-master node node_modules/@avicenna/db/dist/pindah-master.js --tulis
   #
   # Di profil `tools`, jadi `up -d` biasa tidak pernah menyentuhnya. Hanya tabel
@@ -110,10 +110,10 @@ services:
 
   # ── Selaraskan database lama dengan Blueprint SAP PP ──────────────────────
   #
-  #     docker compose -f docker/compose.app.yml --profile tools run --rm selaraskan
+  #     docker compose --env-file .env -f docker/compose.app.yml --profile tools run --rm selaraskan
   #         (uji coba: melaporkan apa yang AKAN berubah, tanpa menulis)
   #
-  #     docker compose -f docker/compose.app.yml --profile tools run --rm \
+  #     docker compose --env-file .env -f docker/compose.app.yml --profile tools run --rm \
   #       selaraskan node node_modules/@avicenna/db/dist/selaraskan-blueprint.js --tulis
   #
   # Dijalankan SEKALI setelah deploy yang membawa kode SAP pabrik. Ia mengisi
