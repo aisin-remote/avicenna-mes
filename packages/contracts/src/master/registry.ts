@@ -26,6 +26,7 @@ export const MASTER_ENTITIES = [
   'bom',
   'part-processes',
   'route-processes',
+  'process-types',
   'kanbans',
   'program-numbers',
   'work-times',
@@ -43,10 +44,11 @@ export type MasterEntity = (typeof MASTER_ENTITIES)[number];
  * di kolom enum, lalu setiap penyimpanan gagal dengan pesan dari MySQL yang
  * tidak menyebut sebabnya.
  */
-export { PROCESS_TYPES, PROCESS_GROUPS, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
+export { PROCESS_TYPES, PROCESS_GROUPS, SAP_CLASSES, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
 import {
   PROCESS_TYPES,
   PROCESS_GROUPS,
+  SAP_CLASSES,
   SCAN_MODES,
   SCAN_MODE_LABELS,
   LOCATION_KINDS,
@@ -566,6 +568,91 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       { name: 'customerId', label: 'Customer', kind: 'reference', refEntity: 'customers', inList: true },
       { name: 'isAssy', label: 'Part Rakitan', kind: 'boolean', defaultValue: false },
       activeField,
+    ],
+  },
+
+  /**
+   * ─── JENIS PROSES ─────────────────────────────────────────────────────────
+   *
+   * Kosakata yang sampai Oktober 2026 hidup sebagai enum di kode. Satu baris =
+   * satu LINI yang berbeda secara fisik: Casting WIP dan Casting FG dua baris,
+   * bukan satu baris dengan penanda.
+   *
+   * Ketiga kolom klasifikasi WAJIB, dan itu pengganti penjagaan yang hilang.
+   * Dulu compiler menolak proses baru yang belum diklasifikasikan — itulah yang
+   * menangkap proses Electric yang lupa diberi kelas SFG/FG. Sekarang formulir
+   * ini yang menanyakannya, dan tidak ada bawaan untuk ditebak diam-diam.
+   *
+   * Ada di menu Integrasi bersama Rute Proses: pengurusnya PPIC/IT, bukan
+   * leader produksi. Salah mengisi kelas SAP berarti hasil produksi mendarat di
+   * SLOC yang keliru dan dokumen SAP-nya ikut salah.
+   */
+  'process-types': {
+    key: 'process-types',
+    label: 'Jenis Proses',
+    singular: 'Jenis Proses',
+    icon: 'Workflow',
+    description: 'Daftar proses produksi beserta klasifikasinya — dulu ditanam di kode',
+    searchFields: ['code', 'label'],
+    defaultSort: 'sortOrder',
+    fields: [
+      {
+        name: 'code',
+        label: 'Kode',
+        kind: 'text',
+        required: true,
+        inList: true,
+        hint:
+          'Dipakai sebagai nilai di seluruh data: lini, part, rute, scan, NG. ' +
+          'HURUF BESAR tanpa spasi, mis. INJECTION_FG. Tidak bisa diubah setelah dipakai.',
+      },
+      { name: 'label', label: 'Nama di Layar', kind: 'text', required: true, inList: true },
+      {
+        name: 'processGroup',
+        label: 'Grup',
+        kind: 'select',
+        options: PROCESS_GROUPS,
+        required: true,
+        inList: true,
+        hint: 'Lingkup role — menentukan siapa boleh men-scan di lini proses ini.',
+      },
+      {
+        name: 'sapClass',
+        label: 'Kelas Hasil SAP',
+        kind: 'select',
+        options: SAP_CLASSES,
+        optionLabels: {
+          SFG: 'SFG — setengah jadi, hasil masuk SLOC WIP',
+          FG: 'FG — barang jadi, hasil masuk SLOC Finish Good',
+          NONE: 'NONE — tidak ada padanannya di SAP',
+        },
+        required: true,
+        inList: true,
+        hint:
+          'Menentukan SLOC tempat hasil produksi mendarat DAN jenis dokumen SAP-nya. ' +
+          'FG berarti proses ini menutup rute dan di sinilah kanban ditempel.',
+      },
+      {
+        name: 'scanMode',
+        label: 'Metode Scan Bawaan',
+        kind: 'select',
+        options: SCAN_MODES,
+        optionLabels: SCAN_MODE_LABELS,
+        required: true,
+        defaultValue: 'PART_SAJA',
+        inList: true,
+        hint: 'Bawaan untuk lini proses ini. Rute Proses per pabrik boleh menimpanya.',
+      },
+      {
+        name: 'sortOrder',
+        label: 'Urutan Kolom',
+        kind: 'number',
+        inList: true,
+        hint:
+          'Urutan kolom di matriks rute saja — BUKAN urutan rute. ' +
+          'Rute disusun dari urutan klik dan melekat pada tiap part.',
+      },
+      { name: 'isActive', label: 'Aktif', kind: 'boolean', defaultValue: true, inList: true },
     ],
   },
 

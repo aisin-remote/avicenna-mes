@@ -17,6 +17,7 @@ import {
   workTimes,
   workBreaks,
   stopReasons,
+  processTypes,
 } from './schema/index';
 
 /**
@@ -39,6 +40,7 @@ export const MASTER_TABLES = {
   bom: bomLines,
   'part-processes': partProcesses,
   'route-processes': routeProcesses,
+  'process-types': processTypes,
   kanbans,
   'program-numbers': programNumbers,
   'work-times': workTimes,

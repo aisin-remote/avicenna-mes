@@ -219,6 +219,13 @@ const MENU_MASTER_TIMPA: Partial<Record<MasterEntity, Partial<MenuDef>>> = {
   'part-processes': { label: 'Rute Proses per Part', href: '/master/part-processes/matriks' },
   // Pengaturan per proses — urusan PPIC/IT, jadi di menu Integrasi.
   'route-processes': { label: 'Rute Proses', group: 'Integrasi', sortOrder: 20 },
+  /*
+   * Daftar jenis prosesnya sendiri, satu tingkat di atas Rute Proses: yang ini
+   * menentukan proses APA SAJA yang ada, yang itu menentukan pabrik mana
+   * mengerjakan yang mana. Keduanya di Integrasi karena salah mengisi kelas
+   * hasil SAP membuat produksi mendarat di SLOC yang keliru.
+   */
+  'process-types': { label: 'Jenis Proses', group: 'Integrasi', sortOrder: 15 },
 };
 
 const MENU_MASTER: MenuDef[] = MASTER_ENTITIES.map((key, i) => ({
