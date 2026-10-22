@@ -1111,7 +1111,7 @@ export class ScanService {
           qtyPerBox: qtyPerKanban,
           unitPerKanban: qtyPerKanban,
           customerId: doc.customerId,
-          status: 'CREATED',
+          status: 'AVAILABLE',
         });
       }
     }

@@ -5,11 +5,12 @@ import {
   InvalidKanbanTransitionError,
   resolveQtyPerKanban,
   kanbanCountFor,
+  pelepasanKanban,
 } from './kanban';
 
 describe('nextKanbanStatus', () => {
   it('mengikuti alur normal produksi sampai kirim', () => {
-    expect(nextKanbanStatus('CREATED', 'PRODUCED')).toBe('PRODUCED');
+    expect(nextKanbanStatus('AVAILABLE', 'PRODUCED')).toBe('PRODUCED');
     expect(nextKanbanStatus('PRODUCED', 'STORED')).toBe('STORED');
     expect(nextKanbanStatus('STORED', 'PULLED')).toBe('PULLED');
     expect(nextKanbanStatus('PULLED', 'LOADED')).toBe('LOADED');
@@ -21,9 +22,55 @@ describe('nextKanbanStatus', () => {
   });
 
   it('menolak loncat status yang tidak masuk akal', () => {
-    expect(() => nextKanbanStatus('CREATED', 'DELIVERED')).toThrow(InvalidKanbanTransitionError);
-    expect(() => nextKanbanStatus('CREATED', 'LOADED')).toThrow(InvalidKanbanTransitionError);
-    expect(() => nextKanbanStatus('STORED', 'DELIVERED')).toThrow(InvalidKanbanTransitionError);
+    expect(() => nextKanbanStatus('AVAILABLE', 'DELIVERED')).toThrow(InvalidKanbanTransitionError);
+    expect(() => nextKanbanStatus('AVAILABLE', 'LOADED')).toThrow(InvalidKanbanTransitionError);
+    expect(() => nextKanbanStatus('AVAILABLE', 'RELEASED')).toThrow(InvalidKanbanTransitionError);
+  });
+
+  /*
+   * STORED -> DELIVERED dulu ditolak di sini. Dilonggarkan ketika pelepasan
+   * kartu dibangun: kartu customer direct pulling memang bisa naik truk tanpa
+   * pernah dipull, dan menolaknya berarti kartu yang jelas-jelas sudah pergi
+   * tidak pernah bisa ditutup catatannya.
+   *
+   * Yang tetap ditolak adalah kartu KOSONG yang loncat ke status akhir — itu
+   * barang yang tidak pernah ada.
+   */
+  it('kartu yang sudah berisi boleh ditutup walau tidak lewat LOADED', () => {
+    expect(nextKanbanStatus('STORED', 'DELIVERED')).toBe('DELIVERED');
+    expect(nextKanbanStatus('PRODUCED', 'DELIVERED')).toBe('DELIVERED');
+  });
+
+  it('pelepasan mengembalikan kartu ke keadaan siap pakai', () => {
+    expect(nextKanbanStatus('PULLED', 'RELEASED')).toBe('AVAILABLE');
+    expect(nextKanbanStatus('LOADED', 'RELEASED')).toBe('AVAILABLE');
+    expect(nextKanbanStatus('PRODUCED', 'RELEASED')).toBe('AVAILABLE');
+  });
+
+  describe('pelepasanKanban', () => {
+    it('kartu internal kembali ke peredaran dan menambah putaran', () => {
+      const p = pelepasanKanban('INTERNAL');
+      expect(p.status).toBe('AVAILABLE');
+      expect(p.event).toBe('RELEASED');
+      expect(p.hitungSiklus).toBe(true);
+    });
+
+    it('kartu customer ikut barangnya dan tidak menambah putaran', () => {
+      const p = pelepasanKanban('CUSTOMER');
+      expect(p.status).toBe('DELIVERED');
+      expect(p.event).toBe('DELIVERED');
+      expect(p.hitungSiklus).toBe(false);
+    });
+
+    /* Keputusannya harus sah menurut mesin status, bukan ditulis terpisah. */
+    it('hasilnya sah untuk setiap keadaan kartu yang sedang membawa barang', () => {
+      for (const dari of ['PRODUCED', 'STORED', 'PULLED', 'LOADED'] as const) {
+        for (const owner of ['INTERNAL', 'CUSTOMER'] as const) {
+          const p = pelepasanKanban(owner);
+          expect([dari, owner, nextKanbanStatus(dari, p.event)]).toEqual([dari, owner, p.status]);
+        }
+      }
+    });
   });
 
   it('memperlakukan DELIVERED dan CANCELLED sebagai status akhir', () => {

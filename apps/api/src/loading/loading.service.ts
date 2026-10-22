@@ -11,6 +11,8 @@ import {
   plants,
   kanbans,
   kanbanItems,
+  kanbanEvents,
+  deliveryKanbans,
   locations,
   lots,
   mutations,
@@ -19,6 +21,10 @@ import {
   users,
 } from '@avicenna/db';
 import { galatDuplikat } from '@avicenna/db';
+import { alias } from 'drizzle-orm/pg-core';
+
+/** Lokasi staging sebagai alias kedua dari TM_LOCATION. Lihat rincian() di bawah. */
+const lokasiStaging = alias(locations, 'staging');
 import {
   convertCustomerPartNumber,
   allocateFifo,
@@ -27,6 +33,7 @@ import {
   adaScanPerBox,
   MODE_LOADING_INSTRUKSI,
   bacaKanban,
+  pelepasanKanban,
   KanbanTidakTerbaca,
   DELIVERY_DAY_START_HOUR,
   productionDayWindow,
@@ -513,7 +520,16 @@ export class LoadingService {
             .from(scanEvents)
             .innerJoin(
               deliveries,
-              sql`${scanEvents.meta}->>'deliveryId' = ${deliveries.id}`,
+              /*
+               * Kolomnya dibandingkan sebagai TEKS di kedua sisi.
+               *
+               * `->>` mengembalikan text, sedangkan INT_ID bigint — dan
+               * Postgres tidak memaksa tipe seperti MySQL, jadi tanpa cast
+               * seluruh kueri gagal dengan "operator does not exist: text =
+               * bigint". Dua baris di bawah sudah membandingkan dengan String(),
+               * yang ini terlewat karena sisi kanannya kolom, bukan nilai.
+               */
+              sql`${scanEvents.meta}->>'deliveryId' = ${deliveries.id}::text`,
             )
             .where(
               and(
@@ -555,15 +571,29 @@ export class LoadingService {
          * satu kanban hilang dari catatan tanpa jejak apa pun. UPDATE ini
          * mengunci barisnya, jadi yang kedua menunggu dan menulis 7.
          *
-         * Urutan SET penting: MySQL menilai ekspresi dari kiri ke kanan, jadi
-         * actual_qty harus dihitung SEBELUM actual_kanban bertambah.
+         * ── Kenapa lewat .set(), bukan SQL mentah ──────────────────────────
+         *
+         * Sebelumnya UPDATE-nya ditulis tangan, dan di Postgres itu gagal:
+         * sisi kiri SET harus nama kolom POLOS, sedangkan Drizzle merender
+         * kolom dengan skema dan tabelnya — "logistics"."TT_DELIVERY_ITEM".
+         * MySQL menerimanya, Postgres menolak dengan "column logistics of
+         * relation TT_DELIVERY_ITEM does not exist". Builder-nya merender
+         * bentuk yang benar untuk kedua sisi.
+         *
+         * Sekalian hilang satu jebakan: catatan lama mengingatkan bahwa urutan
+         * SET penting karena MySQL menilai ekspresi dari kiri ke kanan. Di
+         * Postgres SELURUH ekspresi SET dinilai terhadap baris LAMA, jadi
+         * keduanya memakai nilai sebelum penambahan apa pun urutannya.
          */
-        await tx.execute(sql`
-          UPDATE ${deliveryLines}
-          SET ${kolomQty} = (${kolom} + 1) * ${deliveryLines.qtyPerKanban},
-              ${kolom} = ${kolom} + 1
-          WHERE ${deliveryLines.id} = ${match.lineId}
-        `);
+        const tambah = { kanban: sql`${kolom} + 1`, qty: sql`(${kolom} + 1) * ${deliveryLines.qtyPerKanban}` };
+        await tx
+          .update(deliveryLines)
+          .set(
+            phase === 'PULLING'
+              ? { pickedKanban: tambah.kanban, pickedQty: tambah.qty }
+              : { actualKanban: tambah.kanban, actualQty: tambah.qty },
+          )
+          .where(eq(deliveryLines.id, match.lineId));
 
         // Dibaca kembali di dalam transaksi yang sama: barisnya terkunci sampai
         // commit, jadi angka ini pasti hasil penambahan kita sendiri.
@@ -1006,6 +1036,171 @@ export class LoadingService {
    * Mutasi DELIVERY_OUT dibuat dari jumlah AKTUAL, bukan rencana — yang keluar
    * gudang adalah yang benar-benar dimuat.
    */
+  /**
+   * ─── MELEPAS KARTU YANG IKUT TRUK ─────────────────────────────────────────
+   *
+   * Dipanggil DI DALAM transaksi keberangkatan. Lihat pelepasanKanban() di
+   * @avicenna/domain untuk alasan kenapa saat berangkat, bukan saat scan.
+   *
+   * ── Kartu mana yang ikut ──────────────────────────────────────────────────
+   *
+   * Diturunkan dari scan muat yang MASIH AKTIF, dengan aturan yang sama persis
+   * dengan undoScan(): pembatalan bersifat LIFO per baris, jadi riwayat dibaca
+   * berurutan lalu yang terakhir dibuang tiap kali ada UNDO. Menyalin aturannya
+   * — alih-alih memakai ulang yang sudah ada — pernah menjadi sumber selisih di
+   * sistem lama, jadi di sini keduanya memakai bentuk yang sama.
+   *
+   * Satu scan bisa menyebut DUA kartu sekaligus: kartu internal kita dan kartu
+   * customer yang menempel di box yang sama. Keduanya diproses, masing-masing
+   * menurut pemiliknya — yang internal kembali, yang customer ikut pergi.
+   *
+   * Dokumen yang memang tidak memakai kartu (part discan tanpa kanban) tidak
+   * menghasilkan apa pun di sini, dan itu bukan kesalahan.
+   */
+  private async lepaskanKanban(
+    tx: Database,
+    opsi: { deliveryId: number; waktu: Date; principal?: Principal },
+  ): Promise<{ dilepas: number; ikutCustomer: number }> {
+    const riwayat = await tx
+      .select({
+        id: scanEvents.id,
+        partId: scanEvents.partId,
+        qty: scanEvents.qty,
+        meta: scanEvents.meta,
+      })
+      .from(scanEvents)
+      .where(
+        and(
+          eq(scanEvents.kind, 'DELIVERY'),
+          sql`${scanEvents.meta}->>'deliveryId' = ${String(opsi.deliveryId)}`,
+          sql`${scanEvents.meta}->>'phase' = 'LOADING'`,
+        ),
+      )
+      .orderBy(scanEvents.id);
+
+    type Baris = (typeof riwayat)[number];
+    type MetaScan = {
+      action?: string;
+      deliveryLineId?: number;
+      internalSerial?: string | null;
+      customerSerial?: string | null;
+    };
+
+    const aktifPerBaris = new Map<string, Baris[]>();
+    for (const e of riwayat) {
+      const meta = e.meta as MetaScan | null;
+      const kunci = String(meta?.deliveryLineId ?? '-');
+      const daftar = aktifPerBaris.get(kunci) ?? [];
+      if (meta?.action === 'UNDO') daftar.pop();
+      else if (meta?.action !== 'REJECTED') daftar.push(e);
+      aktifPerBaris.set(kunci, daftar);
+    }
+    const aktif = [...aktifPerBaris.values()].flat();
+    if (aktif.length === 0) return { dilepas: 0, ikutCustomer: 0 };
+
+    /*
+     * Seri saja tidak cukup mengenali kartu — seri yang sama bisa dipakai part
+     * yang berbeda (lihat TM_KANBAN_PART_SERIAL_UNIQUE). Karena itu pencarian
+     * selalu berpasangan dengan partId scan-nya.
+     */
+    const seri = new Set<string>();
+    for (const e of aktif) {
+      const meta = e.meta as MetaScan | null;
+      if (meta?.internalSerial) seri.add(meta.internalSerial);
+      if (meta?.customerSerial) seri.add(meta.customerSerial);
+    }
+    if (seri.size === 0) return { dilepas: 0, ikutCustomer: 0 };
+
+    const kartuTerdaftar = await tx
+      .select({
+        id: kanbans.id,
+        partId: kanbans.partId,
+        serialNumber: kanbans.serialNumber,
+        owner: kanbans.owner,
+        status: kanbans.status,
+        cycleCount: kanbans.cycleCount,
+      })
+      .from(kanbans)
+      .where(inArray(kanbans.serialNumber, [...seri]));
+    const perPartSeri = new Map(kartuTerdaftar.map((k) => [`${k.partId}|${k.serialNumber}`, k]));
+
+    let dilepas = 0;
+    let ikutCustomer = 0;
+    const sudahDiproses = new Set<number>();
+
+    for (const e of aktif) {
+      const meta = e.meta as MetaScan | null;
+      for (const s of [meta?.internalSerial, meta?.customerSerial]) {
+        if (!s || e.partId == null) continue;
+        const kartu = perPartSeri.get(`${e.partId}|${s}`);
+        /*
+         * Seri yang tidak terdaftar dilewati tanpa suara. Itu bukan kelalaian:
+         * sebagian customer memakai label yang memang bukan kartu kami, dan
+         * memaksanya menjadi kartu berarti membuat master palsu setiap truk.
+         */
+        if (!kartu || sudahDiproses.has(kartu.id)) continue;
+        sudahDiproses.add(kartu.id);
+
+        const keputusan = pelepasanKanban(kartu.owner === 'CUSTOMER' ? 'CUSTOMER' : 'INTERNAL');
+
+        const [isi] = await tx
+          .select({ n: count() })
+          .from(kanbanItems)
+          .where(eq(kanbanItems.kanbanId, kartu.id));
+        const jumlahUnit = Number(isi?.n ?? 0) || e.qty || 0;
+
+        await tx
+          .insert(deliveryKanbans)
+          .values({
+            deliveryId: opsi.deliveryId,
+            deliveryLineId: meta?.deliveryLineId ?? null,
+            kanbanId: kartu.id,
+            owner: kartu.owner,
+            qty: jumlahUnit,
+            releasedAt: keputusan.hitungSiklus ? opsi.waktu : null,
+          })
+          .onConflictDoNothing();
+
+        /*
+         * Isi kartu dihapus, riwayatnya tidak: TT_KANBAN_EVENT bersifat
+         * append-only dan menyimpan jumlah unitnya, sama seperti yang
+         * dilakukan pembatalan lewat NG.
+         */
+        await tx.delete(kanbanItems).where(eq(kanbanItems.kanbanId, kartu.id));
+
+        await tx
+          .update(kanbans)
+          .set({
+            status: keputusan.status,
+            ...(keputusan.hitungSiklus
+              ? { cycleCount: kartu.cycleCount + 1, releasedAt: opsi.waktu }
+              : { deliveredAt: opsi.waktu }),
+          })
+          .where(eq(kanbans.id, kartu.id));
+
+        await tx.insert(kanbanEvents).values({
+          kanbanId: kartu.id,
+          type: keputusan.event,
+          qty: jumlahUnit,
+          userId: opsi.principal?.kind === 'user' ? opsi.principal.sub : null,
+          deviceId: opsi.principal?.kind === 'device' ? opsi.principal.sub : null,
+          occurredAt: opsi.waktu,
+          meta: {
+            deliveryId: opsi.deliveryId,
+            deliveryLineId: meta?.deliveryLineId ?? null,
+            dari: kartu.status,
+            alasan: keputusan.alasan,
+          },
+        });
+
+        if (keputusan.hitungSiklus) dilepas += 1;
+        else ikutCustomer += 1;
+      }
+    }
+
+    return { dilepas, ikutCustomer };
+  }
+
   async ship(id: number, principal?: Principal) {
     const docRows = await this.db.select().from(deliveries).where(eq(deliveries.id, id)).limit(1);
     const doc = docRows[0];
@@ -1124,17 +1319,35 @@ export class LoadingService {
         }
       }
 
+      /*
+       * Kartu dilepas DI DALAM transaksi yang sama dengan keberangkatan.
+       *
+       * Kalau dipisah, ada celah tempat truk sudah tercatat berangkat sementara
+       * kartunya masih terikat dokumen itu — dan kartu yang tidak terlepas
+       * tidak akan pernah bisa dipakai lagi di lini.
+       */
+      const kartu = await this.lepaskanKanban(tx as Database, {
+        deliveryId: id,
+        waktu: now,
+        principal,
+      });
+
       await tx
         .update(deliveries)
         .set({ status: 'SHIPPED', truckStatus: 'DEPARTED', departedAt: now })
         .where(eq(deliveries.id, id));
 
-      this.logger.log(`loading list ${doc.documentNumber} berangkat: ${loaded.length} baris`);
+      this.logger.log(
+        `loading list ${doc.documentNumber} berangkat: ${loaded.length} baris, ` +
+          `${kartu.dilepas} kartu dilepas, ${kartu.ikutCustomer} ikut customer`,
+      );
       return {
         id,
         documentNumber: doc.documentNumber,
         shippedLines: loaded.length,
         shortages,
+        releasedKanban: kartu.dilepas,
+        customerKanban: kartu.ikutCustomer,
       };
     });
   }
@@ -1406,8 +1619,8 @@ export class LoadingService {
         locationName: locations.name,
         locationCode: locations.code,
         stagingLocationId: deliveries.stagingLocationId,
-        stagingLocationName: sql<string | null>`staging.CHR_NAME`,
-        stagingLocationCode: sql<string | null>`staging.CHR_CODE`,
+        stagingLocationName: lokasiStaging.name,
+        stagingLocationCode: lokasiStaging.code,
         status: deliveries.status,
         truckStatus: deliveries.truckStatus,
         truckNumber: deliveries.truckNumber,
@@ -1431,10 +1644,19 @@ export class LoadingService {
           eq(sapOutbox.docType, 'DELIVERY'),
         ),
       )
-      // Alias tersendiri: tabel lokasi dipakai dua kali dalam query yang sama.
-      // Nama tabelnya ditulis langsung di sini — satu-satunya tempat begitu —
-      // karena Drizzle belum bisa menjadikan tabel yang sama dua alias berbeda.
-      .leftJoin(sql`TM_LOCATION AS staging`, sql`staging.INT_ID = ${deliveries.stagingLocationId}`)
+      /*
+       * Alias tersendiri: tabel lokasi dipakai DUA KALI dalam query ini —
+       * sekali sebagai SLOC asal, sekali sebagai staging.
+       *
+       * Sebelumnya ditulis sebagai SQL mentah `TM_LOCATION AS staging`, dan itu
+       * salah dua kali di Postgres: nama tabelnya tidak dikutip (sehingga dicari
+       * sebagai `tm_location` huruf kecil) dan tidak disebut skemanya. Seluruh
+       * layar rincian loading list gagal dengan "relation does not exist", dan
+       * baru ketahuan saat pemeriksaan pengiriman dijalankan. alias() milik
+       * Drizzle melakukan hal yang sama dengan benar — catatan lama yang
+       * mengatakan Drizzle tidak bisa sudah tidak berlaku.
+       */
+      .leftJoin(lokasiStaging, eq(lokasiStaging.id, deliveries.stagingLocationId))
       .where(eq(deliveries.id, id))
       .limit(1);
 

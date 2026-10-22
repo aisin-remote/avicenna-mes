@@ -7,6 +7,8 @@ import {
   eq,
   and,
   sql,
+  count,
+  inArray,
   parts,
   plants,
   customers,
@@ -15,6 +17,7 @@ import {
   deliveries,
   kanbans,
   kanbanItems,
+  deliveryKanbans,
   mutations,
   sapOutbox,
   deliverySyncs,
@@ -235,6 +238,52 @@ async function main() {
     service.undoScan(doc.id, first.lineId!, 'LOADING', undefined, 'Sudah berangkat'),
     /ditutup/,
   );
+
+  /*
+   * ── Kartu yang ikut truk harus kembali ke peredaran ───────────────────────
+   *
+   * Tanpa pelepasan ini kartu sekali pakai: isinya tidak pernah dikosongkan,
+   * sehingga lini finish good menolaknya sebagai "kartu penuh" pada putaran
+   * berikutnya. Yang diperiksa bukan hanya statusnya, tetapi juga bahwa kartu
+   * yang TIDAK ikut truk tidak ikut terlepas — melepas kartu yang masih
+   * memegang barang berarti barang itu hilang dari catatan.
+   */
+  const kartuSesudah = await db
+    .select({
+      id: kanbans.id,
+      serial: kanbans.serialNumber,
+      status: kanbans.status,
+      cycleCount: kanbans.cycleCount,
+      releasedAt: kanbans.releasedAt,
+    })
+    .from(kanbans)
+    .where(inArray(kanbans.serialNumber, serials));
+  const ikutTruk = kartuSesudah.filter((k) => k.serial !== serials[2]);
+  assert.equal(ikutTruk.length, 2, 'Dua kartu ikut truk');
+  for (const k of ikutTruk) {
+    assert.equal(k.status, 'AVAILABLE', `Kartu ${k.serial} kembali ke peredaran`);
+    assert.equal(k.cycleCount, 1, `Putaran kartu ${k.serial} bertambah satu`);
+    assert(k.releasedAt, `Waktu lepas kartu ${k.serial} tercatat`);
+    const [isi] = await db
+      .select({ n: count() })
+      .from(kanbanItems)
+      .where(eq(kanbanItems.kanbanId, k.id));
+    assert.equal(Number(isi?.n ?? 0), 0, `Kartu ${k.serial} dikosongkan`);
+  }
+  // Kartu yang scan-nya dibatalkan TIDAK ikut terlepas.
+  const batal = kartuSesudah.find((k) => k.serial === serials[2]);
+  assert.equal(batal?.cycleCount, 0, 'Kartu yang diralat tidak ikut terlepas');
+  assert.equal(batal?.status, 'PRODUCED', 'Kartu yang diralat tetap memegang barang');
+
+  const penghubung = await db
+    .select({ kanbanId: deliveryKanbans.kanbanId, owner: deliveryKanbans.owner })
+    .from(deliveryKanbans)
+    .where(eq(deliveryKanbans.deliveryId, doc.id));
+  assert.equal(penghubung.length, 2, 'Dua kartu tercatat ikut pengiriman ini');
+  assert(
+    penghubung.every((p) => p.owner === 'INTERNAL'),
+    'Pemilik kartu disalin ke tabel penghubung',
+  );
   const outbox = new SapOutboxService(db);
   await outbox['buildAndInsert']('TT_DELIVERY', doc.id);
   await outbox['buildAndInsert']('TT_DELIVERY', doc.id);
@@ -302,7 +351,7 @@ async function main() {
     .where(eq(deliverySyncs.operationalDate, date));
   console.log(`Delivery integration checks passed: ${number}, id=${doc.id}, date=${date}`);
   console.log(
-    'Tested: import/item identity, retry/duplicate/undo, mismatch/over, close concurrency, GI simulation, return/audit.',
+    'Tested: import/item identity, retry/duplicate/undo, mismatch/over, close concurrency, GI simulation, return/audit, kanban release.',
   );
 }
 main()

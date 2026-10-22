@@ -83,6 +83,47 @@ negatif, sebesar **jumlah aktual** hasil scan — bukan rencana.
 - Sisa yang tidak tertampung lot mana pun tetap dicatat tanpa lot, dengan
   catatan yang menyebutkannya.
 
+## Pelepasan kartu kanban
+
+Pada saat yang sama, kartu yang ikut truk **dilepas**: isinya dikosongkan dan
+kartunya kembali ke peredaran. Inilah yang membuat kartu berputar.
+
+Tanpa langkah ini kartu sekali pakai. `TT_KANBAN_ITEM` tidak pernah dibersihkan
+setelah barangnya terkirim, sehingga lini finish good menolak kartu yang sama
+sebagai **kartu penuh** pada putaran berikutnya — dan satu-satunya jalan keluar
+adalah mencetak kartu baru terus-menerus.
+
+| Pemilik kartu | Status sesudahnya | Putaran | Alasan |
+| --- | --- | --- | --- |
+| `INTERNAL` | `AVAILABLE` | +1 | kartu kita, kembali ke lini |
+| `CUSTOMER` | `DELIVERED` | tetap | ikut barangnya, tidak pernah kembali |
+
+Keduanya dikosongkan isinya — barangnya memang sudah pergi, dan kartu yang
+masih "berisi" akan terbaca seolah barangnya masih di sini.
+
+### Saat berangkat, bukan saat kartunya discan
+
+Scan muat masih bisa dibatalkan operator; keberangkatan tidak. Melepas kartu
+pada saat scan berarti setiap pembatalan harus mengembalikan isi kartu dan
+mengurangi hitungan putarannya — koreksi yang mudah meleset, dan kalau meleset
+kartunya hilang dari peredaran tanpa ada yang tahu.
+
+Kartu mana yang ikut diturunkan dari scan muat yang **masih aktif**, dengan
+aturan yang sama persis dengan `undoScan()`: pembatalan bersifat LIFO per baris.
+Kartu yang scan-nya diralat karena itu tidak ikut terlepas, dan tetap memegang
+barangnya.
+
+### Yang dicatat
+
+`TT_DELIVERY_KANBAN` — satu baris per kartu yang benar-benar naik truk, beserta
+pemiliknya saat itu dan jumlah unitnya. Sebelum ini hubungan kartu dengan
+pengiriman hanya tersimpan sebagai nomor seri di dalam `CHR_META` sebuah scan:
+cukup untuk menelusuri satu kejadian, tidak untuk menjawab "kartu seri 1456
+terakhir ikut pengiriman mana, dan sudah berapa kali berputar".
+
+Di kartunya sendiri bertambah `INT_CYCLE_COUNT` dan `DTM_RELEASED_AT`, plus
+satu kejadian `RELEASED` di `TT_KANBAN_EVENT` yang append-only.
+
 ## Ketahanan di lapangan
 
 Dua masalah yang khas terjadi di jaringan pabrik, dan cara menanganinya:
@@ -128,3 +169,11 @@ sebelum barangnya siap dimuat.
 - **Impor rencana.** Penerimaan barang sudah bisa tempel dari Excel
   (`parseImportRows`). Loading list belum — mekanismenya sama dan bisa dipakai
   ulang.
+- **Layar peredaran kartu.** `INT_CYCLE_COUNT` dan `TT_DELIVERY_KANBAN` sudah
+  terisi, tetapi belum ada layar yang membacanya. Dua pertanyaan yang kini bisa
+  dijawab datanya dan masih dihitung manual: berapa kartu yang benar-benar
+  beredar per part, dan kartu mana yang sudah terlalu sering dipakai sehingga
+  cetakannya pudar.
+- **Kartu yang tidak pernah kembali.** Kartu internal yang hilang di jalan tetap
+  berstatus `PULLED` selamanya dan tidak akan pernah dilepas. Belum ada cara
+  menyatakannya hilang selain membatalkan kartunya.

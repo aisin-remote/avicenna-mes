@@ -504,7 +504,7 @@ export class NgService {
         // Kartunya sendiri tetap sah dan kembali ke lini untuk diisi ulang.
         await tx
           .update(kanbans)
-          .set({ status: 'CREATED', producedAt: null })
+          .set({ status: 'AVAILABLE', producedAt: null })
           .where(eq(kanbans.id, k.kanban.id));
       }
     });

@@ -36,6 +36,13 @@
       "when": 1792573091716,
       "tag": "0004_glorious_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792630206937,
+      "tag": "0005_solid_doorman",
+      "breakpoints": true
     }
   ]
 }
