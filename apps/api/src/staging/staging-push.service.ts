@@ -48,6 +48,7 @@ interface PayloadDokumen {
   lineCode?: string | null;
   backNumber?: string | null;
   partName?: string | null;
+  productionVersion?: string | null;
   serialNumber?: string | null;
   npk?: string | null;
   lines: BarisPayload[];
@@ -272,6 +273,19 @@ export class StagingPushService {
       [C.partNo]: hasil.partNumber,
       [C.backNo]: wajibMuat(payload.backNumber ?? null, 4, 'Back number'),
       [C.partName]: potong(payload.partName ?? null, 40),
+      /*
+       * CHR_PV — Production Version material.
+       *
+       * Pada contoh TM_PROCESS_PARTS dari AII, ada part yang baris SATU-SATUNYA
+       * bernilai 0002 atau 0003. Nomor urut langkah mustahil berperilaku begitu
+       * — sebuah part selalu punya langkah pertama. Jadi kolom ini Production
+       * Version, bukan urutan proses seperti yang sempat kita catat.
+       *
+       * Kosong bila part-nya belum punya versi. Dibiarkan kosong, bukan diisi
+       * '0001': menebak versi berarti hasil produksi dibukukan terhadap
+       * pasangan BOM dan routing yang belum tentu dipakai.
+       */
+      [C.pv]: potong(payload.productionVersion ?? null, 4),
       [C.uom]: potong(hasil.uom ?? null, 3),
       [C.qtyOk]: hasil.qtyAbsolute,
       [C.qtyTotal]: hasil.qtyAbsolute,
@@ -306,8 +320,11 @@ export class StagingPushService {
       [C.tanggalEntry]: keTanggalStaging(sekarang),
       [C.jamEntry]: keJamStaging(sekarang),
       [C.user]: 'AVICENNA',
-      [C.status]: FLAG.baru,
-      [C.upload]: FLAG.baru,
+      // Tanpa ini barisnya kemungkinan besar dilewati penjemput SAP.
+      [C.validate]: FLAG.validasi,
+      // CHR_STATUS dibiarkan kosong: itulah keadaan baris yang belum diproses
+      // pada data AII. CHR_UPLOAD diisi '-' mengikuti baris mereka yang sama.
+      [C.upload]: FLAG.belum,
     };
     const kolom = Object.keys(nilai);
     const tabel = tabelAman(PRODUCTION_RESULT.tabel);
@@ -399,6 +416,9 @@ export class StagingPushService {
       keterangan: potong(`${ref} ${row.sourceTable}#${row.sourceId}`, 25),
       nomorProduksi: await this.nomorProduksiTerkait(row),
       user: potong('AVICENNA', 12),
+      // Tanpa ini barisnya kemungkinan besar dilewati penjemput SAP —
+      // lihat FLAG.validasi di staging-tables.ts.
+      validate: FLAG.validasi,
       tanggalEntry: keTanggalStaging(sekarang),
       jamEntry: keJamStaging(sekarang),
     };
@@ -457,7 +477,14 @@ export class StagingPushService {
           movementTypeBaris: potong(b.movementType ?? row.movementType, 3),
           tanggalEntry: keTanggalStaging(sekarang),
           jamEntry: keJamStaging(sekarang),
-          status: FLAG.baru,
+          /*
+           * CHR_STATUS sengaja TIDAK diisi.
+           *
+           * Pada data AII, baris yang belum diproses CHR_STATUS-nya NULL —
+           * bukan 'N'. Kalau penjemput di sisi SAP menyaring dengan
+           * `CHR_STATUS IS NULL`, baris bernilai 'N' tidak akan pernah
+           * terjemput, dan tidak ada galat apa pun yang muncul.
+           */
         };
 
         const req = tx.request();

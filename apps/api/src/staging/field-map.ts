@@ -59,6 +59,13 @@ export const PETA_GM_KEPALA: PetaField[] = [
       'dikonfirmasi, jadi dalam keadaan normal selalu terisi.' },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.user, field: 'user', arah: 'tulis',
     asal: { jenis: 'tetap', nilai: 'AVICENNA' } },
+  { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.validate, field: 'validate', arah: 'tulis',
+    asal: { jenis: 'tetap', nilai: 'X' },
+    catatan:
+      'Penanda SIAP DIJEMPUT. Pada contoh data AII, setiap baris CHR_VALIDATE=X punya ' +
+      'CHR_MATDOC dan setiap baris Y tidak — termasuk baris Y yang masuk pada menit yang ' +
+      'sama dengan baris X yang kemudian terproses. Tanpa kolom ini barisnya kemungkinan ' +
+      'besar dilewati, dan diamnya sempurna: dokumen menggantung selamanya sebagai SENT.' },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.tanggalEntry, field: 'tanggalEntry', arah: 'tulis',
     asal: { jenis: 'turunan', rumus: 'jam sekarang → char(8) YYYYMMDD' } },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.jamEntry, field: 'jamEntry', arah: 'tulis',

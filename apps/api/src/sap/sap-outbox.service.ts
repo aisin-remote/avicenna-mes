@@ -218,6 +218,7 @@ export class SapOutboxService {
               lineCode: lines.code,
               backNumber: parts.backNumber,
               partName: parts.name,
+              productionVersion: parts.productionVersion,
               serialNumber: scanEvents.serialNumber,
               npk: users.npk,
             })
@@ -568,6 +569,14 @@ export class SapOutboxService {
           lineCode: scan?.lineCode ?? null,
           backNumber: scan?.backNumber ?? null,
           partName: scan?.partName ?? null,
+          /*
+           * Production Version material, untuk CHR_PV di TT_PRODUCTION_RESULT.
+           *
+           * Disalin ke payload — bukan dibaca ulang saat mendorong — supaya
+           * dokumen yang tertahan berminggu-minggu tetap menyebut versi yang
+           * berlaku SAAT BARANGNYA DIBUAT, bukan versi hari ini.
+           */
+          productionVersion: scan?.productionVersion ?? null,
           serialNumber: scan?.serialNumber ?? null,
           npk: scan?.npk ?? null,
           lines: barisKirim,

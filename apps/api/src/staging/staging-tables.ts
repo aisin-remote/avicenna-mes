@@ -114,6 +114,8 @@ export const GOODS_MOVEMENT = {
     user: 'CHR_USER',
     npk: 'CHR_NPK',
     ip: 'CHR_IP',
+    /** Penanda siap dijemput SAP. Tanpa ini barisnya dilewati — lihat FLAG.validasi. */
+    validate: 'CHR_VALIDATE',
     tanggalEntry: 'CHR_DATE_ENTRY',
     jamEntry: 'CHR_TIME_ENTRY',
   },
@@ -180,6 +182,8 @@ export const PRODUCTION_RESULT = {
     tanggalEntry: 'CHR_DATE_ENTRY',
     jamEntry: 'CHR_TIME_ENTRY',
     user: 'CHR_USER',
+    /** Penanda siap dijemput SAP. Tanpa ini barisnya dilewati — lihat FLAG.validasi. */
+    validate: 'CHR_VALIDATE',
     status: 'CHR_STATUS',
     upload: 'CHR_UPLOAD',
     pesan: 'CHR_MESSAGE',
@@ -312,10 +316,41 @@ export const PARTS_SLOC = {
  * pernah diproses. Salah menebaknya membuat dokumen yang sebenarnya sudah
  * selesai terlihat menggantung selamanya, dan tidak ada yang akan menyadarinya.
  */
+/**
+ * Nilai flag, dicocokkan dengan data SAP AII sungguhan (30 September 2026).
+ *
+ *   berhasil  CHR_STATUS = 'S', CHR_MESSAGE = 'Success', CHR_MATDOC terisi
+ *   belum     CHR_UPLOAD = '-' pada baris yang belum diproses
+ *   validasi  CHR_VALIDATE = 'X' — lihat catatan di bawah
+ *
+ * `baru` tidak lagi ditulis ke CHR_STATUS. Pada data AII, baris yang belum
+ * diproses CHR_STATUS-nya NULL, bukan 'N'. Kalau program penjemput di sisi SAP
+ * menyaring dengan `CHR_STATUS IS NULL`, baris kita yang bernilai 'N' tidak
+ * akan pernah terjemput — dan diamnya sempurna: barisnya ada di staging,
+ * statusnya tidak pernah berubah, dan di layar pemantauan ia menggantung
+ * selamanya sebagai SENT. Nilainya dipertahankan di sini hanya untuk membaca
+ * data lama.
+ *
+ * `gagal` masih DUGAAN: contoh yang diberikan AII hanya memuat baris yang
+ * berhasil, jadi tidak ada satu pun nilai galat untuk dibaca.
+ */
 export const FLAG = {
   baru: env('STAGING_FLAG_NEW', 'N'),
+  belum: env('STAGING_FLAG_PENDING', '-'),
   berhasil: env('STAGING_FLAG_OK', 'S'),
   gagal: env('STAGING_FLAG_ERROR', 'E'),
+  /**
+   * CHR_VALIDATE — penanda bahwa baris ini SIAP DIJEMPUT SAP.
+   *
+   * Pada contoh TT_PRODUCTION_RESULT dari AII, korelasinya sempurna: setiap
+   * baris 'X' punya CHR_MATDOC, setiap baris 'Y' tidak punya — termasuk baris
+   * 'Y' yang masuk pada menit yang sama dengan baris 'X' yang kemudian
+   * terproses. Jadi yang membedakan bukan waktunya, melainkan flag ini.
+   *
+   * Kita tidak punya langkah validasi terpisah seperti AII, jadi barisnya
+   * ditulis langsung sebagai 'X'.
+   */
+  validasi: env('STAGING_FLAG_VALIDATE', 'X'),
 } as const;
 
 /**

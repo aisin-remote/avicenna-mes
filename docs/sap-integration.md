@@ -718,10 +718,9 @@ diminta, bukan dirancang ulang: pemetaan field, nilai flag status, isi
 
 ## Yang masih terbuka
 
-- **Movement type SAP** untuk tiap jenis mutasi. Dugaan sementara sudah
-  dituliskan di `packages/domain/src/sap-movement.ts` — 101 (GR), 311
-  (transfer antar SLOC), 601 (pengiriman), 309 (penyesuaian). **Angka-angka itu
-  BELUM dikonfirmasi tim SAP**, kecuali 261 yang disebut blueprint sebagai
+- **Movement type SAP** untuk tiap jenis mutasi. **311 sudah TERBUKTI** dari
+  data AII — lihat bagian 23 Oktober. Yang belum: 101 (GR), 601 (pengiriman),
+  309 (penyesuaian). Angka-angka itu **BELUM dikonfirmasi tim SAP**, kecuali 261 yang disebut blueprint sebagai
   movement konsumsi komponen — dan itu pun diposting SAP sendiri lewat
   backflush, bukan oleh sistem ini. Angka 551 untuk scrap sudah DIBUANG, bukan
   sekadar belum dikonfirmasi: blueprint menyebut barang NG masuk ke SLOC reject,
@@ -742,9 +741,17 @@ diminta, bukan dirancang ulang: pemetaan field, nilai flag status, isi
   menahan dokumen dobel saat jaringan tersendat, bukan logika di sisi kita.
 - **Pemetaan kolom master** untuk `SUMBER_MASTER`, supaya arah tarik bisa
   dinyalakan.
-- **Arti `CHR_PV`** — Production Version atau nomor urut langkah? Lihat bagian
-  tersendiri di atas. Kita membiarkannya kosong saat mendorong hasil produksi,
-  dan perlu dipastikan apakah SAP menerima itu.
+- ~~**Arti `CHR_PV`**~~ — TERJAWAB data AII: Production Version. Kini diisi dari
+  `TM_PARTS.CHR_PRODUCTION_VERSION`.
+- **Isi `CHR_TYPE_TRANS`.** AII memakai `SUBC` di kepala dan `FGDL` di baris;
+  kita menulis jenis dokumen kita sendiri (`TRAN`, `PROD`). Nilai apa yang
+  diharapkan program penjemput?
+- **Nilai flag GAGAL.** Contoh dari AII tidak memuat satu pun baris yang
+  ditolak SAP, jadi `STAGING_FLAG_ERROR` masih dugaan.
+- **Lewat mana NG sampai ke SAP di AII?** Keenam kolom NG di
+  `TT_PRODUCTION_RESULT` bernilai 0 pada seluruh contoh.
+- **Menarik Production Storage Location** dari `TM_PROCESS_PARTS.CHR_SLOC_TO`,
+  supaya SLOC keluaran rute kita tidak lagi perlu dicocokkan dengan tangan.
 - **Sumber Production Version.** Blueprint menyebut SAP pemiliknya dan akan
   mendorongnya ke sistem ini; sampai antarmukanya ada, versinya diketik orang
   di master Part.
@@ -941,6 +948,131 @@ Dua akibat langsungnya:
    `STAGING_FLAG_*` harus dikonfirmasi tim SAP sebelum pendorongan dinyalakan.
 
 ---
+
+## Data SAP AII sungguhan, 23 Oktober 2026
+
+Handika mengirim isi lima tabel staging dari sistem AII yang berjalan — plant
+600, transaksi 30 September 2026. Ini pertama kalinya kita melihat BARIS, bukan
+hanya struktur. Yang berikut bukan lagi dugaan.
+
+### Nilai flag, akhirnya pasti
+
+| Kolom | Berhasil | Belum diproses |
+| --- | --- | --- |
+| `CHR_STATUS` | `S` | **NULL** |
+| `CHR_MESSAGE` | `Success` (goods movement), kosong (produksi) | NULL |
+| `CHR_MATDOC` | nomor dokumen material 10 digit | NULL |
+| `CHR_UPLOAD` | `X` (produksi) · `1` (goods movement) | `-` |
+| `CHR_PICK_STATUS` | `S` | — |
+
+Tebakan `S` untuk berhasil **benar**. Tebakan `N` untuk baris baru **salah**:
+baris yang belum diproses CHR_STATUS-nya NULL. Kita tidak lagi menulis `N` ke
+sana — kalau penjemput di sisi SAP menyaring dengan `CHR_STATUS IS NULL`, baris
+bernilai `N` tidak akan pernah terjemput, dan diamnya sempurna.
+
+Nilai GAGAL masih tidak diketahui: contohnya hanya memuat baris yang berhasil.
+
+### `CHR_VALIDATE` — yang paling menentukan, dan selama ini tidak kita tulis
+
+Pada 52 baris `TT_PRODUCTION_RESULT`, korelasinya sempurna:
+
+```
+CHR_VALIDATE = X  →  CHR_UPLOAD = X, CHR_STATUS = S, CHR_MATDOC terisi
+CHR_VALIDATE = Y  →  CHR_UPLOAD = -, CHR_STATUS NULL, tanpa dokumen material
+```
+
+Dan ini bukan soal waktu: baris `Y` yang masuk pukul 06:24:19 tetap kosong,
+sementara baris `X` yang masuk pukul 06:24:41 terproses pada batch 06:30:07
+yang sama. **Yang membedakan flag-nya, bukan urutannya.**
+
+Seluruh baris `TT_GOODS_MOVEMENT_H` pun bernilai `X`.
+
+Kita **tidak pernah menulis kolom ini**. Kalau ia memang penyaring penjemput,
+setiap dokumen yang kita dorong akan duduk di staging tanpa pernah disentuh —
+dan di layar pemantauan terlihat sebagai `SENT` selamanya, sebab `SENT` memang
+berarti "sudah di staging, menunggu SAP". Sekarang ditulis `X`.
+
+Masih mungkin ia sekadar keadaan internal aplikasi AII yang kebetulan selalu
+sejalan. Tetapi kita tidak punya langkah validasi terpisah, jadi menulis `X`
+benar dalam kedua tafsir.
+
+### `CHR_PV` adalah Production Version, bukan urutan langkah
+
+Catatan 5 Oktober menyebutnya "urutan langkah (0001, 0002, …)". Data
+membantahnya: ada part yang baris SATU-SATUNYA bernilai `0002`
+(`41133111050B0`) atau `0003` (`41134012260`). Nomor urut langkah mustahil
+berperilaku begitu — sebuah part selalu punya langkah pertama.
+
+Artinya `TM_PROCESS_PARTS` bukan tabel rute berisi satu baris per langkah,
+melainkan **master Production Version**: satu baris per (part, versi), membawa
+work center, SLOC keluaran, cycle time, dan lot size untuk versi itu. Persis
+pengertian Production Version di SAP — pasangan BOM dan Rate Routing.
+
+Dua akibat langsung:
+
+- `TT_PRODUCTION_RESULT.CHR_PV` kini kita isi dari
+  `TM_PARTS.CHR_PRODUCTION_VERSION`. Kosong bila part-nya belum punya versi —
+  **tidak** diisi `0001`, sebab menebak versi berarti hasil produksi dibukukan
+  terhadap pasangan BOM dan routing yang belum tentu dipakai.
+- `TM_PROCESS_PARTS.CHR_SLOC_TO` adalah **Production Storage Location** per
+  versi. Pertanyaan "SLOC mana yang dipakai SAP saat GR" — yang di blueprint
+  hanya muncul sebagai field MRP 2 nomor 11 — ternyata bisa dibaca dari staging.
+  Belum kita tarik; lihat daftar terbuka.
+
+### Movement type dan jenis transaksi
+
+| Nilai | Dipakai untuk |
+| --- | --- |
+| `311` | perpindahan antar SLOC — `PP02→PP04`, `PP03→PP04`, `WH00→PP04` |
+| `541` | kirim ke subkontraktor |
+| `542` | pembatalan kiriman subkontraktor |
+
+Tebakan `311` untuk transfer antar SLOC **benar**. `CHR_TYPE_TRANS` berisi
+`SUBC` di kepala dan `CHR_TYPE_TRANS_L` berisi `FGDL` di baris — keduanya
+kosakata SAP/AII, sedangkan kita menulis jenis dokumen kita sendiri (`TRAN`,
+`PROD`). Itu masuk daftar pertanyaan: nilai apa yang mereka harapkan.
+
+`INT_TOTAL_QTY` selalu positif — arah dibawa movement type, seperti dugaan kita.
+
+### Yang ternyata sudah benar
+
+- **Qty produksi.** Pada SELURUH 52 baris, `INT_ACTUAL` = `INT_QTY_OK` =
+  `INT_TOTAL_QTY`. Perilaku kita sama.
+- **NG.** Keenam kolom NG (`INT_NG_PRC`, `INT_NG_BRKNTEST`, `INT_NG_SETUP`,
+  `INT_NG_TRIAL`, `INT_NG_OTHERS`, `INT_TOTAL_NG`) bernilai 0 di semua baris.
+  Jadi **AII pun tidak melaporkan NG lewat tabel ini**, dan nilai 0 kita bukan
+  kekurangan melainkan sama dengan sistem yang berjalan. Pertanyaannya berubah:
+  lewat mana NG sampai ke SAP di AII?
+- **SLOC AII**: `WH00`, `PP01`, `PP02`, `PP03`, `PP04` — persis kode lama kita,
+  yang memang disalin dari sana. Blueprint menggantinya untuk AIIA.
+
+### Yang ternyata tidak terpakai
+
+`INT_FLG_METHODS`, `INT_IS_SCAN_CUST_KANBAN`, `INT_CYCLE_TIME`, `INT_MP`
+bernilai 0 di seluruh baris; `CHR_LOTSIZE`, `CHR_STDDAY`, `CHR_FLAG_ACTIVE`
+seluruhnya NULL. Jadi legenda `INT_FLG_METHODS` yang kita tunggu kemungkinan
+besar tidak pernah ada isinya — metode scan tidak bisa ditarik dari SAP, dan
+master kita sendiri yang memegangnya.
+
+### Work center
+
+`TM_PROCESS` AII memakai `CHR_PERSON_RESPONSIBLE` berupa ANGKA (`011`–`014`),
+sedangkan blueprint AIIA memakai huruf (`INJ`, `PTG`, `ASY`, `DCT`, `MAC`,
+`MNT`, `INS`, `VAC`, `ANT`). Kode work center 6–7 karakter dengan awalan dua
+huruf: `AS`/`SA` assembly, `WE` welding, `PR` press, `PK` packing, `MA`, `BD`,
+`RF`. `CHR_AREA` berbentuk `CC-001`, `ASWE-002`, `STP-003`.
+
+Dua baris cacat yang perlu diingat saat menarik: `ASSR01` punya `CHR_AREA`
+berisi kode work center (`PK0002`), dan `ASPD01` area-nya kosong. Penarik tidak
+boleh menganggap area selalu berbentuk `XX-999`.
+
+### Satu hal yang perlu ditanyakan untuk AIIA
+
+Di AII, `311` dipakai juga untuk **pulling barang jadi ke PP04** (staging
+sebelum truk) dengan `CHR_TYPE_TRANS_L = FGDL`. Daftar SLOC AIIA di blueprint
+tidak punya padanan PP04 — hanya WH/WP/FG/RE. Jadi entah langkah itu tidak ada
+di AIIA, entah SLOC staging akan ditambahkan. Sampai jelas, dokumen pulling
+`FG→ST` kita tetap dilewati dengan sebabnya tertulis.
 
 ## Pembacaan ulang struktur staging, 5 Oktober 2026
 
