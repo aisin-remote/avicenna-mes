@@ -39,3 +39,4 @@ export {
   min,
 } from 'drizzle-orm';
 export { periksaMigrasi, cariFolderMigrasi, pesanPeriksaMigrasi, type HasilPeriksaMigrasi } from './migration-check';
+export * from './katalog-proses';

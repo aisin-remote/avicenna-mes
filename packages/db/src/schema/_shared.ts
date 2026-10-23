@@ -122,46 +122,15 @@ export const daftarNilai = (nama: string, kolom: AnyPgColumn, nilai: readonly st
     sql`${kolom} IN (${sql.raw(nilai.map((v) => `'${v.replace(/'/g, "''")}'`).join(', '))})` as SQL,
   );
 
-/**
- * Jenis proses produksi.
- *
- * Diambil dari rute nyata part di AIIA, bukan dikarang. Dua alur yang berbeda
- * sepenuhnya berjalan di pabrik yang berbeda:
- *
- *   UNIT  MELTING -> CASTING -> MACHINING -> ASSEMBLING_UNIT -> DELIVERY
- *   BODY  INJECTION -> PAINTING -> ASSEMBLING_BODY -> DELIVERY
- *
- * Casting dan machining masing-masing punya lini WIP dan lini FG yang TERPISAH
- * secara fisik — lihat FINISH_GOOD_PROCESSES di bawah.
- *
- * ── Kenapa ASSEMBLING dipecah dua ───────────────────────────────────────────
- *
- * Di tabel rute AIIA, "Assembling" muncul sebagai DUA kolom terpisah: satu
- * setelah Machining di alur UNIT, satu setelah Painting di alur BODY. Keduanya
- * proses yang berlainan, dikerjakan di lini yang berbeda. Menyatukannya menjadi
- * satu nilai membuat hasil kedua pabrik tercampur di laporan, dan tidak ada cara
- * memisahkannya kembali setelah datanya terlanjur masuk.
- *
- * ── Urutan di daftar ini TIDAK menentukan rute ──────────────────────────────
- *
- * Rute melekat pada PART, bukan pada jenis prosesnya — lihat TM_PROCESS_PARTS.
- * Dua part di proyek yang sama pun bisa berbeda rute: pada proyek 660A, GARNISH
- * melewati Injection lalu langsung Assembling, sedangkan HANDLE melewati
- * Painting lebih dulu. Daftar ini hanya kosakata yang sah, bukan urutannya.
- */
 /*
- * Diimpor dari @avicenna/contracts, TIDAK didefinisikan ulang di sini.
+ * Jenis proses TIDAK lagi berupa daftar di sini.
  *
- * Kolom enum di database dan pilihan di formulir harus selalu sama persis;
- * dua daftar terpisah pernah menyimpang dua kali.
+ * Kosakatanya pindah ke master `TM_PROCESS_TYPE` pada Oktober 2026 — lihat
+ * catatan di tabel itu. Yang tersisa di sini hanya tipenya, dan kolom
+ * CHR_PROCESS_TYPE menunjuk master itu lewat foreign key, bukan lewat CHECK
+ * berisi daftar yang ditanam.
  */
-export {
-  PROCESS_TYPES,
-  FINISH_GOOD_PROCESSES,
-  PROCESS_LABELS,
-  menghasilkanFinishGood,
-  type ProcessType,
-} from '@avicenna/contracts';
+export type { ProcessType } from '@avicenna/contracts';
 
 /**
  * Jenis part menurut posisinya di rantai pasok.

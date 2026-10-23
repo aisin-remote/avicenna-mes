@@ -1,7 +1,6 @@
 import { index, integer, jsonb, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import {
-  PROCESS_TYPES,
   daftarNilai,
   enumCol,
   fk,

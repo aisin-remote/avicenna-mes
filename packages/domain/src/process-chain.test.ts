@@ -1,8 +1,8 @@
+import { KATALOG_UJI } from './katalog-uji';
 import { describe, it, expect } from 'vitest';
 import {
   prosesSebelumnya,
   periksaRute,
-  menghasilkanFinishGood,
   prosesAdaDiRute,
   ruteTerurut,
   programCodeOf,
@@ -139,29 +139,29 @@ describe('ruteTerurut', () => {
 
 describe('menghasilkanFinishGood', () => {
   it('hanya lini FG dan assembling', () => {
-    expect(menghasilkanFinishGood('CASTING_FG')).toBe(true);
-    expect(menghasilkanFinishGood('MACHINING_FG')).toBe(true);
-    expect(menghasilkanFinishGood('ASSEMBLING_UNIT_FG')).toBe(true);
-    expect(menghasilkanFinishGood('ASSEMBLING_BODY_FG')).toBe(true);
+    expect(KATALOG_UJI.menghasilkanFinishGood('CASTING_FG')).toBe(true);
+    expect(KATALOG_UJI.menghasilkanFinishGood('MACHINING_FG')).toBe(true);
+    expect(KATALOG_UJI.menghasilkanFinishGood('ASSEMBLING_UNIT_FG')).toBe(true);
+    expect(KATALOG_UJI.menghasilkanFinishGood('ASSEMBLING_BODY_FG')).toBe(true);
   });
 
   it('melting dan lini WIP tidak menghasilkan finish good', () => {
     // Melting keluarannya logam cair — tidak pernah jadi barang jadi.
-    expect(menghasilkanFinishGood('MELTING')).toBe(false);
-    expect(menghasilkanFinishGood('CASTING_WIP')).toBe(false);
-    expect(menghasilkanFinishGood('MACHINING_WIP')).toBe(false);
+    expect(KATALOG_UJI.menghasilkanFinishGood('MELTING')).toBe(false);
+    expect(KATALOG_UJI.menghasilkanFinishGood('CASTING_WIP')).toBe(false);
+    expect(KATALOG_UJI.menghasilkanFinishGood('MACHINING_WIP')).toBe(false);
   });
 });
 
 describe('periksaRute', () => {
   it('meloloskan rute nyata dari tabel AIIA', () => {
     for (const r of [TCC_A, OPN_A, CSH_A, HANDLE, GARNISH]) {
-      expect(periksaRute(r)).toEqual([]);
+      expect(periksaRute(KATALOG_UJI, r)).toEqual([]);
     }
   });
 
   it('rute WIP tanpa Delivery wajar — komponen setengah jadi', () => {
-    expect(periksaRute(rute('MELTING', 'CASTING_WIP'))).toEqual([]);
+    expect(periksaRute(KATALOG_UJI, rute('MELTING', 'CASTING_WIP'))).toEqual([]);
   });
 
   it('menolak rute yang berakhir di lini WIP sebelum Delivery', () => {
@@ -171,26 +171,26 @@ describe('periksaRute', () => {
      * pernah bisa dikirim, dan baru ketahuan saat truk sudah menunggu.
      */
     const salah = rute('MELTING', 'CASTING_WIP', 'MACHINING_WIP', 'DELIVERY');
-    expect(periksaRute(salah).join(' ')).toMatch(/finish good/);
+    expect(periksaRute(KATALOG_UJI, salah).join(' ')).toMatch(/finish good/);
   });
 
   it('menolak lini FG di tengah rute', () => {
     const salah = rute('MELTING', 'CASTING_FG', 'MACHINING_FG', 'DELIVERY');
-    expect(periksaRute(salah).join(' ')).toMatch(/lebih dari satu lini finish good/);
+    expect(periksaRute(KATALOG_UJI, salah).join(' ')).toMatch(/lebih dari satu lini finish good/);
   });
 
   it('menolak Delivery yang bukan langkah terakhir', () => {
     const salah = rute('MELTING', 'CASTING_FG', 'DELIVERY', 'MACHINING_WIP');
-    expect(periksaRute(salah).join(' ')).toMatch(/langkah terakhir/);
+    expect(periksaRute(KATALOG_UJI, salah).join(' ')).toMatch(/langkah terakhir/);
   });
 
   it('menolak lini FG pada rute yang tidak sampai Delivery', () => {
     const salah = rute('MELTING', 'CASTING_FG');
-    expect(periksaRute(salah).join(' ')).toMatch(/tanpa Delivery/);
+    expect(periksaRute(KATALOG_UJI, salah).join(' ')).toMatch(/tanpa Delivery/);
   });
 
   it('rute kosong tidak dipersoalkan', () => {
-    expect(periksaRute([])).toEqual([]);
+    expect(periksaRute(KATALOG_UJI, [])).toEqual([]);
   });
 });
 

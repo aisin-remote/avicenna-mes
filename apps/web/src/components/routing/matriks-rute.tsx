@@ -3,7 +3,6 @@
 import { useState, useMemo } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { simpanRuteAction } from '@/app/(app)/master/part-processes/actions';
-import { PROCESS_LABELS } from '@avicenna/contracts';
 import { cn } from '../ui/cn';
 import { useToast } from '../ui/toast';
 
@@ -25,7 +24,6 @@ export interface BarisMatriks {
  * Label diambil dari @avicenna/contracts, tidak disalin lagi di sini.
  * Salinan daftar proses sudah dua kali menyimpang dari aslinya.
  */
-const LABEL = PROCESS_LABELS as Record<string, string>;
 
 /**
  * Matriks part × proses — bentuk yang sama dengan tabel rute di lapangan.
@@ -51,6 +49,7 @@ const LABEL = PROCESS_LABELS as Record<string, string>;
  */
 export function MatriksRute({
   proses,
+  label: LABEL,
   finishGood,
   baris,
   liniPerProses,
@@ -59,6 +58,14 @@ export function MatriksRute({
   prosesTakTerdaftar,
 }: {
   proses: string[];
+  /**
+   * Nama tiap proses, dari master jenis proses.
+   *
+   * Dikirim server bersama daftar kolomnya. Dulu komponen ini mengimpor peta
+   * label dari @avicenna/contracts — mustahil sejak daftarnya pindah ke master,
+   * sebab browser tidak membaca database.
+   */
+  label: Record<string, string>;
   /** Proses yang lininya menghasilkan finish good — ditandai di kepala kolom. */
   finishGood: string[];
   baris: BarisMatriks[];

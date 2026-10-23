@@ -1,11 +1,10 @@
 import './load-env';
 import bcrypt from 'bcryptjs';
 import { getDb, closeDb } from './client';
+import { bacaKatalogProses } from './katalog-proses';
 import { eq, inArray, notInArray } from 'drizzle-orm';
 import {
   MENU_ITEMS,
-  menghasilkanFinishGood,
-  modeScanBawaan,
   type ProcessType,
 } from '@avicenna/contracts';
 import {
@@ -37,6 +36,18 @@ import {
 async function main() {
   const db = getDb();
   console.log('[seed] mulai...');
+
+  /*
+   * Kosakata jenis proses dibaca dari master, bukan dari daftar di kode.
+   * Migrasi yang membuat tabelnya sekaligus mengisinya, jadi pada database
+   * yang sudah dimigrasi ia tidak pernah kosong.
+   */
+  const katalog = await bacaKatalogProses(db);
+  if (katalog.kode.length === 0) {
+    throw new Error(
+      'TM_PROCESS_TYPE kosong — jalankan migrasi lebih dulu. Seed tidak bisa menebak jenis proses.',
+    );
+  }
 
   /*
    * ── Plants ────────────────────────────────────────────────────────────────
@@ -227,7 +238,7 @@ async function main() {
     inputLocationId: slocJenis(plantId, 'WIP'),
     outputLocationId: slocJenis(
       plantId,
-      menghasilkanFinishGood(processType) ? 'FINISH_GOOD' : 'WIP',
+      katalog.menghasilkanFinishGood(processType) ? 'FINISH_GOOD' : 'WIP',
     ),
   });
 
@@ -328,7 +339,7 @@ async function main() {
   const semuaLine = await db.select().from(lines);
   for (const line of semuaLine) {
     if (line.inputLocationId && line.outputLocationId) continue;
-    const jenisKeluar = menghasilkanFinishGood(line.processType) ? 'FINISH_GOOD' : 'WIP';
+    const jenisKeluar = katalog.menghasilkanFinishGood(line.processType) ? 'FINISH_GOOD' : 'WIP';
     const masuk = line.inputLocationId ?? slocJenis(line.plantId, 'WIP');
     const keluar = line.outputLocationId ?? slocJenis(line.plantId, jenisKeluar);
     if (!masuk || !keluar) {
@@ -361,12 +372,12 @@ async function main() {
   const bentrok = (await db.select().from(lines)).filter((line) => {
     const keluar = line.outputLocationId ? lokasiPerId.get(line.outputLocationId) : null;
     if (!keluar) return false;
-    const wajib = menghasilkanFinishGood(line.processType) ? 'FINISH_GOOD' : 'WIP';
+    const wajib = katalog.menghasilkanFinishGood(line.processType) ? 'FINISH_GOOD' : 'WIP';
     return keluar.kind !== wajib;
   });
   for (const line of bentrok) {
     const keluar = lokasiPerId.get(line.outputLocationId!);
-    const wajib = menghasilkanFinishGood(line.processType) ? 'FINISH_GOOD' : 'WIP';
+    const wajib = katalog.menghasilkanFinishGood(line.processType) ? 'FINISH_GOOD' : 'WIP';
     console.warn(
       `[seed]   ! line ${line.code} (${line.processType}) keluar ke ${keluar?.code} ` +
         `berjenis ${keluar?.kind}, mestinya ${wajib} — perbaiki di master lini`,
@@ -887,7 +898,7 @@ async function main() {
         plantId: Number(plantId),
         processType: proses,
         // Bawaan per jenis proses; yang berlaku tetap isi masternya.
-        scanMode: modeScanBawaan(proses),
+        scanMode: katalog.modeScan(proses),
       };
     }),
   );

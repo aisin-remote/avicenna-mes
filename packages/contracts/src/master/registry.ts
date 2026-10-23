@@ -44,9 +44,8 @@ export type MasterEntity = (typeof MASTER_ENTITIES)[number];
  * di kolom enum, lalu setiap penyimpanan gagal dengan pesan dari MySQL yang
  * tidak menyebut sebabnya.
  */
-export { PROCESS_TYPES, PROCESS_GROUPS, SAP_CLASSES, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
+export { PROCESS_GROUPS, SAP_CLASSES, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
 import {
-  PROCESS_TYPES,
   PROCESS_GROUPS,
   SAP_CLASSES,
   SCAN_MODES,
@@ -126,6 +125,19 @@ export interface FieldDef {
   optionLabels?: Readonly<Record<string, string>>;
   /** Entitas tujuan untuk kind 'reference'. */
   refEntity?: MasterEntity;
+  /**
+   * Pilihan select yang datang dari MASTER LAIN, bukan dari daftar tetap.
+   *
+   * Dipakai kolom jenis proses: daftarnya hidup di master `process-types`,
+   * jadi pilihan di formulir harus ikut berubah begitu ada proses baru — tanpa
+   * deploy. Nilainya KODE (CHR_CODE), bukan id, karena itulah yang disimpan
+   * kolomnya dan itu pula yang ditunjuk foreign key-nya.
+   *
+   * Validasinya di sini sengaja hanya "teks tidak kosong": daftar yang sah
+   * berubah-ubah, dan yang menolak kode asing adalah foreign key di database —
+   * satu penjaga yang tidak bisa basi, bukan dua yang bisa berbeda.
+   */
+  optionsFrom?: MasterEntity;
   /** Tampil sebagai kolom di tabel daftar. */
   inList?: boolean;
   /** Rata kanan di tabel — untuk angka. */
@@ -217,7 +229,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'processType',
         label: 'Proses',
         kind: 'select',
-        options: PROCESS_TYPES,
+        optionsFrom: 'process-types',
         required: true,
         inList: true,
       },
@@ -285,7 +297,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'processType',
         label: 'Proses',
         kind: 'select',
-        options: PROCESS_TYPES,
+        optionsFrom: 'process-types',
         required: true,
         inList: true,
       },
@@ -677,7 +689,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'processType',
         label: 'Proses',
         kind: 'select',
-        options: PROCESS_TYPES,
+        optionsFrom: 'process-types',
         required: true,
         inList: true,
       },
@@ -834,7 +846,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'processType',
         label: 'Proses',
         kind: 'select',
-        options: PROCESS_TYPES,
+        optionsFrom: 'process-types',
         required: true,
         inList: true,
       },
@@ -1197,6 +1209,15 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
     }
 
     case 'select': {
+      if (f.optionsFrom) {
+        const teks = z
+          .string({ required_error: `${f.label} wajib dipilih` })
+          .trim()
+          .min(1, `${f.label} wajib dipilih`)
+          .max(32, `${f.label} terlalu panjang`);
+        if (f.required && mode === 'create') return teks;
+        return z.preprocess(kosongDariFormulir(f, mode), teks.nullable().optional());
+      }
       const s = z.enum((f.options ?? ['']) as [string, ...string[]], {
         errorMap: (issue) => ({
           message:

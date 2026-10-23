@@ -2,7 +2,6 @@ import { boolean, index, integer, uniqueIndex, varchar } from 'drizzle-orm/pg-co
 import { relations } from 'drizzle-orm';
 import {
   PART_TYPES,
-  PROCESS_TYPES,
   SOURCE_TYPES,
   TRACKING_MODES,
   daftarNilai,

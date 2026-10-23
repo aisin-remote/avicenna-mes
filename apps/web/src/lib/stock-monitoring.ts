@@ -25,7 +25,8 @@ import {
   sapOutbox,
   scanEvents,
 } from '@avicenna/db';
-import { PROCESS_LABELS, PROCESS_TYPES, type ProcessType } from '@avicenna/contracts';
+import type { ProcessType } from '@avicenna/contracts';
+import { katalogProsesServer } from './process-types';
 import {
   productionDateKey,
   productionDayWindow,
@@ -100,7 +101,7 @@ function rentangTanggal(from?: string, to?: string) {
 }
 
 function prosesSah(value?: string): ProcessType | undefined {
-  return PROCESS_TYPES.find((p) => p === value);
+  return value;
 }
 
 function jenisAktivitas(value?: string): JenisAktivitas | undefined {
@@ -161,6 +162,7 @@ function kunciPasangan(v: {
 }
 
 export async function stockMonitor(params: StockMonitorParams) {
+  const katalog = await katalogProsesServer();
   const db = getDb();
   const perPage = Math.min(100, Math.max(10, params.perPage ?? 25));
   const processType = prosesSah(params.processType);
@@ -484,7 +486,7 @@ export async function stockMonitor(params: StockMonitorParams) {
     let fromName: string | null = null;
     let toName: string | null = null;
     const lokasi = namaLokasi(m.locationCode, m.locationName);
-    const namaProses = proses ? PROCESS_LABELS[proses] : null;
+    const namaProses = proses ? katalog.label(proses) : null;
 
     if (jenis === 'TRANSFER') {
       fromName = lokasi;
@@ -518,7 +520,7 @@ export async function stockMonitor(params: StockMonitorParams) {
       activity: jenis,
       activityLabel: LABEL_AKTIVITAS[jenis],
       processType: proses,
-      processLabel: proses ? PROCESS_LABELS[proses] : null,
+      processLabel: proses ? katalog.label(proses) : null,
       processStage: tahapProses(proses),
       fromName: fromName ?? 'Belum ditentukan',
       toName: toName ?? 'Belum ditentukan',
@@ -546,7 +548,7 @@ export async function stockMonitor(params: StockMonitorParams) {
   for (const r of routeRows) {
     routeByPart.set(r.partId, [
       ...(routeByPart.get(r.partId) ?? []),
-      PROCESS_LABELS[r.processType],
+      katalog.label(r.processType),
     ]);
   }
 

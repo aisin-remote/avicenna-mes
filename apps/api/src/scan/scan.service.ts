@@ -79,6 +79,7 @@ import type {
   StationResult,
 } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
+import { ProcessTypeService } from '../master/process-type.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { QueueService } from '../queue/queue.service';
 import { QUEUES, JOBS } from '../queue/queue.constants';
@@ -151,6 +152,7 @@ export class ScanService {
     private readonly realtime: RealtimeService,
     private readonly queue: QueueService,
     private readonly loading: LoadingService,
+    private readonly processTypes: ProcessTypeService,
   ) {}
 
   /**
@@ -505,12 +507,13 @@ export class ScanService {
      */
     // Penimpa lini didahulukan: satu pabrik bisa punya dua lini dengan cara
     // berbeda pada proses yang sama (injection vs assembling BODY).
-    const modeScan: ScanMode = modeScanBerlaku({
+    const katalog = await this.processTypes.katalog();
+    const modeScan: ScanMode = modeScanBerlaku(katalog, {
       modeLini: line?.scanMode,
       modeProses: aturanProses?.scanMode,
       proses: processType,
     });
-    const syarat = processType ? syaratScan(modeScan, processType) : null;
+    const syarat = processType ? syaratScan(katalog, modeScan, processType) : null;
 
     /*
      * Metode yang dikenal tetapi alurnya belum dibangun ditolak di sini.
@@ -1310,7 +1313,10 @@ export class ScanService {
      * "barcode ini sudah discan di proses ini" akan menolak scan kedua dan
      * seterusnya. Di mode itu duplikatnya ditentukan status kartu, di ingestOne.
      */
-    if (processType && duplikatDariBarcode(modeScan, processType)) {
+    if (
+      processType &&
+      duplikatDariBarcode(await this.processTypes.katalog(), modeScan, processType)
+    ) {
       const already = await this.db
         .select({ id: scanEvents.id })
         .from(scanEvents)
@@ -1486,7 +1492,11 @@ export class ScanService {
         ),
       )
       .limit(1);
-    return modeScanBerlaku({ modeLini, modeProses: aturan?.scanMode, proses: processType });
+    return modeScanBerlaku(await this.processTypes.katalog(), {
+      modeLini,
+      modeProses: aturan?.scanMode,
+      proses: processType,
+    });
   }
 
   private async partById(id: number) {
@@ -1622,6 +1632,7 @@ export class ScanService {
         code: line.code,
         name: line.name,
         processType: line.processType,
+        processGroup: (await this.processTypes.katalog()).grup(line.processType) ?? null,
         plantCode: plantRows[0]?.code ?? null,
         plantName: plantRows[0]?.name ?? null,
         /*
@@ -1969,8 +1980,9 @@ export class ScanService {
    * pilih.
    */
   async liniGrup(grup: string, principal?: Principal) {
-    const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[0];
-    const jenis = prosesDalamGrup(g);
+    const katalogGrup = await this.processTypes.katalog();
+    const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[1];
+    const jenis = prosesDalamGrup(katalogGrup, g);
     if (jenis.length === 0) {
       throw new BadRequestException(`Grup proses "${grup}" tidak dikenal`);
     }
@@ -2013,7 +2025,8 @@ export class ScanService {
    * pembatasan.
    */
   async bukaLini(kode: string, grup: string, principal?: Principal) {
-    const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[0];
+    const katalogLini = await this.processTypes.katalog();
+    const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[1];
     const bersih = kode.trim();
 
     const [line] = await this.db
@@ -2034,7 +2047,7 @@ export class ScanService {
       throw new BadRequestException(`${REJECT_MESSAGES.LINE_NOT_FOUND} (${bersih})`);
     }
 
-    if (grupProses(line.processType) !== g) {
+    if (grupProses(katalogLini, line.processType) !== g) {
       throw new BadRequestException(
         `Lini ${bersih} bukan lini ${PROCESS_GROUP_LABELS[g] ?? grup}. Periksa barcode lininya.`,
       );
@@ -2073,6 +2086,7 @@ export class ScanService {
       }
 
       const boleh = bolehScanDi(
+        await this.processTypes.katalog(),
         { kind: aku.kind, processGroup: aku.processGroup },
         line.processType,
       );

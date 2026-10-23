@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 
 interface Matriks {
   proses: string[];
+  label: Record<string, string>;
   finishGood: string[];
   /** plantId -> processType -> push SAP aktif. Dari master Rute Proses. */
   sapAktif: Record<number, Record<string, boolean>>;
@@ -87,6 +88,7 @@ export default async function RutePage() {
 
           <MatriksRute
             proses={matriks.proses}
+            label={matriks.label}
             finishGood={matriks.finishGood}
             baris={matriks.baris}
             liniPerProses={liniPerProses}

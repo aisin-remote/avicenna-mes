@@ -32,6 +32,22 @@ export type SebabGalatDb =
  */
 const SQLSTATE: Record<string, SebabGalatDb> = {
   '23505': 'DUPLIKAT',
+  /*
+   * 23503 dipakai Postgres untuk DUA keadaan yang berlawanan arah:
+   *
+   *   INSERT/UPDATE menunjuk baris yang tidak ada   -> RUJUKAN_HILANG
+   *   DELETE baris yang masih ditunjuk baris lain   -> MASIH_DIRUJUK
+   *
+   * MySQL membedakannya lewat dua nomor (1452 dan 1451); Postgres tidak.
+   * Yang membedakan hanya kalimat pertama pesannya, dan itu dibaca di
+   * arahRujukan() di bawah. Nilai di tabel ini adalah dugaan terakhir bila
+   * kalimat itu tidak dikenali.
+   *
+   * Salah arah bukan sekadar pesan yang kurang enak: orang yang menambah baris
+   * dengan kode yang belum terdaftar akan membaca "masih dipakai data lain
+   * sehingga tidak bisa dihapus" — menyuruhnya memperbaiki hal yang sama
+   * sekali berbeda dari yang salah.
+   */
   '23503': 'MASIH_DIRUJUK',
   '23502': 'KOLOM_WAJIB_KOSONG',
   '42P01': 'TABEL_TIDAK_ADA',
@@ -53,6 +69,7 @@ const MYSQL: Record<number, SebabGalatDb> = {
 
 interface GalatMentah {
   code?: string | number;
+  message?: string;
   errno?: number;
   constraint?: string;
   detail?: string;
@@ -66,9 +83,23 @@ interface GalatMentah {
  * DrizzleQueryError — kode aslinya satu tingkat lebih dalam, dan pemeriksaan
  * yang hanya melihat lapisan luar selalu meleset.
  */
+/**
+ * Arah pelanggaran foreign key, dibaca dari kalimat pertama pesan Postgres.
+ *
+ * "insert or update on table X violates foreign key constraint"  -> menunjuk
+ * "update or delete on table X violates foreign key constraint"  -> ditunjuk
+ */
+function arahRujukan(e: GalatMentah): SebabGalatDb | undefined {
+  const pesan = typeof e.message === 'string' ? e.message : '';
+  if (pesan.startsWith('insert or update on table')) return 'RUJUKAN_HILANG';
+  if (pesan.startsWith('update or delete on table')) return 'MASIH_DIRUJUK';
+  return undefined;
+}
+
 export function sebabGalatDb(err: unknown): SebabGalatDb | undefined {
   let e = err as GalatMentah | undefined;
   for (let dalam = 0; e && dalam < 5; dalam += 1) {
+    if (e.code === '23503') return arahRujukan(e) ?? 'MASIH_DIRUJUK';
     if (typeof e.code === 'string' && SQLSTATE[e.code]) return SQLSTATE[e.code];
     if (typeof e.errno === 'number' && MYSQL[e.errno]) return MYSQL[e.errno];
     if (typeof e.code === 'number' && MYSQL[e.code]) return MYSQL[e.code];

@@ -25,7 +25,6 @@ import type {
   ProcessType,
 } from '@avicenna/contracts';
 import {
-  grupProses,
   sepertiKanban,
   sepertiKartuLogin,
   sepertiNomorPartPolos,
@@ -176,8 +175,14 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
     setSoundOn(prefs.scanSound);
   }, [prefs.scanSound]);
 
-  /** Grup proses lini ini — dipakai layar NG dan serah terima operator. */
-  const grup = grupProses(summary.line.processType as ProcessType);
+  /*
+   * Grup proses lini ini — dipakai layar NG dan serah terima operator.
+   *
+   * Datang JADI dari server. Dulu disimpulkan di sini lewat grupProses(), dan
+   * itu tidak mungkin lagi: daftar jenis proses hidup di master, bukan di kode
+   * yang ikut terkirim ke browser.
+   */
+  const grup = summary.line.processGroup ?? '';
 
   /*
    * Foto part yang sedang dikerjakan.

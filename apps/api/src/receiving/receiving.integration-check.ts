@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import {
+  bacaKatalogProses,
   getDb,
   closeDb,
   eq,
@@ -180,7 +181,15 @@ async function main() {
     'OK',
     'Retry sesudah close tidak menggandakan scan',
   );
-  const outbox = new SapOutboxService(db);
+  /*
+   * Layanan dibuat langsung, tanpa wadah DI. Katalog jenis prosesnya karena itu
+   * dibaca di sini dan diberikan sebagai layanan tiruan — isinya sama dengan
+   * yang dibaca aplikasi sungguhan, hanya tanpa cache.
+   */
+  const outbox = new SapOutboxService(db, {
+    katalog: () => bacaKatalogProses(db, { termasukNonaktif: true }),
+    segarkan: () => undefined,
+  } as never);
   const build = Reflect.get(outbox, 'buildAndInsert').bind(outbox) as (
     table: string,
     id: number,

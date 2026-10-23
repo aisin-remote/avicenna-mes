@@ -16,6 +16,7 @@ import {
 } from '@avicenna/contracts';
 import { kelasHasilSap, periksaHasilProduksi, periksaTransferSloc } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
+import { ProcessTypeService } from './process-type.service';
 import { validationError } from '../common/validation-error';
 
 export interface ListParams {
@@ -36,7 +37,10 @@ export interface ListParams {
  */
 @Injectable()
 export class MasterService {
-  constructor(@InjectDb() private readonly db: Database) {}
+  constructor(
+    @InjectDb() private readonly db: Database,
+    private readonly processTypes: ProcessTypeService,
+  ) {}
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private table(entity: MasterEntity): any {
@@ -283,6 +287,7 @@ export class MasterService {
 
     const proses = nilai<ProcessType>('processType');
     if (!proses) return;
+    const jenis = (await this.processTypes.katalog()).cari(proses);
 
     const menyentuhKeluar = values.outputLocationId !== undefined || barisLama === undefined;
     const menyentuhSap =
@@ -315,7 +320,7 @@ export class MasterService {
      */
     if (keluar && menyentuhKeluar) {
       const keputusan = periksaHasilProduksi({
-        proses,
+        jenis,
         slocKind: keluar.kind,
         slocCode: keluar.code,
       });
@@ -329,8 +334,8 @@ export class MasterService {
       const pushTransfer = Boolean(nilai<boolean>('sapTransferEnabled'));
 
       // Proses tanpa padanan material di SAP tidak bisa punya izin push.
-      if (pushProduksi && kelasHasilSap(proses) === null) {
-        const keputusan = periksaHasilProduksi({ proses, slocKind: keluar?.kind ?? null });
+      if (pushProduksi && kelasHasilSap(jenis?.sapClass ?? 'NONE') === null) {
+        const keputusan = periksaHasilProduksi({ jenis, slocKind: keluar?.kind ?? null });
         details.push({
           field: 'sapProductionEnabled',
           message: `Push hasil produksi tidak bisa diaktifkan: ${keputusan.alasan ?? ''}`.trim(),
@@ -369,6 +374,18 @@ export class MasterService {
     }
   }
 
+  /*
+   * Katalog di memori dikosongkan begitu masternya berubah.
+   *
+   * Dipanggil dari SETIAP jalur tulis, bukan hanya dari create: menonaktifkan
+   * sebuah jenis proses lewat setActive juga mengubah daftar yang dilihat
+   * formulir dan matriks. Yang lupa dipanggil akan membuat perubahan terlihat
+   * "nanti saja", dan orang akan menyuntingnya dua kali.
+   */
+  private segarkanKatalog(entity: MasterEntity): void {
+    if (entity === 'process-types') this.processTypes.segarkan();
+  }
+
   async create(entity: MasterEntity, body: unknown) {
     const parsed = buildCreateSchema(entity).safeParse(body);
     if (!parsed.success) throw validationError(parsed.error);
@@ -381,6 +398,7 @@ export class MasterService {
     try {
       const result = await this.db.insert(table).values(parsed.data).returning({ id: table.id });
       const insertId = Number(result[0]?.id);
+      this.segarkanKatalog(entity);
       return this.findOne(entity, insertId);
     } catch (err) {
       throw translateDbError(err, entity);
@@ -406,6 +424,7 @@ export class MasterService {
 
     try {
       await this.db.update(table).set(values).where(eq(table.id, id));
+      this.segarkanKatalog(entity);
       return this.findOne(entity, id);
     } catch (err) {
       throw translateDbError(err, entity);
@@ -418,6 +437,7 @@ export class MasterService {
 
     try {
       await this.db.delete(table).where(eq(table.id, id));
+      this.segarkanKatalog(entity);
       return { deleted: true, id };
     } catch (err) {
       throw translateDbError(err, entity);
@@ -433,6 +453,7 @@ export class MasterService {
     const table = this.table(entity);
     await this.findOne(entity, id);
     await this.db.update(table).set({ isActive }).where(eq(table.id, id));
+    this.segarkanKatalog(entity);
     return this.findOne(entity, id);
   }
 }

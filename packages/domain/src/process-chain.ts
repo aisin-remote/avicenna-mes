@@ -1,11 +1,10 @@
-import { menghasilkanFinishGood, type ProcessType } from '@avicenna/contracts';
+import type { KatalogProses, ProcessType } from '@avicenna/contracts';
 
 /*
  * Di-re-ekspor supaya pemakainya cukup satu impor: aturan rute dan pertanyaan
  * "apakah lini ini menghasilkan finish good" selalu dipakai bersamaan.
  * Definisinya tetap satu, di @avicenna/contracts.
  */
-export { menghasilkanFinishGood };
 
 /**
  * Aturan urutan proses produksi.
@@ -190,11 +189,11 @@ export function programCodeOf(barcode: string): string | undefined {
  * Mengembalikan daftar masalah dalam bahasa yang terbaca di layar; kosong
  * berarti rutenya wajar.
  */
-export function periksaRute(rute: readonly LangkahRute[]): string[] {
+export function periksaRute(katalog: KatalogProses, rute: readonly LangkahRute[]): string[] {
   if (rute.length === 0) return [];
 
   const urut = ruteTerurut(rute);
-  const fg = urut.filter((l) => menghasilkanFinishGood(l.processType));
+  const fg = urut.filter((l) => katalog.menghasilkanFinishGood(l.processType));
   const punyaDelivery = urut.some((l) => l.processType === 'DELIVERY');
   const masalah: string[] = [];
 

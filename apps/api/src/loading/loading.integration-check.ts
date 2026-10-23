@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import {
+  bacaKatalogProses,
   getDb,
   closeDb,
   eq,
@@ -284,7 +285,15 @@ async function main() {
     penghubung.every((p) => p.owner === 'INTERNAL'),
     'Pemilik kartu disalin ke tabel penghubung',
   );
-  const outbox = new SapOutboxService(db);
+  /*
+   * Layanan dibuat langsung, tanpa wadah DI. Katalog jenis prosesnya karena itu
+   * dibaca di sini dan diberikan sebagai layanan tiruan — isinya sama dengan
+   * yang dibaca aplikasi sungguhan, hanya tanpa cache.
+   */
+  const outbox = new SapOutboxService(db, {
+    katalog: () => bacaKatalogProses(db, { termasukNonaktif: true }),
+    segarkan: () => undefined,
+  } as never);
   await outbox['buildAndInsert']('TT_DELIVERY', doc.id);
   await outbox['buildAndInsert']('TT_DELIVERY', doc.id);
   const [gi] = await db

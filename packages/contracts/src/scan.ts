@@ -122,6 +122,15 @@ export interface StationSummary {
     code: string;
     name: string;
     processType: string;
+    /**
+     * Grup role proses ini, diturunkan server dari master jenis proses.
+     *
+     * Dikirim jadi, bukan disimpulkan layar: sejak daftar jenis proses pindah
+     * ke master, browser tidak punya petanya — dan mengirim seluruh katalog ke
+     * setiap stasiun scan hanya untuk menjawab satu pertanyaan itu jelas lebih
+     * mahal daripada satu kolom di ringkasan.
+     */
+    processGroup: string | null;
     plantCode: string | null;
     plantName: string | null;
     /** PER_PIECE: scan part per barang. PER_KANBAN: master sample lalu kanban per box. */

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { DbModule } from './db/db.module';
+import { ProcessTypeModule } from './master/process-type.module';
 import { QueueModule } from './queue/queue.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { AuthModule } from './auth/auth.module';
@@ -33,6 +34,7 @@ import { loadEnv } from './config/env';
       validate: loadEnv,
     }),
     DbModule,
+    ProcessTypeModule,
     QueueModule,
     RealtimeModule,
     AuthModule,

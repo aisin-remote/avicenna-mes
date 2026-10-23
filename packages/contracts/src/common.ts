@@ -1,162 +1,100 @@
 import { z } from 'zod';
 
-/*
- * Kosakata jenis proses. Harus sama persis dengan PROCESS_TYPES di
- * packages/db/src/schema/_shared.ts — keduanya menulis ke kolom enum yang sama,
- * dan nilai yang tidak dikenal MySQL ditolak saat insert, bukan saat validasi.
- */
 /**
- * ─── ATURAN PENAMAAN JENIS PROSES ───────────────────────────────────────────
+ * ─── KATALOG JENIS PROSES ───────────────────────────────────────────────────
  *
- * Satu pola untuk semuanya:  NAMA_PROSES [_PABRIK] _VARIAN
+ * Daftar jenis proses TIDAK lagi ditanam di sini. Ia hidup di master
+ * `TM_PROCESS_TYPE`, dan berkas ini hanya menyediakan bentuknya serta cara
+ * membacanya.
  *
- *   _WIP   lini yang hasilnya diteruskan ke langkah berikutnya
- *   _FG    lini yang menutup rute — di sinilah kanban ditempel
+ * ── Kenapa diberikan, bukan diambil ─────────────────────────────────────────
  *
- * Akhiran varian dipakai HANYA bila prosesnya benar-benar punya dua lini yang
- * berbeda secara fisik. Melting, Mounting, dan Antena tidak punya, jadi
- * namanya polos — menambahkan akhiran pada yang tidak punya pasangan hanya
- * membuat nilai yang tidak pernah terpakai, dan nilai semacam itu cepat atau
- * lambat diisi seseorang.
+ * Katalog dibuat SEKALI dari baris master lalu DIBERIKAN ke yang membutuhkan.
+ * Alternatifnya satu variabel modul yang diisi saat boot lalu dibaca dari mana
+ * saja — lebih sedikit sunting, tetapi fungsinya diam-diam bergantung pada
+ * sesuatu yang tidak terlihat di tanda tangannya. Yang lupa memuatnya tidak
+ * mendapat galat, melainkan jawaban kosong: proses dianggap tidak menghasilkan
+ * barang jadi, grup role kosong, kelas SAP NONE. Tiga kesalahan diam sekaligus,
+ * dan ketiganya baru terlihat sebagai barang yang mendarat di gudang keliru.
  *
- * Akhiran PABRIK dipakai hanya pada Assembling, satu-satunya nama proses yang
- * muncul di lebih dari satu pabrik. Tanpa pembeda itu, hasil Unit dan Body
- * bercampur di laporan dan tidak ada cara memisahkannya kembali.
- *
- * Pernah tidak begitu: Injection dan Painting sempat tanpa akhiran sementara
- * Casting dan Machining memakainya, dan Assembling memakai akhiran pabrik
- * tanpa varian. Tiga pola dalam satu daftar membuat orang harus menghafal
- * mana yang mana — padahal yang dibedakan selalu hal yang sama: LINI MANA.
+ * Karena itu katalog adalah objek biasa yang dioper. Yang tidak punya
+ * katalognya tidak bisa memanggil fungsinya sama sekali.
  */
-export const processTypeSchema = z.enum([
-  'MELTING',
-  'CASTING_WIP',
-  'CASTING_FG',
-  'MACHINING_WIP',
-  'MACHINING_FG',
-  'ASSEMBLING_UNIT_FG',
-  'INJECTION_WIP',
-  'INJECTION_FG',
-  'PAINTING_WIP',
-  'PAINTING_FG',
-  'ASSEMBLING_BODY_FG',
-  /*
-   * ── Electric (plant 900) ──────────────────────────────────────────────────
-   *
-   * Diambil dari Tabel 16 "Person Responsible" Blueprint SAP PP AIIA: MNT
-   * Mounting, INS Inspection, VAC Vacuum, ANT Antena.
-   *
-   * ASY Assembly ada di tabel blueprint itu TETAPI TIDAK ada di sini: di
-   * lapangan assembly Electric dikerjakan di LINI YANG SAMA dengan Inspection,
-   * jadi ia bukan langkah tersendiri. Kalau kelak SAP membuat work center di
-   * bawah ASY untuk plant 900, pasangannya di sini Inspection.
-   *
-   * ── Inspection dan Vacuum masing-masing punya lini WIP dan lini FG ────────
-   *
-   * Sama seperti Casting dan Machining: keduanya LINI YANG BERBEDA secara
-   * fisik, bukan sifat turunan dari rute. Part yang berhenti di situ dikerjakan
-   * di lini FG — di sanalah kanban ditempel — sedangkan yang masih berlanjut
-   * dikerjakan di lini WIP. Menyatukannya membuat hasil keduanya bercampur, dan
-   * tidak ada cara memisahkannya kembali setelah datanya masuk.
-   *
-   * Mounting dan Antena TIDAK dipecah: sepanjang yang diketahui, keduanya tidak
-   * punya pasangan lini FG. Begitu ternyata punya, yang bertambah dua nilai di
-   * sini — bukan rancangan yang harus dibongkar.
-   *
-   * ── Urutan di daftar ini TIDAK menentukan urutan rute ─────────────────────
-   *
-   * Rute melekat pada part lewat TM_PROCESS_PARTS.INT_SEQ_NO, dan matriks rute
-   * menyusunnya dari URUTAN KLIK. Yang diturunkan dari urutan di bawah hanyalah
-   * urutan KOLOM di layar — pengelompokan per pabrik supaya enak dibaca, bukan
-   * pernyataan tentang jalannya barang.
-   */
-  'MOUNTING',
-  'INSPECTION_WIP',
-  'INSPECTION_FG',
-  'VACUUM_WIP',
-  'VACUUM_FG',
-  'ANTENNA',
-  'DELIVERY',
-]);
-export type ProcessType = z.infer<typeof processTypeSchema>;
-
-/**
- * SATU-SATUNYA daftar jenis proses. Paket lain MENGIMPOR dari sini.
- *
- * Pernah ada tiga salinan — di skema database, di kontrak, dan di registry
- * master. Dua kali daftar bertambah dan salah satu salinan tertinggal, lalu
- * formulir menawarkan nilai yang sudah tidak ada di kolom enum dan setiap
- * penyimpanan gagal dengan pesan MySQL yang tidak menyebut sebabnya.
- */
-export const PROCESS_TYPES = processTypeSchema.options;
-
-/**
- * Proses yang LININYA menghasilkan finish good.
- *
- * WIP dan FG adalah LINI YANG BERBEDA secara fisik, bukan sifat turunan dari
- * rute. Part yang berhenti di machining dikerjakan di lini Machining FG, part
- * yang masih lanjut ke assembling dikerjakan di lini Machining WIP.
- *
- * Bedanya nyata di lantai:
- *   lini WIP  hanya scan part code
- *   lini FG   scan part code DAN kanban — sejak titik itu barang berpindah
- *             sebagai kanban, dan di delivery part code tidak discan lagi
- *
- * Melting tidak pernah menghasilkan finish good (keluarannya logam cair), dan
- * assembling selalu menghasilkannya.
- */
-export const FINISH_GOOD_PROCESSES = [
-  'CASTING_FG',
-  'MACHINING_FG',
-  'ASSEMBLING_UNIT_FG',
-  'INJECTION_FG',
-  'PAINTING_FG',
-  'ASSEMBLING_BODY_FG',
-  /*
-   * Electric menutup rute di lini FG-nya sendiri — Inspection FG dan Vacuum FG.
-   *
-   * Yang TIDAK menutup rute adalah Antena: part yang selesai di sana lanjut
-   * dirakit di Assembling Body, pabrik yang berbeda. Jadi pabrik Electric punya
-   * dua macam keluaran sekaligus, dan yang membedakannya bukan pabriknya
-   * melainkan LINI tempat barang itu terakhir dikerjakan.
-   */
-  'INSPECTION_FG',
-  'VACUUM_FG',
-] as const satisfies readonly ProcessType[];
-
-/**
- * Apakah lini proses ini menghasilkan finish good.
- *
- * TIDAK LAGI menentukan syarat scan — itu sekarang milik METODE SCAN di
- * TM_ROUTE_PROCESS (lihat SCAN_MODES di bawah). Yang masih memakainya:
- * pemeriksaan kewajaran rute ("lini FG harus jadi langkah terakhir sebelum
- * Delivery") dan penerjemahan nilai metode yang lama.
- */
-export function menghasilkanFinishGood(p: ProcessType): boolean {
-  return (FINISH_GOOD_PROCESSES as readonly string[]).includes(p);
+export interface JenisProses {
+  /** Dipakai sebagai nilai di seluruh kolom CHR_PROCESS_TYPE. */
+  code: string;
+  label: string;
+  processGroup: ProcessGroup;
+  sapClass: SapClass;
+  scanMode: ScanModeTersimpan;
+  sortOrder: number;
+  isActive: boolean;
 }
 
-/** Label untuk layar. Dipisah supaya penggantian nama tidak menyentuh data. */
-export const PROCESS_LABELS: Record<ProcessType, string> = {
-  MELTING: 'Melting',
-  CASTING_WIP: 'Casting WIP',
-  CASTING_FG: 'Casting FG',
-  MACHINING_WIP: 'Machining WIP',
-  MACHINING_FG: 'Machining FG',
-  ASSEMBLING_UNIT_FG: 'Assembling Unit FG',
-  INJECTION_WIP: 'Injection WIP',
-  INJECTION_FG: 'Injection FG',
-  PAINTING_WIP: 'Painting WIP',
-  PAINTING_FG: 'Painting FG',
-  ASSEMBLING_BODY_FG: 'Assembling Body FG',
-  MOUNTING: 'Mounting',
-  INSPECTION_WIP: 'Inspection WIP',
-  INSPECTION_FG: 'Inspection FG',
-  VACUUM_WIP: 'Vacuum WIP',
-  VACUUM_FG: 'Vacuum FG',
-  ANTENNA: 'Antena',
-  DELIVERY: 'Delivery',
-};
+export interface KatalogProses {
+  /** Yang aktif saja, terurut sortOrder. Inilah urutan kolom matriks rute. */
+  readonly daftar: readonly JenisProses[];
+  /** Kode yang aktif, terurut. Dipakai pilihan formulir dan kolom matriks. */
+  readonly kode: readonly string[];
+  /** Termasuk yang nonaktif: data lama tetap harus bisa dibaca namanya. */
+  cari(code: string | null | undefined): JenisProses | undefined;
+  /** Nama untuk layar. Kode apa adanya bila tidak dikenal — jangan kosong. */
+  label(code: string | null | undefined): string;
+  /** Apakah lini proses ini menutup rute dan menempel kanban. */
+  menghasilkanFinishGood(code: string | null | undefined): boolean;
+  grup(code: string | null | undefined): ProcessGroup | undefined;
+  /** 'NONE' bila tidak dikenal — tidak dikenal berarti tidak dikirim ke SAP. */
+  kelasSap(code: string | null | undefined): SapClass;
+  modeScan(code: string | null | undefined): ScanModeTersimpan;
+  /** Jenis proses yang termasuk sebuah grup role. */
+  dalamGrup(grup: ProcessGroup): string[];
+}
+
+export function katalogProses(baris: readonly JenisProses[]): KatalogProses {
+  const semua = [...baris].sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code),
+  );
+  const perKode = new Map(semua.map((j) => [j.code, j]));
+  const aktif = semua.filter((j) => j.isActive);
+  const cari = (code: string | null | undefined) => (code ? perKode.get(code) : undefined);
+
+  return {
+    daftar: aktif,
+    kode: aktif.map((j) => j.code),
+    cari,
+    label: (code) => cari(code)?.label ?? code ?? '',
+    menghasilkanFinishGood: (code) => cari(code)?.sapClass === 'FG',
+    grup: (code) => cari(code)?.processGroup,
+    kelasSap: (code) => cari(code)?.sapClass ?? 'NONE',
+    modeScan: (code) => cari(code)?.scanMode ?? 'PART_SAJA',
+    dalamGrup: (grup) => semua.filter((j) => j.processGroup === grup).map((j) => j.code),
+  };
+}
+
+/**
+ * Jenis proses sebagai nilai yang disimpan.
+ *
+ * Dulu union sempit dari enum; sejak daftarnya pindah ke master, yang tersisa
+ * adalah string. Penjagaannya pindah ke dua tempat yang lebih tepat: foreign
+ * key di database menolak kode yang tidak terdaftar, dan formulir master
+ * menolak baris tanpa klasifikasi.
+ */
+export type ProcessType = string;
+
+/**
+ * Validasi nilai jenis proses pada payload.
+ *
+ * Dulu z.enum dari daftar yang ditanam. Sejak daftarnya pindah ke master, yang
+ * bisa dijamin di sini hanya BENTUKNYA — bahwa kodenya ada dan masuk kolom.
+ * Yang menolak kode yang tidak terdaftar adalah foreign key di database, dan
+ * itu penjaga yang tidak bisa basi: ia membaca daftar yang sama dengan yang
+ * dilihat orang di layar master.
+ */
+export const processTypeSchema = z
+  .string()
+  .trim()
+  .min(1, 'Jenis proses wajib diisi')
+  .max(32, 'Jenis proses terlalu panjang');
 
 /**
  * Kelas hasil sebuah langkah proses menurut SAP.
@@ -360,15 +298,22 @@ export const SCAN_MODE_LABELS: Record<ScanMode, string> = {
  * lini WIP — jadi penerjemahannya memang butuh jenis prosesnya.
  */
 export function normalkanModeScan(
+  katalog: KatalogProses,
   mode: ScanModeTersimpan | null | undefined,
   proses: ProcessType | null | undefined,
 ): ScanMode {
   if (mode === 'PER_KANBAN') return 'KANBAN_BOX';
   if (mode === 'PER_PIECE') {
-    return proses && menghasilkanFinishGood(proses) ? 'PART_KANBAN' : 'PART_SAJA';
+    return katalog.menghasilkanFinishGood(proses) ? 'PART_KANBAN' : 'PART_SAJA';
   }
   if (mode) return mode;
-  return proses ? modeScanBawaan(proses) : 'PART_SAJA';
+  /*
+   * Bawaan dari master jenis proses. Nilai lama yang tersimpan di sana
+   * mustahil — kolomnya dijaga daftar metode yang berlaku — tetapi kalau
+   * sampai ada, ia diperlakukan seperti tidak diisi.
+   */
+  const bawaan = katalog.modeScan(proses);
+  return bawaan === 'PER_PIECE' || bawaan === 'PER_KANBAN' ? 'PART_SAJA' : bawaan;
 }
 
 /**
@@ -394,12 +339,15 @@ export function scanPerBox(mode: ScanModeTersimpan | null | undefined): boolean 
  * jenis prosesnya. Ditulis sekali di sini supaya layar operator, dashboard,
  * dan pencatat scan tidak pernah berbeda pendapat soal lini yang sama.
  */
-export function modeScanBerlaku(input: {
-  modeLini?: ScanModeTersimpan | null;
-  modeProses?: ScanModeTersimpan | null;
-  proses?: ProcessType | null;
-}): ScanMode {
-  return normalkanModeScan(input.modeLini ?? input.modeProses ?? null, input.proses);
+export function modeScanBerlaku(
+  katalog: KatalogProses,
+  input: {
+    modeLini?: ScanModeTersimpan | null;
+    modeProses?: ScanModeTersimpan | null;
+    proses?: ProcessType | null;
+  },
+): ScanMode {
+  return normalkanModeScan(katalog, input.modeLini ?? input.modeProses ?? null, input.proses);
 }
 
 /**
@@ -411,10 +359,8 @@ export function modeScanBerlaku(input: {
  *
  * Hanya BAWAAN. Yang berlaku adalah isi TM_ROUTE_PROCESS per pabrik.
  */
-export function modeScanBawaan(p: ProcessType): ScanMode {
-  // Seluruh lini pabrik Body memakai kanban box, baik lini WIP maupun FG-nya.
-  if (p.startsWith('INJECTION') || p.startsWith('PAINTING') || p.startsWith('ASSEMBLING_BODY'))
-    return 'KANBAN_BOX';
-  return menghasilkanFinishGood(p) ? 'PART_KANBAN' : 'PART_SAJA';
+export function modeScanBawaan(katalog: KatalogProses, p: ProcessType): ScanModeTersimpan {
+  return katalog.modeScan(p);
 }
 
+/* Dipertahankan sebagai nama lama supaya pemanggil lama tidak berubah banyak. */

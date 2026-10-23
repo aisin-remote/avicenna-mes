@@ -7,7 +7,7 @@ import {
   ScanLine,
   ChartNoAxesColumnIncreasing,
 } from 'lucide-react';
-import { PROCESS_LABELS, type ProcessType } from '@avicenna/contracts';
+import { katalogProsesServer } from '@/lib/process-types';
 import { summarizeProductionByProcess } from '@avicenna/domain';
 import { getDashboardSummary, listLinesWithProduction } from '@/lib/queries';
 import { PageHeader } from '@/components/ui/page-header';
@@ -21,6 +21,7 @@ import { Stagger, StaggerItem } from '@/components/motion/reveal';
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
+  const katalog = await katalogProsesServer();
   // Server Component: query jalan di server, browser terima HTML jadi.
   const now = new Date();
   const [summary, lines] = await Promise.all([
@@ -109,7 +110,7 @@ export default async function DashboardPage() {
                         <Chip value={group.plantCode ?? '—'} />
                       </Td>
                       <Td strong>
-                        {PROCESS_LABELS[group.processType as ProcessType] ?? group.processType}
+                        {katalog.label(group.processType)}
                       </Td>
                       <Td align="right" strong className="tabular">
                         {group.qtyHariIni.toLocaleString('id-ID')}

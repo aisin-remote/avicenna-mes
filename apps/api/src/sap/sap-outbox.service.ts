@@ -26,6 +26,7 @@ import {
 } from '@avicenna/domain';
 import type { LocationKind } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
+import { ProcessTypeService } from '../master/process-type.service';
 
 /** Jeda sebelum sebuah dokumen dianggap lengkap. Lihat catatan di collect(). */
 const SETTLE_SECONDS = 60;
@@ -63,7 +64,10 @@ interface BarisDokumen {
 export class SapOutboxService {
   private readonly logger = new Logger(SapOutboxService.name);
 
-  constructor(@InjectDb() private readonly db: Database) {}
+  constructor(
+    @InjectDb() private readonly db: Database,
+    private readonly processTypes: ProcessTypeService,
+  ) {}
 
   async collect(): Promise<{ dikumpulkan: number; ditahan: number; dilewati: number }> {
     // Jeda memberi waktu transaksi scan selesai. Dokumen produksi juga
@@ -155,6 +159,7 @@ export class SapOutboxService {
     sourceId: number,
   ): Promise<{ pending: number; held: number; skipped: number }> {
     const hasil = { pending: 0, held: 0, skipped: 0 };
+    const katalog = await this.processTypes.katalog();
 
     const baris = await this.db
       .select({
@@ -325,11 +330,9 @@ export class SapOutboxService {
        * Dilewati DENGAN SEBABNYA, bukan dibiarkan terkirim lalu ditolak SAP
        * sebagai material yang tidak dikenal.
        */
-      if (docType === 'PRODUCTION' && scan?.processType && kelasHasilSap(scan.processType) === null) {
-        const keputusan = periksaHasilProduksi({
-          proses: scan.processType,
-          slocKind: null,
-        });
+      const jenisScan = katalog.cari(scan?.processType);
+      if (docType === 'PRODUCTION' && scan?.processType && kelasHasilSap(jenisScan?.sapClass ?? 'NONE') === null) {
+        const keputusan = periksaHasilProduksi({ jenis: jenisScan, slocKind: null });
         const baru = await this.simpan({
           ...dasar,
           movementType: null,

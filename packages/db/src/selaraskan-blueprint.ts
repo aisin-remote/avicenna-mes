@@ -1,6 +1,7 @@
 import './load-env';
 import { eq } from 'drizzle-orm';
-import { PROCESS_TYPES, menghasilkanFinishGood, type LocationKind } from '@avicenna/contracts';
+import type { LocationKind } from '@avicenna/contracts';
+import { bacaKatalogProses } from './katalog-proses';
 import { getDb, closeDb } from './client';
 import { plants, locations, lines, routeProcesses } from './schema/index';
 
@@ -70,6 +71,7 @@ type Catatan = { tindakan: string; rincian: string };
 async function main() {
   const tulis = process.argv.includes('--tulis');
   const db = getDb();
+  const katalog = await bacaKatalogProses(db);
 
   console.log(
     `\n[selaraskan] ${tulis ? 'MENULIS SUNGGUHAN' : 'uji coba — tidak ada yang ditulis'}\n`,
@@ -191,7 +193,7 @@ async function main() {
       slocKini.find((l) => l.plantId === plantId && l.kind === kind);
 
     for (const l of await tx.select().from(lines)) {
-      const jenisKeluar: LocationKind = menghasilkanFinishGood(l.processType)
+      const jenisKeluar: LocationKind = katalog.menghasilkanFinishGood(l.processType)
         ? 'FINISH_GOOD'
         : 'WIP';
       const masuk = cariSloc(l.plantId, 'WIP');
@@ -248,7 +250,7 @@ async function main() {
          * periksaHasilProduksi(). Metode scan-nya pun berbeda: di lini FG
          * kanban ditempel, jadi PART_KANBAN.
          */
-        const fgLini = menghasilkanFinishGood(proses);
+        const fgLini = katalog.menghasilkanFinishGood(proses);
         const keluar = fgLini ? fg : wip;
         dilakukan.push({
           tindakan: `rute proses ${elec.code}`,
@@ -293,7 +295,7 @@ async function main() {
       for (const r of diPabrik) {
         if (!r.processType.endsWith('_WIP')) continue;
         const pasangan = `${r.processType.slice(0, -4)}_FG`;
-        if (!(PROCESS_TYPES as readonly string[]).includes(pasangan)) continue;
+        if (!katalog.cari(pasangan)) continue;
         if (sudah.has(pasangan as (typeof routeProcesses.$inferInsert)['processType'])) continue;
         sudah.add(pasangan as (typeof routeProcesses.$inferInsert)['processType']);
         dilakukan.push({

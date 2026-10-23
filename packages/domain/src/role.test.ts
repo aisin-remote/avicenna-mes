@@ -1,3 +1,4 @@
+import { KATALOG_UJI } from './katalog-uji';
 import { describe, it, expect } from 'vitest';
 import {
   grupProses,
@@ -12,33 +13,32 @@ import {
   ROLE_KIND_LABELS,
   PROCESS_GROUP_LABELS,
 } from './role';
-import { PROCESS_TYPES } from '@avicenna/contracts';
 
 describe('grupProses', () => {
   it('WIP dan FG masuk grup yang sama', () => {
     // "Casting lasman" satu orang, mengurus lini Casting WIP maupun Casting FG.
-    expect(grupProses('CASTING_WIP')).toBe('CASTING');
-    expect(grupProses('CASTING_FG')).toBe('CASTING');
-    expect(grupProses('MACHINING_WIP')).toBe('MACHINING');
-    expect(grupProses('MACHINING_FG')).toBe('MACHINING');
+    expect(grupProses(KATALOG_UJI, 'CASTING_WIP')).toBe('CASTING');
+    expect(grupProses(KATALOG_UJI, 'CASTING_FG')).toBe('CASTING');
+    expect(grupProses(KATALOG_UJI, 'MACHINING_WIP')).toBe('MACHINING');
+    expect(grupProses(KATALOG_UJI, 'MACHINING_FG')).toBe('MACHINING');
   });
 
   it('assembling kedua pabrik masuk grup yang sama', () => {
-    expect(grupProses('ASSEMBLING_UNIT_FG')).toBe('ASSEMBLING');
-    expect(grupProses('ASSEMBLING_BODY_FG')).toBe('ASSEMBLING');
+    expect(grupProses(KATALOG_UJI, 'ASSEMBLING_UNIT_FG')).toBe('ASSEMBLING');
+    expect(grupProses(KATALOG_UJI, 'ASSEMBLING_BODY_FG')).toBe('ASSEMBLING');
   });
 
   it('setiap jenis proses punya grupnya — tidak ada yang tercecer', () => {
     // Menambah jenis proses tanpa menentukan grupnya akan membuat role tidak
     // pernah cocok dengan lini itu, tanpa error apa pun.
-    for (const p of PROCESS_TYPES) {
-      expect(PROCESS_GROUPS).toContain(grupProses(p));
+    for (const p of KATALOG_UJI.kode) {
+      expect(PROCESS_GROUPS).toContain(grupProses(KATALOG_UJI, p));
     }
   });
 
   it('prosesDalamGrup mengembalikan seluruh anggotanya', () => {
-    expect(prosesDalamGrup('CASTING').sort()).toEqual(['CASTING_FG', 'CASTING_WIP']);
-    expect(prosesDalamGrup('MELTING')).toEqual(['MELTING']);
+    expect(prosesDalamGrup(KATALOG_UJI, 'CASTING').sort()).toEqual(['CASTING_FG', 'CASTING_WIP']);
+    expect(prosesDalamGrup(KATALOG_UJI, 'MELTING')).toEqual(['MELTING']);
   });
 });
 
@@ -73,29 +73,29 @@ describe('halamanAwal', () => {
 describe('bolehScanDi', () => {
   it('lasman casting boleh di kedua lini casting', () => {
     const r = { kind: 'SCANNING', processGroup: 'CASTING' } as const;
-    expect(bolehScanDi(r, 'CASTING_WIP')).toBe(true);
-    expect(bolehScanDi(r, 'CASTING_FG')).toBe(true);
+    expect(bolehScanDi(KATALOG_UJI, r, 'CASTING_WIP')).toBe(true);
+    expect(bolehScanDi(KATALOG_UJI, r, 'CASTING_FG')).toBe(true);
   });
 
   it('lasman casting TIDAK boleh di lini machining', () => {
     const r = { kind: 'SCANNING', processGroup: 'CASTING' } as const;
-    expect(bolehScanDi(r, 'MACHINING_WIP')).toBe(false);
+    expect(bolehScanDi(KATALOG_UJI, r, 'MACHINING_WIP')).toBe(false);
   });
 
   it('jp dan leader tidak men-scan sama sekali', () => {
     // Mereka memeriksa data. Membiarkannya men-scan berarti hasil produksi bisa
     // bertambah dari orang yang tidak berdiri di lini.
-    expect(bolehScanDi({ kind: 'VIEW', processGroup: 'CASTING' }, 'CASTING_WIP')).toBe(false);
+    expect(bolehScanDi(KATALOG_UJI, { kind: 'VIEW', processGroup: 'CASTING' }, 'CASTING_WIP')).toBe(false);
   });
 
   it('admin boleh di mana saja', () => {
-    for (const p of PROCESS_TYPES) {
-      expect(bolehScanDi({ kind: 'ADMIN' }, p)).toBe(true);
+    for (const p of KATALOG_UJI.kode) {
+      expect(bolehScanDi(KATALOG_UJI, { kind: 'ADMIN' }, p)).toBe(true);
     }
   });
 
   it('scanning tanpa lingkup boleh di mana saja', () => {
-    expect(bolehScanDi({ kind: 'SCANNING' }, 'PAINTING_WIP')).toBe(true);
+    expect(bolehScanDi(KATALOG_UJI, { kind: 'SCANNING' }, 'PAINTING_WIP')).toBe(true);
   });
 });
 
