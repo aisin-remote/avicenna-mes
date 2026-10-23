@@ -329,6 +329,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       },
       { name: 'uom', label: 'Satuan', kind: 'text', max: 16, hint: 'pcs, kg, liter, …' },
       {
+        name: 'productionVersion',
+        label: 'Production Version',
+        kind: 'text',
+        max: 8,
+        inList: true,
+        hint:
+          'Nomor Production Version SAP untuk material ini, mis. 0001. Blueprint ' +
+          'menjadikannya syarat pembuatan kanban — kartu mewarisinya dari sini.',
+      },
+      {
         name: 'photoPath',
         label: 'Foto Part',
         kind: 'image',
@@ -778,6 +788,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint: 'Tercetak di kartu. Boleh sama dengan part lain, asal beda di part yang sama.',
       },
       { name: 'kanbanNo', label: 'No. Kanban SAP', kind: 'number', inList: true },
+      {
+        name: 'productionVersion',
+        label: 'Production Version',
+        kind: 'text',
+        max: 8,
+        inList: true,
+        hint:
+          'Dikosongkan = mewarisi dari master Part. Kartu internal tidak bisa ' +
+          'dibuat bila part-nya pun belum punya versi.',
+      },
       {
         name: 'owner',
         label: 'Pemilik Kartu',

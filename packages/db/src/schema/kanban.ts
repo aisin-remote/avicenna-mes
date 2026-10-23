@@ -96,6 +96,19 @@ export const kanbans = kanbanSchema.table(
      */
     unitPerKanban: integer('INT_UNIT_PER_KANBAN').notNull().default(1),
     /** LH / RH untuk part yang berpasangan kiri-kanan. */
+    /**
+     * PRODUCTION VERSION yang dipakai saat kartu ini dibuat.
+     *
+     * Disalin dari part pada saat pembuatan, bukan dibaca ulang dari sana tiap
+     * kali: begitu versi material diganti, kartu yang sudah beredar tetap
+     * menyatakan versi yang BENAR-BENAR dipakai membuatnya. Membacanya ulang
+     * akan membuat seluruh riwayat ikut berubah nama secara surut.
+     *
+     * Blueprint PP AIIA PP-MD-05 menjadikannya syarat pembuatan kanban. Kartu
+     * CUSTOMER yang didaftarkan otomatis dari label DN tidak punya versi, dan
+     * itu benar: label itu milik customer, bukan master kanban kita.
+     */
+    productionVersion: varchar('CHR_PRODUCTION_VERSION', { length: 8 }),
     side: varchar('CHR_SIDE', { length: 8 }),
     boxType: varchar('CHR_BOX_TYPE', { length: 8 }),
     customerId: fk('INT_CUSTOMER_ID').references(() => customers.id),

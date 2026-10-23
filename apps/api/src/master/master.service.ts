@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { and, or, like, eq, asc, desc, count, inArray, sql, type Database } from '@avicenna/db';
-import { getMasterTable, locations } from '@avicenna/db';
+import { getMasterTable, locations, parts } from '@avicenna/db';
 import { sebabGalatDb } from '@avicenna/db';
 import {
   getEntityDef,
@@ -14,7 +14,12 @@ import {
   type MasterEntity,
   type ProcessType,
 } from '@avicenna/contracts';
-import { kelasHasilSap, periksaHasilProduksi, periksaTransferSloc } from '@avicenna/domain';
+import {
+  kelasHasilSap,
+  periksaHasilProduksi,
+  periksaTransferSloc,
+  productionVersionKartu,
+} from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 import { ProcessTypeService } from './process-type.service';
 import { validationError } from '../common/validation-error';
@@ -374,6 +379,60 @@ export class MasterService {
     }
   }
 
+  /**
+   * Production Version kartu kanban — diwarisi dari part, dan WAJIB.
+   *
+   * Blueprint PP AIIA (PP-MD-05) menjadikannya syarat pembuatan kanban:
+   * versinya dipastikan tersedia dan valid lebih dulu, baru kartunya dibuat.
+   * Lihat productionVersionKartu() di @avicenna/domain untuk aturannya.
+   *
+   * Diisi di SINI, bukan dibiarkan kosong lalu diperiksa belakangan: kartu yang
+   * terlanjur lahir tanpa versi tidak akan pernah bisa dinyatakan dibuat
+   * terhadap versi yang mana, dan satu-satunya jalan keluarnya menebak.
+   */
+  private async pastikanProductionVersion(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ) {
+    if (entity !== 'kanbans') return;
+
+    const nilai = <T>(nama: string): T | null | undefined =>
+      (values[nama] !== undefined ? values[nama] : barisLama?.[nama]) as T | null | undefined;
+
+    const partId = nilai<number>('partId');
+    const owner = (nilai<string>('owner') ?? 'INTERNAL') as 'INTERNAL' | 'CUSTOMER';
+    if (!partId) return;
+
+    const [part] = await this.db
+      .select({ versi: parts.productionVersion, partNumber: parts.partNumber })
+      .from(parts)
+      .where(eq(parts.id, Number(partId)))
+      .limit(1);
+
+    const hasil = productionVersionKartu({
+      owner,
+      versiKartu: nilai<string>('productionVersion'),
+      versiPart: part?.versi,
+    });
+
+    if (hasil.masalah) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'ValidationError',
+        message: 'Data yang dikirim tidak valid',
+        details: [
+          {
+            field: 'productionVersion',
+            message: `${hasil.masalah} (part ${part?.partNumber ?? partId})`,
+          },
+        ],
+      });
+    }
+    // Warisannya ditulis ke baris, bukan dihitung ulang tiap dibaca.
+    values.productionVersion = hasil.versi;
+  }
+
   /*
    * Katalog di memori dikosongkan begitu masternya berubah.
    *
@@ -393,6 +452,7 @@ export class MasterService {
     await this.pastikanSatuPabrik(entity, parsed.data as Record<string, unknown>);
     await this.pastikanRuteProsesWajar(entity, parsed.data as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, parsed.data as Record<string, unknown>);
+    await this.pastikanProductionVersion(entity, parsed.data as Record<string, unknown>);
 
     const table = this.table(entity);
     try {
@@ -421,6 +481,7 @@ export class MasterService {
     await this.pastikanSatuPabrik(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanRuteProsesWajar(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, values, barisLama as Record<string, unknown>);
+    await this.pastikanProductionVersion(entity, values, barisLama as Record<string, unknown>);
 
     try {
       await this.db.update(table).set(values).where(eq(table.id, id));

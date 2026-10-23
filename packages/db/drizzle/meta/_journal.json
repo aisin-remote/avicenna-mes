@@ -50,6 +50,13 @@
       "when": 1792633997073,
       "tag": "0006_many_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792730757017,
+      "tag": "0007_bored_magneto",
+      "breakpoints": true
     }
   ]
 }

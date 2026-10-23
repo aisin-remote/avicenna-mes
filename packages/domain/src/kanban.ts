@@ -96,6 +96,62 @@ export function nextKanbanStatus(from: KanbanStatus, event: KanbanEventType): Ka
 }
 
 /**
+ * ─── PRODUCTION VERSION SEBUAH KARTU ────────────────────────────────────────
+ *
+ * Blueprint PP AIIA (PP-MD-05) menjadikannya SYARAT pembuatan kanban: Project
+ * Control memastikan dulu Production Version material tersedia dan valid, baru
+ * kartunya dibuat. Versinya sendiri dimiliki SAP dan dipelihara di sana.
+ *
+ * ── Diwariskan dari part, lalu DIBEKUKAN di kartu ───────────────────────────
+ *
+ * Satu part bisa punya ribuan kartu. Mengetik versinya satu per satu adalah
+ * cara paling pasti membuat sebagian kartu memakai versi berbeda tanpa ada yang
+ * menyadarinya, jadi kartu mewarisi dari part.
+ *
+ * Tetapi yang diwarisi itu DISALIN, bukan dirujuk: begitu versi material
+ * diganti, kartu yang sudah beredar tetap menyatakan versi yang benar-benar
+ * dipakai membuatnya. Merujuk akan membuat seluruh riwayat ikut berubah secara
+ * surut — dan riwayat yang berubah sendiri adalah riwayat yang tidak bisa
+ * dipakai menjawab apa pun.
+ *
+ * ── Kartu customer dikecualikan ─────────────────────────────────────────────
+ *
+ * Label DN yang didaftarkan otomatis saat scan adalah milik CUSTOMER, bukan
+ * master kanban kita — tidak ada Production Version yang bisa dilekatkan
+ * padanya, dan mewajibkannya akan menghentikan scan pengiriman.
+ */
+export interface AsalProductionVersion {
+  owner: 'INTERNAL' | 'CUSTOMER';
+  /** Yang diketik di kartu, bila ada. */
+  versiKartu?: string | null;
+  /** Milik part-nya — sumber warisan. */
+  versiPart?: string | null;
+}
+
+export interface HasilProductionVersion {
+  /** Yang harus disimpan di kartu. */
+  versi: string | null;
+  /** Terisi bila kartunya TIDAK boleh dibuat. */
+  masalah?: string;
+}
+
+export function productionVersionKartu(asal: AsalProductionVersion): HasilProductionVersion {
+  const bersih = (v: string | null | undefined) => (v ?? '').trim() || null;
+  const kartu = bersih(asal.versiKartu);
+  const part = bersih(asal.versiPart);
+
+  if (asal.owner === 'CUSTOMER') return { versi: kartu };
+  if (kartu) return { versi: kartu };
+  if (part) return { versi: part };
+  return {
+    versi: null,
+    masalah:
+      'Production Version part ini belum diisi. Lengkapi dulu di master Part — ' +
+      'blueprint SAP menjadikannya syarat pembuatan kanban.',
+  };
+}
+
+/**
  * ─── PELEPASAN KARTU SAAT TRUK BERANGKAT ────────────────────────────────────
  *
  * Inilah yang membuat kartu BERPUTAR. Tanpa langkah ini kartu sekali pakai:

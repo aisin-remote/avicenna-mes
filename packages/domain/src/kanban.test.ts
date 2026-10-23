@@ -6,6 +6,7 @@ import {
   resolveQtyPerKanban,
   kanbanCountFor,
   pelepasanKanban,
+  productionVersionKartu,
 } from './kanban';
 
 describe('nextKanbanStatus', () => {
@@ -47,7 +48,41 @@ describe('nextKanbanStatus', () => {
     expect(nextKanbanStatus('PRODUCED', 'RELEASED')).toBe('AVAILABLE');
   });
 
-  describe('pelepasanKanban', () => {
+  describe('productionVersionKartu', () => {
+  it('kartu internal mewarisi versi dari part-nya', () => {
+    const h = productionVersionKartu({ owner: 'INTERNAL', versiPart: '0001' });
+    expect(h.versi).toBe('0001');
+    expect(h.masalah).toBeUndefined();
+  });
+
+  it('versi yang ditulis di kartu mengalahkan warisan', () => {
+    const h = productionVersionKartu({ owner: 'INTERNAL', versiKartu: '0002', versiPart: '0001' });
+    expect(h.versi).toBe('0002');
+  });
+
+  /*
+   * Inilah syarat yang ditetapkan blueprint: tanpa Production Version, kartunya
+   * tidak boleh lahir. Pesannya menunjuk master Part, bukan formulir kartu —
+   * di situlah yang harus dibetulkan.
+   */
+  it('menolak kartu internal tanpa versi di mana pun', () => {
+    const h = productionVersionKartu({ owner: 'INTERNAL' });
+    expect(h.versi).toBeNull();
+    expect(h.masalah).toContain('master Part');
+  });
+
+  it('spasi kosong diperlakukan sebagai tidak diisi', () => {
+    expect(productionVersionKartu({ owner: 'INTERNAL', versiPart: '   ' }).masalah).toBeDefined();
+  });
+
+  it('kartu customer tidak menuntut versi', () => {
+    const h = productionVersionKartu({ owner: 'CUSTOMER' });
+    expect(h.versi).toBeNull();
+    expect(h.masalah).toBeUndefined();
+  });
+});
+
+describe('pelepasanKanban', () => {
     it('kartu internal kembali ke peredaran dan menambah putaran', () => {
       const p = pelepasanKanban('INTERNAL');
       expect(p.status).toBe('AVAILABLE');

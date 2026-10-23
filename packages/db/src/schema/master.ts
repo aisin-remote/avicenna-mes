@@ -174,6 +174,25 @@ export const parts = masterSchema.table(
     trackingMode: enumCol('CHR_TRACKING_MODE', TRACKING_MODES).notNull().default('SERIAL'),
     /** Satuan. Raw material sering kilogram, bukan pcs. */
     uom: varchar('CHR_PART_UOM', { length: 16 }).notNull().default('pcs'),
+    /**
+     * PRODUCTION VERSION milik material ini di SAP.
+     *
+     * Di SAP sebuah Production Version adalah pasangan BOM + Rate Routing untuk
+     * satu material di satu plant, bernomor '0001', '0002', dan seterusnya.
+     * Blueprint PP AIIA menjadikannya SYARAT pembuatan kanban (PP-MD-05
+     * langkah 1): Project Control memastikan dulu versinya tersedia dan valid,
+     * baru kartunya dibuat.
+     *
+     * Disimpan di part, bukan hanya di kartu, karena versinya memang milik
+     * MATERIAL — satu part bisa punya ribuan kartu, dan mengetik versinya satu
+     * per satu adalah cara paling pasti untuk membuat sebagian kartu memakai
+     * versi yang berbeda tanpa ada yang menyadarinya. Kartu mewarisi dari sini.
+     *
+     * Kosong sampai diisi orang atau ditarik dari SAP. Blueprint menyebut SAP
+     * sebagai pemiliknya ("source of truth") dan akan mendorongnya ke sistem
+     * ini, tetapi spesifikasi antarmukanya belum ada — lihat docs/sap-integration.md.
+     */
+    productionVersion: varchar('CHR_PRODUCTION_VERSION', { length: 8 }),
     /** Jumlah pcs per kanban standar (bisa dioverride per customer di customer_parts). */
     qtyPerKanban: integer('INT_QTY_PER_BOX'),
     standardStock: integer('INT_STANDARD_STOCK').notNull().default(0),

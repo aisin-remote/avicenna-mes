@@ -635,6 +635,54 @@ sesuai BOM. Karena itu `CONSUMPTION_OUT` di `sap-movement.ts` diberi
 `kirim: false`. Mengirimnya berarti komponen terpotong DUA KALI, tanpa galat
 apa pun yang muncul.
 
+### Production Version sebagai syarat kanban
+
+Blueprint PP-MD-05 langkah 1: Project Control memastikan dulu Production
+Version material tersedia dan valid, **baru** kartunya dibuat. Di SAP sebuah
+Production Version adalah pasangan BOM + Rate Routing untuk satu material di
+satu plant, bernomor `0001`, `0002`, dan seterusnya.
+
+Di sini ia tersimpan di DUA tempat, dan itu disengaja:
+
+| Kolom | Isi | Kenapa |
+| --- | --- | --- |
+| `TM_PARTS.CHR_PRODUCTION_VERSION` | versi material sekarang | satu part punya ribuan kartu; mengetiknya satu per satu adalah cara paling pasti membuat sebagian kartu memakai versi berbeda tanpa ada yang menyadarinya |
+| `TM_KANBAN.CHR_PRODUCTION_VERSION` | versi yang dipakai saat kartu ini dibuat | **disalin, bukan dirujuk** |
+
+Salinan itu yang membuatnya berguna: begitu versi material diganti, kartu yang
+sudah beredar tetap menyatakan versi yang BENAR-BENAR dipakai membuatnya.
+Merujuk akan membuat seluruh riwayat ikut berubah secara surut — dan riwayat
+yang berubah sendiri tidak bisa dipakai menjawab apa pun.
+
+Kartu **internal** tidak bisa dibuat bila part-nya belum punya versi; pesannya
+menunjuk master Part, bukan formulir kartu, sebab di situlah yang harus
+dibetulkan. Kartu **customer** dikecualikan: label DN yang didaftarkan otomatis
+saat scan adalah milik customer, bukan master kanban kita, dan mewajibkannya
+akan menghentikan scan pengiriman.
+
+**Yang belum:** versinya diketik orang. Blueprint menyebut SAP sebagai
+pemiliknya dan akan mendorongnya ke sistem ini, tetapi spesifikasi antarmukanya
+termasuk yang masih harus diminta.
+
+### Satu singkatan yang berarti dua hal berbeda
+
+`CHR_PV` di staging — pada `TM_PROCESS_PARTS` (kunci `CHR_PART_NO` + `CHR_PV`)
+dan pada `TT_PRODUCTION_RESULT` — **belum dipastikan** apakah ia Production
+Version atau nomor urut langkah.
+
+Yang mendukung "nomor urut langkah": satu part yang melewati empat proses
+menghasilkan empat baris, dan tiap baris punya work center serta SLOC tujuan
+sendiri. Yang mendukung "Production Version": namanya, lebarnya char(4), dan
+bentuk nilainya (`0001`, `0002`) — di SAP sebuah Production Version memang
+bernomor begitu, dan ia memang membawa routing.
+
+Keduanya menghasilkan nilai yang mirip, dan itulah yang membuat perbedaannya
+mudah terlewat. Kita **tidak pernah mengisi** `CHR_PV` saat mendorong hasil
+produksi — kolomnya dipetakan tetapi dibiarkan kosong — jadi sampai sekarang
+tidak ada data salah yang terkirim. Yang perlu dipastikan tim SAP: kolom itu
+menunggu yang mana, dan apakah membiarkannya kosong membuat SAP memilih versi
+bawaan atau menolak barisnya.
+
 ### Cycle time ada di SAP
 
 Standard Value Key **Z002** pada Rate Routing: `ZCT001` Cycle Time, `ZMT001`
@@ -647,8 +695,8 @@ Setiap kali dokumen itu menulis "Third-Party System", yang dimaksud adalah
 Avicenna:
 
 - pembuatan master kanban dan pencetakan kartunya (PP-MD-05), dengan
-  **Production Version dari SAP sebagai syarat** — kolom itu belum ada di
-  `TM_KANBAN`;
+  **Production Version dari SAP sebagai syarat** — sudah ada, lihat bagian
+  tersendiri di bawah;
 - klasifikasi kanban **cyclic** (kartu berputar, kembali ke available) atau
   **one-way** (sekali pakai lewat procurement);
 - scan kanban sebagai pemicu seluruh posting: stock transfer, confirmation,
@@ -694,6 +742,12 @@ diminta, bukan dirancang ulang: pemetaan field, nilai flag status, isi
   menahan dokumen dobel saat jaringan tersendat, bukan logika di sisi kita.
 - **Pemetaan kolom master** untuk `SUMBER_MASTER`, supaya arah tarik bisa
   dinyalakan.
+- **Arti `CHR_PV`** — Production Version atau nomor urut langkah? Lihat bagian
+  tersendiri di atas. Kita membiarkannya kosong saat mendorong hasil produksi,
+  dan perlu dipastikan apakah SAP menerima itu.
+- **Sumber Production Version.** Blueprint menyebut SAP pemiliknya dan akan
+  mendorongnya ke sistem ini; sampai antarmukanya ada, versinya diketik orang
+  di master Part.
 - **Apakah `QTY` di staging tanpa tanda.** Sekarang kita mengirim nilai mutlak,
   dengan arah dibawa oleh movement type — itu kebiasaan SAP MM, tetapi perlu
   dipastikan cocok dengan program di sisi sana.
