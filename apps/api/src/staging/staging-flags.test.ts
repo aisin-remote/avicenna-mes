@@ -46,6 +46,9 @@ assert.equal(tafsirStatus('S '), 'BERHASIL');
 // Kosong dan nilai awal: belum ada kesimpulan.
 for (const nilai of [null, undefined, '', '   ', 'NULL', '-', 'N'])
   assert.equal(tafsirStatus(nilai), 'MENUNGGU', `"${nilai}" seharusnya MENUNGGU`);
+// '0' adalah nilai awal CHR_STATUS_NG — bukan kegagalan.
+assert.equal(tafsirStatus('0'), 'MENUNGGU');
+assert.equal(tafsirStatus(AWAL.produksi.statusNg), 'MENUNGGU');
 // '5' ditulis middleware SEBELUM memanggil RFC — dokumennya belum tentu sampai.
 assert.equal(tafsirStatus('5'), 'MENUNGGU');
 // 'R' menandai baris yang direvisi dan akan didorong ulang.

@@ -23,6 +23,7 @@
     "infra:down": "docker compose down",
     "staging:introspect": "pnpm --filter @avicenna/api staging:introspect",
     "staging:compare": "pnpm --filter @avicenna/api staging:compare",
+    "staging:trial": "pnpm --filter @avicenna/api test:staging-trial",
     "deploy:data": "docker compose -f docker/compose.data.yml up -d",
     "deploy:app": "docker compose -f docker/compose.app.yml up -d --build",
     "deploy:seed": "docker compose -f docker/compose.app.yml --profile tools run --rm seed",

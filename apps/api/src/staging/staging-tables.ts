@@ -399,10 +399,13 @@ export const FLAG = {
    *   '-'  nilai awal TT_PRODUCTION_RESULT (DEFAULT di DDL)
    *   'N'  nilai awal TT_GOODS_MOVEMENT_L (DEFAULT di DDL), dan disyaratkan
    *        `WHERE` jalur STNG
+   *   '0'  nilai awal CHR_STATUS_NG. Tanpa ini, jalur NG yang belum disentuh
+   *        SAP akan terbaca GAGAL begitu kolomnya mulai kita baca — kolomnya
+   *        sudah kita TULIS '0', jadi perangkapnya sudah terpasang sekarang.
    *   '5'  ditulis middleware sebelum memanggil RFC — dokumennya sedang terbang
    *   'R'  baris direvisi; middleware akan mendorongnya ulang
    */
-  sedangJalan: ['-', 'N', '5', 'R'] as readonly string[],
+  sedangJalan: ['-', 'N', '0', '5', 'R'] as readonly string[],
 
   /** Nilai awal CHR_STATUS lama. Dipertahankan untuk membaca data lama. */
   baru: env('STAGING_FLAG_NEW', 'N'),
