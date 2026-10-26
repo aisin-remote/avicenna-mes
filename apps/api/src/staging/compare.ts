@@ -21,7 +21,7 @@ import {
   keMssqlConfig,
   ringkasanConfig,
 } from './staging.config';
-import { GOODS_MOVEMENT, FLAG, AWAL, TYPE_TRANS } from './staging-tables';
+import { GOODS_MOVEMENT, PRODUCTION_RESULT, FLAG, AWAL, TYPE_TRANS } from './staging-tables';
 import {
   PETA_GM_KEPALA,
   PETA_GM_BARIS,
@@ -106,9 +106,15 @@ async function bandingkanLangsung(): Promise<void> {
     return;
   }
 
+  /*
+   * TT_PRODUCTION_RESULT dulu TIDAK ikut diperiksa di sini, padahal justru di
+   * tabel itulah kolom yang kita tulis paling banyak — dan di situlah format
+   * CHR_DATE sempat salah tanpa terdeteksi apa pun.
+   */
   for (const [tabel, dipakai] of [
     [GOODS_MOVEMENT.kepala, PETA_GM_KEPALA.map((f) => f.staging)],
     [GOODS_MOVEMENT.baris, [...PETA_GM_BARIS, ...PETA_GM_BALASAN].map((f) => f.staging)],
+    [PRODUCTION_RESULT.tabel, Object.values(PRODUCTION_RESULT.kolom) as string[]],
   ] as [string, string[]][]) {
     const bersih = tabel.replace(/[[\]]/g, '');
     const [skema, nama] = bersih.includes('.') ? bersih.split('.') : ['dbo', bersih];
@@ -117,12 +123,22 @@ async function bandingkanLangsung(): Promise<void> {
       .request()
       .input('skema', skema)
       .input('nama', nama)
-      .query<{ nama: string; tipe: string; panjang: number | null; bolehNull: string }>(`
-        SELECT COLUMN_NAME AS nama, DATA_TYPE AS tipe,
-               CHARACTER_MAXIMUM_LENGTH AS panjang, IS_NULLABLE AS bolehNull
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = @skema AND TABLE_NAME = @nama
-        ORDER BY ORDINAL_POSITION
+      .query<{
+        nama: string;
+        tipe: string;
+        panjang: number | null;
+        bolehNull: string;
+        isIdentity: number;
+      }>(`
+        SELECT c.COLUMN_NAME AS nama, c.DATA_TYPE AS tipe,
+               c.CHARACTER_MAXIMUM_LENGTH AS panjang, c.IS_NULLABLE AS bolehNull,
+               COLUMNPROPERTY(
+                 OBJECT_ID(QUOTENAME(@skema) + '.' + QUOTENAME(@nama)),
+                 c.COLUMN_NAME, 'IsIdentity'
+               ) AS isIdentity
+        FROM INFORMATION_SCHEMA.COLUMNS c
+        WHERE c.TABLE_SCHEMA = @skema AND c.TABLE_NAME = @nama
+        ORDER BY c.ORDINAL_POSITION
       `);
 
     console.log(garis(`${tabel} — ${recordset.length} kolom di staging`));
@@ -145,7 +161,21 @@ async function bandingkanLangsung(): Promise<void> {
       for (const c of hilang) console.log(`    ${c}`);
     }
 
-    const wajib = belumDiisi.filter((c) => c.bolehNull !== 'YES');
+    /*
+     * Kolom IDENTITY dikecualikan: ia NOT NULL dan memang TIDAK boleh kita isi
+     * ("Cannot insert explicit value for identity column"). Dulu ia muncul di
+     * daftar ini dengan peringatan "setiap INSERT akan gagal", yang justru
+     * kebalikan dari kebenarannya.
+     */
+    const identity = belumDiisi.filter((c) => c.isIdentity === 1);
+    if (identity.length > 0) {
+      console.log(
+        `\n  IDENTITY, nomornya diberikan SQL Server (benar tidak kita isi): ` +
+          identity.map((c) => c.nama).join(', '),
+      );
+    }
+
+    const wajib = belumDiisi.filter((c) => c.bolehNull !== 'YES' && c.isIdentity !== 1);
     if (wajib.length > 0) {
       console.log('\n  NOT NULL tetapi belum kita isi — setiap INSERT akan gagal:');
       for (const c of wajib) {
@@ -154,7 +184,7 @@ async function bandingkanLangsung(): Promise<void> {
       }
     }
 
-    const opsional = belumDiisi.filter((c) => c.bolehNull === 'YES');
+    const opsional = belumDiisi.filter((c) => c.bolehNull === 'YES' && c.isIdentity !== 1);
     if (opsional.length > 0) {
       console.log(`\n  Nullable, belum kita isi (${opsional.length}): ` +
         opsional.map((c) => c.nama).join(', '));

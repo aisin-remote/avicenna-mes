@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
-import { AWAL, FLAG, TYPE_TRANS, tafsirStatus, typeTransUntuk } from './staging-tables';
-import { PETA_GM_BARIS } from './field-map';
-import { GOODS_MOVEMENT } from './staging-tables';
+import {
+  AWAL,
+  FLAG,
+  LEBAR,
+  TYPE_TRANS,
+  tafsirStatus,
+  typeTransUntuk,
+  keTanggalStaging,
+  keJamStaging,
+  GOODS_MOVEMENT,
+  PRODUCTION_RESULT,
+} from './staging-tables';
+import { PETA_GM_KEPALA, PETA_GM_BARIS } from './field-map';
 
 /*
  * Nilai-nilai di bawah bukan pilihan kita; semuanya terbaca dari `WHERE`
@@ -19,6 +29,8 @@ assert.equal(AWAL.perpindahan.upload, '0');
 assert.equal(AWAL.produksi.status, '-');
 assert.equal(AWAL.produksi.upload, null);
 assert.equal(AWAL.penerimaan.upload, '0');
+// Jalur NG punya status sendiri, nilai awalnya '0'.
+assert.equal(AWAL.produksi.statusNg, '0');
 // Yang pernah salah: '-' pada CHR_UPLOAD baris perpindahan.
 assert.notEqual(AWAL.perpindahan.upload, '-');
 
@@ -56,5 +68,53 @@ for (const jenis of ['DELIVERY', 'GOODS_RECEIPT', 'SCRAP', 'ADJUSTMENT'])
 // Seluruh nilai yang terpeta harus empat huruf: kolomnya char(4).
 for (const [jenis, nilai] of Object.entries(TYPE_TRANS))
   if (nilai !== null) assert.equal(nilai.length, 4, `${jenis} → "${nilai}" bukan 4 karakter`);
+
+// ── Format tanggal dan jam ────────────────────────────────────────────────
+/*
+ * CHR_DATE pada TT_PRODUCTION_RESULT bertipe char(10), dan lebar itu sempat
+ * membuat kita menyimpulkan formatnya YYYY-MM-DD. Data AII membantahnya:
+ * isinya "20260930  " — delapan angka dengan padding. Penjemput meneruskan
+ * nilai ini apa adanya sebagai POSTING_DATE ke RFC, jadi tanda hubung berarti
+ * konversi tanggal ABAP yang gagal.
+ */
+const contohTanggal = keTanggalStaging(new Date(2026, 8, 30, 13, 45, 7));
+assert.equal(contohTanggal, '20260930');
+assert.match(contohTanggal, /^\d{8}$/);
+assert.ok(!contohTanggal.includes('-'), 'CHR_DATE tidak boleh memakai tanda hubung');
+assert.equal(keJamStaging(new Date(2026, 8, 30, 13, 45, 7)), '134507');
+// Nilainya 8 karakter meski kolomnya 10 — itu memang keadaan di AII.
+assert.equal(LEBAR.produksi.CHR_DATE, 10);
+assert.ok(contohTanggal.length <= LEBAR.produksi.CHR_DATE);
+assert.ok(contohTanggal.length <= LEBAR.gmKepala.CHR_DATE);
+
+// ── Setiap kolom char yang kita tulis harus punya lebar tercatat ──────────
+/*
+ * Lebar yang tidak tercatat berarti nilainya dipotong diam-diam oleh SQL
+ * Server, atau INSERT-nya ditolak. Uji ini menangkap kolom baru yang ikut
+ * ditulis tanpa lebarnya dicatat lebih dulu.
+ */
+const cek = (
+  kolom: readonly string[],
+  lebar: Readonly<Record<string, number>>,
+  label: string,
+) => {
+  for (const k of kolom) {
+    if (!k.startsWith('CHR_')) continue;
+    const n = lebar[k];
+    assert.ok(n !== undefined, `${label}: lebar ${k} belum dicatat di LEBAR`);
+    assert.ok(n > 0, `${label}: lebar ${k} tidak masuk akal`);
+  }
+};
+cek(PETA_GM_KEPALA.map((f) => f.staging), LEBAR.gmKepala, 'TT_GOODS_MOVEMENT_H');
+cek(PETA_GM_BARIS.map((f) => f.staging), LEBAR.gmBaris, 'TT_GOODS_MOVEMENT_L');
+cek(Object.values(PRODUCTION_RESULT.kolom), LEBAR.produksi, 'TT_PRODUCTION_RESULT');
+
+// CHR_PLANT memang berbeda lebarnya antar tabel; itu bukan salah tulis.
+assert.equal(LEBAR.gmKepala.CHR_PLANT, 3);
+assert.equal(LEBAR.produksi.CHR_PLANT, 4);
+
+// Nilai flag harus muat di kolom char(1)-nya.
+for (const nilai of [FLAG.validasi, FLAG.berhasil, AWAL.perpindahan.status, AWAL.perpindahan.upload])
+  assert.equal(nilai.length, LEBAR.gmBaris.CHR_STATUS);
 
 console.log('SAP staging flag checks passed');

@@ -183,7 +183,19 @@ export const PRODUCTION_RESULT = {
     qtyOk: 'INT_QTY_OK',
     qtyTotal: 'INT_TOTAL_QTY',
     qtyActual: 'INT_ACTUAL',
+    /*
+     * Keenam kolom NG. Pada data AII SEMUANYA bernilai 0 — bukan NULL — jadi
+     * keenamnya kita tulis 0 juga: baris kita sebaiknya tidak bisa dibedakan
+     * dari baris mereka, dan nilai 0 tidak pernah mengejutkan penjumlahan di
+     * layar siapa pun seperti NULL bisa.
+     *
+     * Yang DIBACA penjemput hanya INT_TOTAL_NG; rinciannya milik MES.
+     */
     ngProcess: 'INT_NG_PRC',
+    ngBrokenTest: 'INT_NG_BRKNTEST',
+    ngSetup: 'INT_NG_SETUP',
+    ngTrial: 'INT_NG_TRIAL',
+    ngOthers: 'INT_NG_OTHERS',
     ngTotal: 'INT_TOTAL_NG',
     tanggalEntry: 'CHR_DATE_ENTRY',
     jamEntry: 'CHR_TIME_ENTRY',
@@ -194,6 +206,24 @@ export const PRODUCTION_RESULT = {
     upload: 'CHR_UPLOAD',
     pesan: 'CHR_MESSAGE',
     matdoc: 'CHR_MATDOC',
+
+    /*
+     * ── Jalur NG, terpisah sepenuhnya ──────────────────────────────────────
+     *
+     * NG dibukukan function module SENDIRI (ZFM_WDE_PROD_RESULT_NG) dari baris
+     * yang SAMA, dipicu INT_TOTAL_NG <> 0, dan menghasilkan dokumen material
+     * sendiri. Karena itu statusnya, pesannya, dan nomor dokumennya pun kolom
+     * terpisah — satu baris bisa berhasil di sisi OK dan gagal di sisi NG.
+     *
+     * Kolom-kolomnya sudah dipetakan; yang belum ada adalah model status ganda
+     * di outbox kita, jadi balasannya belum dibaca.
+     */
+    statusNg: 'CHR_STATUS_NG',
+    pesanNg: 'CHR_MESSAGE_NG',
+    matdocNg: 'CHR_MATDOC_NG',
+    /** Kuantitas revisi; penjemput mengirim INT_TOTAL_QTY dikurangi nilai ini. */
+    qtyRev: 'INT_TOTAL_QTY_REV',
+    ngTotalRev: 'INT_TOTAL_NG_REV',
   },
 } as const;
 
@@ -401,6 +431,8 @@ export const FLAG = {
 export const AWAL = {
   produksi: {
     status: env('STAGING_INIT_STATUS_PRODUCTION', '-'),
+    /** Jalur NG punya statusnya sendiri; nilai awalnya '0', bukan '-'. */
+    statusNg: env('STAGING_INIT_STATUS_NG', '0'),
     /** Dibiarkan NULL, seperti DEFAULT-nya. Tidak ikut disaring penjemput. */
     upload: null as string | null,
   },
@@ -410,6 +442,79 @@ export const AWAL = {
   },
   penerimaan: {
     upload: env('STAGING_INIT_UPLOAD_RECEIPT', '0'),
+  },
+} as const;
+
+/**
+ * Lebar kolom `char(n)` di staging, menurut DDL-nya.
+ *
+ * ── Kenapa dikumpulkan, bukan ditulis ulang di tiap pemanggilan ────────────
+ *
+ * Angka-angka ini sebelumnya tersebar sebagai literal di dalam potong() dan
+ * wajibMuat(). Salah satu di antaranya cukup untuk membuat INSERT ditolak
+ * ("String or binary data would be truncated") atau — lebih buruk — nilai yang
+ * terpotong diam-diam. Dengan dikumpulkan, kolom yang lebarnya belum dicatat
+ * menjadi GALAT COMPILER di tempat pemakaiannya, bukan kejutan saat berjalan.
+ *
+ * Perhatikan CHR_PLANT: char(3) di TT_GOODS_MOVEMENT_H tetapi char(4) di
+ * TT_PRODUCTION_RESULT. Karena itu petanya per tabel, bukan per nama kolom.
+ */
+export const LEBAR = {
+  produksi: {
+    CHR_WO_NUMBER: 30,
+    /** char(10), tetapi isinya YYYYMMDD — lihat catatan formatnya di pendorong. */
+    CHR_DATE: 10,
+    CHR_PV: 4,
+    CHR_PLANT: 4,
+    CHR_WORK_CENTER: 10,
+    CHR_PART_NO: 18,
+    CHR_BACK_NO: 4,
+    CHR_PART_NAME: 40,
+    CHR_UOM: 3,
+    CHR_USER: 50,
+    CHR_DATE_ENTRY: 8,
+    CHR_TIME_ENTRY: 6,
+    CHR_VALIDATE: 1,
+    CHR_STATUS: 1,
+    CHR_STATUS_NG: 1,
+    CHR_UPLOAD: 1,
+    CHR_MESSAGE: 220,
+    CHR_MESSAGE_NG: 520,
+    CHR_MATDOC: 10,
+    CHR_MATDOC_NG: 10,
+  },
+  gmKepala: {
+    CHR_PLANT: 3,
+    CHR_DATE: 8,
+    CHR_TYPE_TRANS: 4,
+    CHR_REMARKS: 25,
+    CHR_DOCUMENT_DATE: 8,
+    CHR_MVMT_TYPE: 3,
+    CHR_VENDOR_NAME: 10,
+    CHR_IP: 20,
+    CHR_USER: 12,
+    CHR_NPK: 6,
+    CHR_VALIDATE: 1,
+    CHR_DATE_ENTRY: 8,
+    CHR_TIME_ENTRY: 6,
+  },
+  gmBaris: {
+    CHR_PART_NO: 18,
+    CHR_PART_NAME: 40,
+    CHR_SLOC_FROM: 4,
+    CHR_SLOC_TO: 4,
+    CHR_UOM: 3,
+    CHR_BACK_NO: 4,
+    CHR_SER_NO: 20,
+    CHR_MVMT_TYPE_L: 3,
+    CHR_TYPE_TRANS_L: 4,
+    CHR_STATUS: 1,
+    CHR_UPLOAD: 1,
+    CHR_MESSAGE: 220,
+    CHR_MATDOC: 10,
+    CHR_MATDOC_YEAR: 4,
+    CHR_DATE_ENTRY: 8,
+    CHR_TIME_ENTRY: 6,
   },
 } as const;
 

@@ -1187,6 +1187,70 @@ proses menggantung memegang koneksi SQL-nya.
   (`cmd2` ditimpa sebelum `ExecuteNonQuery`). Namanya menyebut **AIIA**;
   tabel apa itu belum diketahui.
 
+### Koreksi: format `CHR_DATE`, dari data sungguhan
+
+`Sample Data for All Table Linked to SAP - PP.xlsx` menyelesaikan satu hal yang
+selama ini hanya disimpulkan dari lebar kolom:
+
+```
+CHR_DATE = "20260930  "    char(10), delapan angka + dua spasi padding
+```
+
+Catatan 5 Oktober menyimpulkan `YYYY-MM-DD` semata-mata karena kolomnya
+char(10), dan **kode kita mengirimnya begitu**. Itu salah, dan salahnya mahal:
+penjemput meneruskan nilai ini **apa adanya** sebagai `POSTING_DATE` ke RFC,
+tanpa memformat ulang dan tanpa `Trim`. Tanda hubung berarti konversi tanggal
+ABAP yang gagal.
+
+Penyaring `CHR_DATE > '20250310'` di penjemput sendiri sudah membuktikannya
+tanpa perlu data: dengan `YYYY-MM-DD`, seluruh baris bertahun 2025 akan terbuang
+karena `'-'` (0x2D) lebih kecil daripada angka — dan aplikasi itu tidak akan
+pernah memposting apa pun sepanjang 2025.
+
+Nilai awal dari data yang sama, dan semuanya cocok dengan yang sudah kita tulis:
+
+| Kolom | Baris belum diproses | Baris berhasil |
+| --- | --- | --- |
+| `CHR_VALIDATE` | `Y` | `X` |
+| `CHR_STATUS` | `-` | `S` |
+| `CHR_UPLOAD` | NULL | `X` |
+| `CHR_STATUS_NG` | `0` | `0` |
+| `CHR_MATDOC` | NULL | 10 digit |
+
+`CHR_STATUS_NG = '0'` adalah satu-satunya yang belum kita tulis; sekarang
+ditulis. Keenam kolom NG bernilai 0 — bukan NULL — jadi keenamnya kita tulis 0.
+
+Satu pengamatan yang bukan soal format: `CHR_WO_NUMBER` di AII berbentuk
+`ASHV01/20260930/SHIFT1` — **satu baris per work center per tanggal per shift**,
+bukan per scan. Kita mendorong per scan, yang berarti dokumen SAP lebih banyak
+dan lebih kecil. Penjemput tidak membaca kolom itu sama sekali, jadi tidak ada
+yang rusak; tetapi perbedaan granularitasnya layak disepakati dengan tim SAP
+sebelum volume produksi sungguhan masuk.
+
+### Struktur AIIA = struktur AII
+
+`staging:compare --live` terhadap `172.18.3.19 / A_DB_STG` mencocokkan persis
+dengan DDL AII: `TT_GOODS_MOVEMENT_H` 17 kolom, `TT_GOODS_MOVEMENT_L` 44,
+`TT_PRODUCTION_RESULT` 68, dan **0 kolom yang kita konfigurasikan tetapi tidak
+ada**. Jadi DDL AII di `AII_SHARE` sah dipakai sebagai rujukan lebar dan
+DEFAULT untuk AIIA — itulah dasar `LEBAR` di `staging-tables.ts`.
+
+Perbandingan live itu sendiri sebelumnya **tidak memeriksa
+`TT_PRODUCTION_RESULT`** — tabel dengan kolom terbanyak yang kita tulis, dan
+tempat bug `CHR_DATE` bersembunyi. Sekarang ikut diperiksa. Kolom IDENTITY juga
+tidak lagi dilaporkan sebagai "NOT NULL tetapi belum kita isi — setiap INSERT
+akan gagal", yang justru kebalikan dari kebenarannya.
+
+### Dua dokumen yang sekarang ditolak lebih awal
+
+Keduanya PASTI gagal, dan keduanya dulu lolos tanpa jejak:
+
+- **Production Version kosong.** Hasil produksi tidak mengirim plant maupun
+  SLOC; SAP menurunkan keduanya dari versi. Pada seluruh contoh AII kolom ini
+  selalu terisi (`0001`, `0003`, `0004`).
+- **Kuantitas 0.** Penjemput melewatkan baris ber-`INT_TOTAL_QTY = 0` kecuali
+  statusnya `'R'`. Baris seperti itu akan duduk di staging selamanya.
+
 ### Yang berubah di kode kita
 
 | | |
@@ -1198,6 +1262,12 @@ proses menggantung memegang koneksi SQL-nya.
 | `CHR_TYPE_TRANS` | `potong(docType,4)` → `TYPE_TRANS`, `TRANSFER` → `STRM` |
 | jenis dokumen tanpa `CHR_TYPE_TRANS` | didorong apa adanya → **HELD** dengan sebab tertulis |
 | pembacaan `CHR_STATUS` | `=== 'E'` gagal, sisanya berhasil → `tafsirStatus()` |
+| `CHR_DATE` hasil produksi | `YYYY-MM-DD` → **`YYYYMMDD`** |
+| `CHR_STATUS_NG` | tidak ditulis → `'0'` |
+| kolom NG | dua kolom → **keenamnya** 0, seperti AII |
+| qty hasil produksi | dikirim apa adanya → dibulatkan (`numeric(13,0)`) |
+| Production Version kosong / qty 0 | didorong → **ditolak** dengan sebab terbaca |
+| lebar kolom | literal tersebar → `LEBAR`, satu peta dari DDL |
 
 Keadaan awal kini terkumpul di `AWAL` pada `staging-tables.ts`, per tabel, dan
 diuji `staging-flags.test.ts`.
@@ -1383,9 +1453,9 @@ pernah cocok dengan rutenya.
   ini sudah tidak berlaku.
 - **Kolom NOT NULL hanya kuncinya**, jadi INSERT kita tidak akan gagal karena
   kolom wajib yang tidak diisi.
-- `TT_PRODUCTION_RESULT.CHR_DATE` memang char(10) — format `YYYY-MM-DD` yang
-  sudah kita kirim benar. `CHR_PLANT` di tabel itu char(4), berbeda dari char(3)
-  di `TT_GOODS_MOVEMENT_H`.
+- `TT_PRODUCTION_RESULT.CHR_DATE` memang char(10). **Kesimpulan bahwa isinya
+  `YYYY-MM-DD` SALAH** — lihat koreksinya di bagian 26 Oktober. `CHR_PLANT` di
+  tabel itu char(4), berbeda dari char(3) di `TT_GOODS_MOVEMENT_H`.
 
 ### Yang masih menunggu jawaban
 

@@ -9,6 +9,7 @@ import {
   PRODUCTION_RESULT,
   FLAG,
   AWAL,
+  LEBAR,
   tafsirStatus,
   typeTransUntuk,
   bersih,
@@ -279,69 +280,124 @@ export class StagingPushService {
     if (!hasil?.partNumber) throw new Error('hasil produksi tidak punya nomor part');
     if (!payload.lineCode) throw new Error('work center dari line scan kosong');
     const plant = kodePabrik.get(row.plantId);
-    if (!plant || plant.length > 4)
-      throw new Error('kode SAP pabrik belum diisi atau melebihi 4 karakter');
-    if (payload.lineCode.length > 10)
-      throw new Error('kode line melebihi 10 karakter work center staging');
-    if (hasil.partNumber.length > 18) throw new Error('nomor part melebihi 18 karakter staging');
+    if (!plant || plant.length > LEBAR.produksi.CHR_PLANT)
+      throw new Error(
+        `kode SAP pabrik belum diisi atau melebihi ${LEBAR.produksi.CHR_PLANT} karakter`,
+      );
+    if (payload.lineCode.length > LEBAR.produksi.CHR_WORK_CENTER)
+      throw new Error(
+        `kode line melebihi ${LEBAR.produksi.CHR_WORK_CENTER} karakter work center staging`,
+      );
+    if (hasil.partNumber.length > LEBAR.produksi.CHR_PART_NO)
+      throw new Error(`nomor part melebihi ${LEBAR.produksi.CHR_PART_NO} karakter staging`);
+
+    /*
+     * ── Dua keadaan yang PASTI gagal, ditolak di sini supaya sebabnya terbaca ──
+     *
+     * 1. Production Version kosong. Hasil produksi TIDAK mengirim plant maupun
+     *    SLOC ke SAP — penjemputnya hanya meneruskan lima field, dan SAP
+     *    menurunkan keduanya dari Production Version. Tanpa versi, SAP tidak
+     *    punya cara tahu di mana memposting. Pada seluruh contoh AII kolom ini
+     *    selalu terisi.
+     *
+     * 2. Kuantitas 0. Penjemput melewatkan baris ber-INT_TOTAL_QTY = 0 kecuali
+     *    statusnya 'R' (revisi). Baris seperti itu akan duduk di staging
+     *    selamanya, dan di layar kita terbaca SENT — kegagalan yang paling
+     *    sulit dilihat.
+     *
+     * Keduanya dilempar, bukan ditahan diam-diam: penyebabnya ada di data
+     * master atau di scan-nya, dan outbox akan menampilkannya sebagai FAILED
+     * dengan alasan yang bisa dikerjakan orang.
+     */
+    const versi = bersih(payload.productionVersion);
+    if (!versi) {
+      throw new Error(
+        `part ${hasil.partNumber} belum punya Production Version — ` +
+          'SAP menurunkan plant dan SLOC dari versi itu, jadi tanpanya hasil produksi ' +
+          'tidak bisa dibukukan. Isi CHR_PRODUCTION_VERSION di master Part.',
+      );
+    }
+    if (Math.round(hasil.qtyAbsolute) === 0) {
+      throw new Error(
+        'kuantitas hasil produksi 0 — penjemput SAP melewatkan baris seperti ini, ' +
+          'jadi dokumennya tidak akan pernah terproses',
+      );
+    }
 
     const terjadi = new Date(payload.occurredAt ?? row.occurredAt);
     const sekarang = new Date();
     const C = PRODUCTION_RESULT.kolom;
     const nilai: Record<string, unknown> = {
       // INT_NUMBER TIDAK diisi — kolom IDENTITY di SQL Server.
-      [C.woNumber]: potong(`${rujukan(row.id)} ${payload.sourceTable}`, 30),
-      [C.tanggal]: `${keTanggalStaging(terjadi).slice(0, 4)}-${keTanggalStaging(terjadi).slice(4, 6)}-${keTanggalStaging(terjadi).slice(6)}`,
+      [C.woNumber]: potong(`${rujukan(row.id)} ${payload.sourceTable}`, LEBAR.produksi[C.woNumber]),
+      /*
+       * YYYYMMDD, TANPA tanda hubung — meski kolomnya char(10).
+       *
+       * Lebarnya sempat membuat kita menyimpulkan formatnya ISO. Data AII
+       * membantahnya: isinya "20260930  ", delapan angka dengan dua spasi
+       * padding. Dan penjemputnya meneruskan nilai ini APA ADANYA sebagai
+       * POSTING_DATE ke RFC, tanpa memformat ulang — jadi tanda hubung berarti
+       * konversi tanggal ABAP yang gagal, bukan sekadar beda rapi.
+       *
+       * Penyaring `CHR_DATE > '20250310'` di penjemput juga hanya masuk akal
+       * untuk format ini: dengan YYYY-MM-DD, seluruh baris bertahun 2025 akan
+       * terbuang karena '-' lebih kecil daripada angka.
+       */
+      [C.tanggal]: keTanggalStaging(terjadi),
       [C.bulan]: terjadi.getMonth() + 1,
       [C.tahun]: terjadi.getFullYear(),
       [C.plant]: plant,
       [C.workCenter]: payload.lineCode,
       [C.partNo]: hasil.partNumber,
-      [C.backNo]: wajibMuat(payload.backNumber ?? null, 4, 'Back number'),
-      [C.partName]: potong(payload.partName ?? null, 40),
+      [C.backNo]: wajibMuat(payload.backNumber ?? null, LEBAR.produksi[C.backNo], 'Back number'),
+      [C.partName]: potong(payload.partName ?? null, LEBAR.produksi[C.partName]),
       /*
-       * CHR_PV — Production Version material.
+       * CHR_PV — Production Version material. TERBUKTI: penjemput meneruskannya
+       * sebagai parameter PROD_VERSION ke function module-nya.
        *
-       * Pada contoh TM_PROCESS_PARTS dari AII, ada part yang baris SATU-SATUNYA
-       * bernilai 0002 atau 0003. Nomor urut langkah mustahil berperilaku begitu
-       * — sebuah part selalu punya langkah pertama. Jadi kolom ini Production
-       * Version, bukan urutan proses seperti yang sempat kita catat.
-       *
-       * Kosong bila part-nya belum punya versi. Dibiarkan kosong, bukan diisi
-       * '0001': menebak versi berarti hasil produksi dibukukan terhadap
-       * pasangan BOM dan routing yang belum tentu dipakai.
+       * Tidak pernah kosong di sini — dokumen tanpa versi sudah ditolak di
+       * atas. Dan tidak pernah ditebak '0001': menebak versi berarti hasil
+       * produksi dibukukan terhadap pasangan BOM dan routing yang belum tentu
+       * dipakai, dan SAP menurunkan plant serta SLOC dari pasangan itu.
        */
-      [C.pv]: potong(payload.productionVersion ?? null, 4),
-      [C.uom]: potong(hasil.uom ?? null, 3),
-      [C.qtyOk]: hasil.qtyAbsolute,
-      [C.qtyTotal]: hasil.qtyAbsolute,
-      [C.qtyActual]: hasil.qtyAbsolute,
+      [C.pv]: potong(versi, LEBAR.produksi[C.pv]),
+      [C.uom]: potong(hasil.uom ?? null, LEBAR.produksi[C.uom]),
       /*
-       * ── Dua kolom NG, sengaja masih 0 ──────────────────────────────────────
+       * Ketiga kolom qty bertipe numeric(13,0) — tanpa pecahan. Dibulatkan di
+       * sini supaya pembulatannya terjadi di tempat yang terbaca, bukan diam-
+       * diam di sisi SQL Server. Pada data AII ketiganya selalu bernilai sama.
+       */
+      [C.qtyOk]: Math.round(hasil.qtyAbsolute),
+      [C.qtyTotal]: Math.round(hasil.qtyAbsolute),
+      [C.qtyActual]: Math.round(hasil.qtyAbsolute),
+      /*
+       * ── Keenam kolom NG, sengaja masih 0 ───────────────────────────────────
        *
-       * Inilah saluran yang blueprint sediakan untuk NG: menurut PP-PE-02 dan
-       * PP-PE-03 langkah 6, SAP memposting barang NG ke storage location reject
-       * dari kuantitas yang DILAPORKAN di sini — bukan dari dokumen scrap
-       * tersendiri. Karena itu NG_OUT tidak lagi dikirim sebagai dokumen
-       * (lihat sap-movement.ts).
+       * Dua pertanyaan yang dulu menahan pengisiannya sudah TERJAWAB oleh kode
+       * penjemput AII:
        *
-       * Yang menahan pengisiannya bukan kemalasan, melainkan dua pertanyaan
-       * yang belum dijawab tim SAP, dan salah menebaknya mengubah ANGKA GOODS
-       * RECEIPT di SAP:
+       *   1. Pembagian INT_NG_PRC vs INT_TOTAL_NG — rinciannya tidak dikirim
+       *      sama sekali. Yang dibaca hanya INT_TOTAL_NG.
+       *   2. Hubungannya dengan INT_QTY_OK/INT_TOTAL_QTY — tidak ada. NG
+       *      dibukukan function module SENDIRI (ZFM_WDE_PROD_RESULT_NG) sebagai
+       *      dokumen material terpisah. Mengisi NG tidak mengurangi goods
+       *      receipt.
        *
-       *   1. Pembagian keduanya. INT_NG_PRC ("NG proses") versus INT_TOTAL_NG
-       *      ("total NG") — kalau SAP menjumlahkan keduanya, mengisi angka yang
-       *      sama di dua kolom berarti scrap dua kali lipat.
-       *   2. Hubungannya dengan INT_QTY_OK dan INT_TOTAL_QTY. Bila SAP
-       *      meng-GR sebesar TOTAL_QTY - TOTAL_NG, mengisi NG tanpa menaikkan
-       *      TOTAL_QTY membuat penerimaan barang jadi berkurang tanpa sebab.
+       * Yang menahan sekarang bukan lagi pertanyaan, melainkan pekerjaan yang
+       * belum dibangun: karena NG dan OK dibukukan terpisah, satu baris outbox
+       * bisa SETENGAH terkonfirmasi — OK berhasil, NG gagal, atau sebaliknya.
+       * Status outbox kita masih satu kolom, dan menuliskan NG sebelum model
+       * itu ada berarti kegagalan sisi NG tidak punya tempat untuk muncul.
        *
-       * Sampai keduanya dipastikan, NG tetap 0 DAN kesenjangannya ditampilkan
-       * — lihat GET /sap/ng-perlu-koreksi, yang mendaftar NG yang hasil
-       * produksinya sudah dikonfirmasi SAP. Spesifikasi antarmukanya ada di
-       * AII dan masih harus diminta.
+       * Sampai itu dibangun, NG tetap 0 DAN kesenjangannya ditampilkan — lihat
+       * GET /sap/ng-perlu-koreksi, yang mendaftar NG yang hasil produksinya
+       * sudah dikonfirmasi SAP.
        */
       [C.ngProcess]: 0,
+      [C.ngBrokenTest]: 0,
+      [C.ngSetup]: 0,
+      [C.ngTrial]: 0,
+      [C.ngOthers]: 0,
       [C.ngTotal]: 0,
       [C.tanggalEntry]: keTanggalStaging(sekarang),
       [C.jamEntry]: keJamStaging(sekarang),
@@ -362,6 +418,13 @@ export class StagingPushService {
        * WAJIB.)
        */
       [C.status]: AWAL.produksi.status,
+      /*
+       * CHR_STATUS_NG punya jalur sendiri: function module
+       * ZFM_WDE_PROD_RESULT_NG, dengan kolom balasan sendiri. Nilai awalnya '0'
+       * pada data AII maupun DEFAULT di DDL. Penjemput menerima NULL juga,
+       * tetapi baris kita sebaiknya tidak bisa dibedakan dari baris mereka.
+       */
+      [C.statusNg]: AWAL.produksi.statusNg,
     };
     const kolom = Object.keys(nilai);
     const tabel = tabelAman(PRODUCTION_RESULT.tabel);
@@ -435,7 +498,7 @@ export class StagingPushService {
           'Isi CHR_SAP_CODE di master pabrik — maksimal 3 karakter, sesuai lebar CHR_PLANT di staging.',
       );
     }
-    if (pabrik.length > 3) {
+    if (pabrik.length > LEBAR.gmKepala.CHR_PLANT) {
       throw new Error(
         `kode SAP pabrik "${pabrik}" lebih dari 3 karakter, sedangkan CHR_PLANT di staging char(3). ` +
           'Perpendek CHR_SAP_CODE di master pabrik.',
@@ -447,7 +510,7 @@ export class StagingPushService {
       plant: pabrik,
       tanggal: keTanggalStaging(terjadi),
       tanggalDokumen: keTanggalStaging(terjadi),
-      movementType: potong(row.movementType, 3),
+      movementType: potong(row.movementType, LEBAR.gmKepala.CHR_MVMT_TYPE),
       /*
        * Kosakata SAP, bukan nama jenis dokumen kita.
        *
@@ -456,11 +519,11 @@ export class StagingPushService {
        * dokumennya tersaring habis. Yang tidak terpeta sudah ditahan di
        * dorongKeStaging(); di sini nilainya pasti ada.
        */
-      jenisTransaksi: potong(typeTransUntuk(row.docType) ?? null, 4),
+      jenisTransaksi: potong(typeTransUntuk(row.docType) ?? null, LEBAR.gmKepala.CHR_TYPE_TRANS),
       // Rujukan kita DI DEPAN: dialah yang dicari saat percobaan ulang.
-      keterangan: potong(`${ref} ${row.sourceTable}#${row.sourceId}`, 25),
+      keterangan: potong(`${ref} ${row.sourceTable}#${row.sourceId}`, LEBAR.gmKepala.CHR_REMARKS),
       nomorProduksi: await this.nomorProduksiTerkait(row),
-      user: potong('AVICENNA', 12),
+      user: potong('AVICENNA', LEBAR.gmKepala.CHR_USER),
       // Tanpa ini barisnya kemungkinan besar dilewati penjemput SAP —
       // lihat FLAG.validasi di staging-tables.ts.
       validate: FLAG.validasi,
@@ -508,18 +571,18 @@ export class StagingPushService {
       for (const b of lines) {
         const nilai: Record<string, unknown> = {
           nomor: nomorDok,
-          partNo: wajibMuat(bersih(b.partNumber), 18, 'Nomor part'),
+          partNo: wajibMuat(bersih(b.partNumber), LEBAR.gmBaris.CHR_PART_NO, 'Nomor part'),
           partName: null,
           backNo: null,
-          slocFrom: wajibMuat(bersih(b.slocFrom), 4, 'SLOC asal'),
-          slocTo: wajibMuat(bersih(b.slocTo), 4, 'SLOC tujuan'),
+          slocFrom: wajibMuat(bersih(b.slocFrom), LEBAR.gmBaris.CHR_SLOC_FROM, 'SLOC asal'),
+          slocTo: wajibMuat(bersih(b.slocTo), LEBAR.gmBaris.CHR_SLOC_TO, 'SLOC tujuan'),
           // INT_TOTAL_QTY bertipe int di staging; pecahan dibulatkan di sini
           // supaya pembulatannya terjadi di tempat yang terbaca, bukan diam-diam
           // di sisi SQL Server.
           qty: Math.round(b.qtyAbsolute ?? Math.abs(Number(b.qty ?? 0))),
-          uom: potong(bersih(b.uom), 3),
-          serialNo: potong(bersih(b.lotNumber), 20),
-          movementTypeBaris: potong(b.movementType ?? row.movementType, 3),
+          uom: potong(bersih(b.uom), LEBAR.gmBaris.CHR_UOM),
+          serialNo: potong(bersih(b.lotNumber), LEBAR.gmBaris.CHR_SER_NO),
+          movementTypeBaris: potong(b.movementType ?? row.movementType, LEBAR.gmBaris.CHR_MVMT_TYPE_L),
           tanggalEntry: keTanggalStaging(sekarang),
           jamEntry: keJamStaging(sekarang),
           /*
