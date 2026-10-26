@@ -1,4 +1,4 @@
-import { GOODS_MOVEMENT, PURCHASE_RECEIPT, DELIVERY, FLAG } from './staging-tables';
+import { GOODS_MOVEMENT, PURCHASE_RECEIPT, DELIVERY, FLAG, AWAL } from './staging-tables';
 
 /**
  * Peta lengkap: kolom di staging ← kolom mana di Avicenna.
@@ -107,15 +107,25 @@ export const PETA_GM_BARIS: PetaField[] = [
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.jamEntry, field: 'jamEntry', arah: 'tulis',
     asal: { jenis: 'turunan', rumus: 'jam sekarang → char(6) HHMMSS' } },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.status, field: 'status', arah: 'tulis',
-    asal: { jenis: 'tetap', nilai: FLAG.baru },
-    catatan: 'Status awal. Sejak baris ini ada di staging, SAP yang menimpanya.' },
+    asal: { jenis: 'tetap', nilai: AWAL.perpindahan.status },
+    catatan:
+      'Nilai awal, sama dengan DEFAULT di DDL staging. Jalur STNG menyaring ' +
+      "CHR_STATUS = 'N' secara tersurat, jadi mengosongkannya membuat barisnya dilewati." },
+  { tabelStaging: GOODS_MOVEMENT.baris, staging: L.upload, field: 'upload', arah: 'tulis',
+    asal: { jenis: 'tetap', nilai: AWAL.perpindahan.upload },
+    catatan:
+      "Disyaratkan KETIGA program penjemput goods movement: CHR_UPLOAD = '0'. " +
+      "Pernah kita tulis '-', dan akibatnya seluruh dokumen perpindahan tersaring habis." },
 ];
 
 /** Kolom yang DIISI SAP di TT_GOODS_MOVEMENT_L, dibaca balik untuk menutup dokumen. */
 export const PETA_GM_BALASAN: PetaField[] = [
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.status, field: 'status', arah: 'baca',
     asal: { jenis: 'kolom', tabel: 'TT_SAP_OUTBOX', kolom: 'CHR_STATUS' },
-    catatan: `"${FLAG.berhasil}" menjadi CONFIRMED, "${FLAG.gagal}" menjadi REJECTED.` },
+    catatan:
+      `Hanya "${FLAG.berhasil}" menjadi CONFIRMED. Kosong dan ` +
+      `${FLAG.sedangJalan.map((s) => `"${s}"`).join('/')} berarti masih menunggu; ` +
+      'sisanya REJECTED — kolom ini memuat message type ABAP, bukan dua nilai.' },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.pesan, field: 'pesan', arah: 'baca',
     asal: { jenis: 'kolom', tabel: 'TT_SAP_OUTBOX', kolom: 'CHR_LAST_ERROR' } },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.matdoc, field: 'matdoc', arah: 'baca',

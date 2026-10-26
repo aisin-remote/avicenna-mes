@@ -9,7 +9,7 @@
     "staging:compare": "tsx src/staging/compare.ts",
     "staging:introspect": "tsx src/staging/introspect.ts",
     "start": "node dist/main.js",
-    "test": "tsx src/staging/staging-normalization.test.ts && tsx src/loading/loading-sync-status.test.ts",
+    "test": "tsx src/staging/staging-normalization.test.ts && tsx src/staging/staging-flags.test.ts && tsx src/loading/loading-sync-status.test.ts",
     "test:delivery-trial": "tsx src/loading/loading.integration-check.ts",
     "test:receiving-trial": "tsx src/receiving/receiving.integration-check.ts",
     "typecheck": "tsc --noEmit"

@@ -8,6 +8,9 @@ import {
   GOODS_MOVEMENT,
   PRODUCTION_RESULT,
   FLAG,
+  AWAL,
+  tafsirStatus,
+  typeTransUntuk,
   bersih,
   keTanggalStaging,
   keJamStaging,
@@ -191,6 +194,29 @@ export class StagingPushService {
         continue;
       }
 
+      /*
+       * CHR_TYPE_TRANS yang belum diputuskan juga DITAHAN.
+       *
+       * Nilai yang tidak dikenal tidak ditolak SAP — ia tersaring di `WHERE`
+       * program penjemput, dan barisnya duduk diam di staging. Status SENT
+       * yang kemudian terbaca di layar berarti "sudah mendarat, menunggu SAP",
+       * jadi dokumen seperti itu tidak akan pernah terlihat salah. HELD dengan
+       * sebab yang tertulis adalah satu-satunya kegagalan yang bisa dilihat.
+       */
+      if (typeTransUntuk(row.docType) === undefined) {
+        await this.db
+          .update(sapOutbox)
+          .set({
+            status: 'HELD',
+            lastError:
+              `CHR_TYPE_TRANS untuk ${row.docType} belum diputuskan — ` +
+              'tanpa nilai yang dikenal, barisnya tersaring penjemput SAP tanpa jejak',
+          })
+          .where(eq(sapOutbox.id, row.id));
+        ditahan++;
+        continue;
+      }
+
       // Setiap jenis punya tabelnya sendiri. Kegagalan skema produksi tidak
       // boleh menahan transfer yang tabelnya sudah benar, dan sebaliknya.
       let pre = preflight.get(row.docType);
@@ -320,11 +346,22 @@ export class StagingPushService {
       [C.tanggalEntry]: keTanggalStaging(sekarang),
       [C.jamEntry]: keJamStaging(sekarang),
       [C.user]: 'AVICENNA',
-      // Tanpa ini barisnya kemungkinan besar dilewati penjemput SAP.
+      // Tanpa ini barisnya DILEWATI penjemput — `CHR_VALIDATE = 'X'` ada di
+      // dalam `WHERE` program hasil produksi, dan DEFAULT kolomnya NULL.
       [C.validate]: FLAG.validasi,
-      // CHR_STATUS dibiarkan kosong: itulah keadaan baris yang belum diproses
-      // pada data AII. CHR_UPLOAD diisi '-' mengikuti baris mereka yang sama.
-      [C.upload]: FLAG.belum,
+      /*
+       * CHR_STATUS awal '-' mengikuti DEFAULT di DDL. Program penjemputnya
+       * menerima '-' maupun NULL (`CHR_STATUS <> 'S' OR CHR_STATUS IS NULL`),
+       * jadi keduanya jalan; yang dipilih adalah nilai yang sama dengan
+       * barisnya sendiri, supaya baris kita tidak bisa dibedakan dari baris
+       * mereka.
+       *
+       * CHR_UPLOAD TIDAK diisi — DEFAULT-nya NULL dan kolomnya tidak ikut
+       * disaring di tabel ini. Middleware yang menimpanya dengan 'X' setelah
+       * RFC-nya berhasil. (Di TT_GOODS_MOVEMENT_L sebaliknya: '0' di sana
+       * WAJIB.)
+       */
+      [C.status]: AWAL.produksi.status,
     };
     const kolom = Object.keys(nilai);
     const tabel = tabelAman(PRODUCTION_RESULT.tabel);
@@ -411,7 +448,15 @@ export class StagingPushService {
       tanggal: keTanggalStaging(terjadi),
       tanggalDokumen: keTanggalStaging(terjadi),
       movementType: potong(row.movementType, 3),
-      jenisTransaksi: potong(row.docType, 4),
+      /*
+       * Kosakata SAP, bukan nama jenis dokumen kita.
+       *
+       * Dulu di sini tertulis potong(row.docType, 4), yang mengirim 'TRAN'.
+       * Nilai itu tidak ada dalam `WHERE` satu pun program penjemput, jadi
+       * dokumennya tersaring habis. Yang tidak terpeta sudah ditahan di
+       * dorongKeStaging(); di sini nilainya pasti ada.
+       */
+      jenisTransaksi: potong(typeTransUntuk(row.docType) ?? null, 4),
       // Rujukan kita DI DEPAN: dialah yang dicari saat percobaan ulang.
       keterangan: potong(`${ref} ${row.sourceTable}#${row.sourceId}`, 25),
       nomorProduksi: await this.nomorProduksiTerkait(row),
@@ -478,13 +523,21 @@ export class StagingPushService {
           tanggalEntry: keTanggalStaging(sekarang),
           jamEntry: keJamStaging(sekarang),
           /*
-           * CHR_STATUS sengaja TIDAK diisi.
+           * Keadaan awal, DUA kolom, dan keduanya menentukan apakah barisnya
+           * terjemput sama sekali:
            *
-           * Pada data AII, baris yang belum diproses CHR_STATUS-nya NULL —
-           * bukan 'N'. Kalau penjemput di sisi SAP menyaring dengan
-           * `CHR_STATUS IS NULL`, baris bernilai 'N' tidak akan pernah
-           * terjemput, dan tidak ada galat apa pun yang muncul.
+           *   CHR_STATUS = 'N'  disyaratkan tersurat oleh jalur STNG
+           *   CHR_UPLOAD = '0'  disyaratkan KETIGA program goods movement
+           *
+           * Keduanya sama dengan DEFAULT di DDL staging, tetapi tetap ditulis
+           * tersurat: kolom yang ikut dalam daftar INSERT tidak lagi mengambil
+           * nilai bawaannya.
+           *
+           * Sebelum ini CHR_STATUS dibiarkan NULL dan CHR_UPLOAD diisi '-'.
+           * Keduanya salah, dan salahnya tidak menimbulkan galat apa pun.
            */
+          status: AWAL.perpindahan.status,
+          upload: AWAL.perpindahan.upload,
         };
 
         const req = tx.request();
@@ -584,12 +637,26 @@ export class StagingPushService {
           : ((row.docType === 'PRODUCTION' ? balasanProduksi : balasanTransfer).get(
               Number(row.stagingNumber),
             ) ?? []);
-      if (baris.length === 0 || baris.some((b) => !b.status || b.status === FLAG.baru)) {
+      /*
+       * CHR_STATUS memuat MESSAGE TYPE ABAP, bukan dua nilai.
+       *
+       * Middleware AII menulis `CHR_STATUS = M_TYPE` dengan M_TYPE diambil dari
+       * export parameter function module-nya, jadi nilainya bisa S/E/W/A/I —
+       * ditambah '5' yang ditulisnya SEBELUM memanggil RFC, dan 'R' untuk baris
+       * yang direvisi.
+       *
+       * Karena itu kesimpulannya diambil tafsirStatus(), bukan perbandingan ke
+       * satu nilai. Dulu di sini apa pun selain 'E' dianggap berhasil, yang
+       * berarti baris ber-CHR_STATUS '5' — dokumen yang BELUM tentu sampai —
+       * ditutup sebagai CONFIRMED tanpa nomor dokumen material.
+       */
+      const tafsir = baris.map((b) => tafsirStatus(b.status));
+      if (baris.length === 0 || tafsir.includes('MENUNGGU')) {
         masih++;
         continue;
       }
 
-      const gagal = baris.filter((b) => b.status === FLAG.gagal);
+      const gagal = baris.filter((_, i) => tafsir[i] === 'GAGAL');
       if (gagal.length > 0) {
         const pesan = gagal
           .map((g) => g.pesan)

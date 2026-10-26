@@ -21,7 +21,7 @@ import {
   keMssqlConfig,
   ringkasanConfig,
 } from './staging.config';
-import { GOODS_MOVEMENT, FLAG } from './staging-tables';
+import { GOODS_MOVEMENT, FLAG, AWAL, TYPE_TRANS } from './staging-tables';
 import {
   PETA_GM_KEPALA,
   PETA_GM_BARIS,
@@ -55,8 +55,15 @@ function cetakPeta(): void {
   cetakBagian('Diisi SAP, kita baca balik', PETA_GM_BALASAN);
 
   console.log(
-    `\n  Flag: "${FLAG.baru}" ditulis kita · "${FLAG.berhasil}" berhasil · "${FLAG.gagal}" gagal` +
-      '  (nilainya BELUM dikonfirmasi tim SAP)',
+    `\n  Keadaan awal baris perpindahan: CHR_STATUS "${AWAL.perpindahan.status}" · ` +
+      `CHR_UPLOAD "${AWAL.perpindahan.upload}" · CHR_VALIDATE "${FLAG.validasi}"` +
+      `\n  Hasil produksi: CHR_STATUS "${AWAL.produksi.status}" · CHR_UPLOAD dibiarkan NULL` +
+      `\n  Balasan: hanya "${FLAG.berhasil}" berarti selesai; ` +
+      `${FLAG.sedangJalan.map((f) => `"${f}"`).join('/')} masih menunggu; sisanya gagal` +
+      `\n  CHR_TYPE_TRANS: ${Object.entries(TYPE_TRANS)
+        .map(([d, v]) => `${d} → ${v ?? 'tidak dipakai'}`)
+        .join(' · ')}` +
+      '\n  (ketiganya terbaca dari kode penjemput AII, bukan lagi dugaan)',
   );
 
   const beda = PETA_LENGKAP.filter((f) => statusPenyamaan(f) === 'beda');
