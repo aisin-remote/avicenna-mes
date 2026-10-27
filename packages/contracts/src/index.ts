@@ -7,6 +7,7 @@ export * from './receiving-session';
 export * from './transfer';
 export * from './loading';
 export * from './kanban-crop';
+export * from './papan';
 export * from './master/registry';
 export * from './master/import';
 export * from './menu';

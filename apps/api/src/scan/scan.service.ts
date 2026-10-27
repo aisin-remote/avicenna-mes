@@ -15,6 +15,7 @@ import {
 } from '@avicenna/db';
 import {
   scanEvents,
+  productionPlans,
   lines,
   parts,
   machines,
@@ -793,6 +794,20 @@ export class ScanService {
             deviceId: principal?.kind === 'device' ? principal.sub : null,
             scannedAt: normalized.scannedAt,
             dedupeKey: normalized.dedupeKey,
+            /*
+             * Baris rencana yang sedang dikerjakan, bila ada.
+             *
+             * Tanpa ini papan perintah kerja tidak bisa menghitung ACTUAL per
+             * perintah — satu part bisa muncul delapan kali dalam sehari
+             * dengan nomor perintah berbeda, dan menjumlahkannya per part
+             * membuat kedelapannya terlihat seperti satu.
+             *
+             * Kosong bila lini belum punya rencana. Itu keadaan yang sah dan
+             * tidak boleh menggagalkan scan: barangnya sudah jadi, dan
+             * menolaknya hanya membuat lini berhenti karena data kantor.
+             */
+            productionPlanId:
+              line && part ? await this.rencanaBerjalan(line.id, part.id, normalized.scannedAt) : null,
             // Aturan baca ikut dicatat: saat sebuah barcode terbaca keliru,
             // pertanyaan pertama selalu "dibaca pakai aturan mana".
             meta: {
@@ -1506,6 +1521,72 @@ export class ScanService {
 
   /** Jumlah scan yang diterima hari ini pada satu line. */
   /** Bentuk hitungan sebagaimana dikirim ke layar (StationResult / StationSummary). */
+  /**
+   * Baris rencana yang sedang dikerjakan di sebuah lini untuk sebuah part.
+   *
+   * ── Kenapa dipilih dari HITUNGAN, bukan dari status ────────────────────────
+   *
+   * Status RUNNING diubah manusia dan gampang tertinggal — baris yang sudah
+   * selesai tetap RUNNING sampai ada yang menutupnya. Yang tidak pernah bohong
+   * adalah berapa yang sudah discan ke baris itu. Jadi yang dipilih: urutan
+   * terkecil hari ini untuk part tersebut yang BELUM genap.
+   *
+   * Dibatasi pada part-nya sendiri, bukan sekadar urutan terkecil di lini.
+   * Operator yang menyelesaikan satu model lalu mulai model berikutnya
+   * sebelum baris sebelumnya genap akan menempelkan hasilnya ke perintah kerja
+   * yang salah — dan di papan, dua model itu tertukar angkanya.
+   *
+   * Mengembalikan null bila lini belum punya rencana. Scan tetap tersimpan.
+   */
+  private async rencanaBerjalan(
+    lineId: number,
+    partId: number,
+    waktu: Date,
+  ): Promise<number | null> {
+    const { start } = productionDayWindow(waktu);
+    const tanggal = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+
+    const baris = await this.db
+      .select({
+        id: productionPlans.id,
+        orderQty: productionPlans.orderQty,
+        cycle: productionPlans.cycle,
+        seqNo: productionPlans.seqNo,
+      })
+      .from(productionPlans)
+      .where(
+        and(
+          eq(productionPlans.lineId, lineId),
+          eq(productionPlans.partId, partId),
+          eq(productionPlans.planDate, tanggal),
+          inArray(productionPlans.status, ['DRAFT', 'RELEASED', 'RUNNING']),
+        ),
+      )
+      .orderBy(asc(productionPlans.cycle), asc(productionPlans.seqNo));
+    if (baris.length === 0) return null;
+
+    const terisi = await this.db
+      .select({ planId: scanEvents.productionPlanId, pcs: sum(scanEvents.qty) })
+      .from(scanEvents)
+      .where(
+        inArray(
+          scanEvents.productionPlanId,
+          baris.map((b) => b.id),
+        ),
+      )
+      .groupBy(scanEvents.productionPlanId);
+    const peta = new Map(terisi.map((t) => [t.planId, Number(t.pcs ?? 0)]));
+
+    /*
+     * Yang terakhir dipakai sebagai cadangan, bukan null.
+     *
+     * Produksi melebihi rencana itu biasa di lapangan; melemparkannya ke luar
+     * perintah kerja membuat kelebihannya tidak terlihat di papan mana pun,
+     * dan di akhir shift selisihnya tidak bisa dijelaskan siapa pun.
+     */
+    return (baris.find((b) => (peta.get(b.id) ?? 0) < b.orderQty) ?? baris[baris.length - 1]!).id;
+  }
+
   private async hitunganUntukHasil(lineCode?: string | null) {
     const h = await this.hitungHariIni(lineCode);
     return { counterToday: h.scans, pcsToday: h.pcs };

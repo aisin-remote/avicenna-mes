@@ -3,7 +3,6 @@
   "private": true,
   "version": "0.1.0",
   "description": "Avicenna MES - unified manufacturing execution system (rebuild of avicenna + bella)",
-  "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=20.9.0"
   },
@@ -37,5 +36,6 @@
     "prettier": "3.4.2",
     "turbo": "2.10.12",
     "typescript": "5.9.3"
-  }
+  },
+  "packageManager": "pnpm@11.25.0"
 }

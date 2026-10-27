@@ -1,6 +1,11 @@
 'use server';
 
-import type { BerhentiLini, SampleCheck, StationResult } from '@avicenna/contracts';
+import type {
+  BerhentiLini,
+  PapanStasiun,
+  SampleCheck,
+  StationResult,
+} from '@avicenna/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 
 /**
@@ -111,6 +116,25 @@ export async function selesaiBerhentiAction(
       body: JSON.stringify({ lineCode }),
     });
     return { ok: true };
+  } catch (err) {
+    if (err instanceof ApiRequestError) return { error: err.message };
+    return { error: 'Tidak bisa menghubungi server. Periksa jaringan.' };
+  }
+}
+
+/**
+ * Menarik ulang isi papan perintah kerja.
+ *
+ * Server Action, sama alasannya dengan submitScanAction: token sesi ada di
+ * cookie httpOnly dan tidak diturunkan ke browser. Papan memanggil ini berkala
+ * supaya angka ACTUAL bergerak walau operator tidak menyentuh apa pun — scan
+ * bisa datang dari device lain di lini yang sama.
+ */
+export async function muatPapanAction(
+  lineCode: string,
+): Promise<PapanStasiun | { error: string }> {
+  try {
+    return await apiFetch<PapanStasiun>(`/scan/papan?line=${encodeURIComponent(lineCode)}`);
   } catch (err) {
     if (err instanceof ApiRequestError) return { error: err.message };
     return { error: 'Tidak bisa menghubungi server. Periksa jaringan.' };
