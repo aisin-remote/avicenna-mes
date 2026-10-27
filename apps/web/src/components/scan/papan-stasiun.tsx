@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { PapanStasiun } from '@avicenna/contracts';
+import type { PapanStasiun as DataPapan } from '@avicenna/contracts';
 import { muatPapanAction } from '@/app/(app)/scan/actions';
 
 /**
@@ -13,22 +13,31 @@ import { muatPapanAction } from '@/app/(app)/scan/actions';
  * meter, sering di bawah lampu pabrik yang terang. Yang dibutuhkan kontras
  * tertinggi yang bisa didapat — hitam pekat dengan kuning — dan itu tidak
  * boleh berubah mengikuti tema terang/gelap aplikasi. Karena itu warnanya
- * ditulis sebagai nilai tetap di sini, bukan lewat token tema.
+ * nilai tetap di sini, bukan token tema.
  *
- * ── Kenapa angka besar sekali ───────────────────────────────────────────────
+ * ── Kenapa tata letaknya diatur per pecahan, bukan lebar tetap ──────────────
  *
- * Satu-satunya hal yang dibaca dari jauh adalah back number dan dua angka
- * hitungan. Sisanya hanya perlu terbaca saat orang mendekat. Ukuran yang
- * seragam membuat papan terlihat rapi tetapi tidak terbaca, dan papan yang
- * tidak terbaca sama saja dengan tidak ada.
+ * Kiri dan kanan masing-masing seperlima lebar, tengah tiga perlima. Dengan
+ * lebar tetap (mis. 15rem) kedua sisi menyusut relatif di layar 55 inci dan
+ * papannya jadi berat di tengah; dengan pecahan, perbandingannya sama di layar
+ * mana pun.
+ *
+ * Dan yang membuatnya terlihat seimbang bukan lebar kolomnya, melainkan DUA
+ * KOTAK KUNING yang sejajar persis atas dan bawah. Kolom kanan punya satu
+ * baris tombol lebih banyak daripada kiri, jadi keduanya disusun sebagai grid
+ * empat baris yang sama — baris terakhir di kiri sengaja kosong. Menumpuknya
+ * dengan flex membuat kotak kiri lebih tinggi daripada kanan, dan mata
+ * langsung menangkapnya sebagai miring.
  */
 
-const KUNING = '#f5e663';
-const HIJAU = '#86efac';
-const MERAH = '#f87171';
+const KUNING = '#f2e14c';
+const HIJAU = '#7ee8a6';
+const MERAH = '#f0556b';
+const NAVY = '#17253f';
+const NAVY_STRIP = '#1b2a4a';
 
 interface Props {
-  awal: PapanStasiun;
+  awal: DataPapan;
   /** Berapa detik sekali papan menarik ulang isinya. */
   jedaDetik?: number;
   onLineStop?: () => void;
@@ -93,24 +102,39 @@ export function PapanStasiun({
       className="flex h-dvh flex-col overflow-hidden bg-black text-white"
       style={{ fontVariantNumeric: 'tabular-nums' }}
     >
-      {/* ── Kepala ─────────────────────────────────────────────────────── */}
-      <header className="flex shrink-0 items-center justify-between px-6 py-3">
-        <div className="text-xl font-black tracking-tight">
-          {papan.line.plantName ?? 'AVICENNA'}
+      {/* ── Kepala: identitas kiri, lini di tengah, jam kanan ───────────── */}
+      <header className="grid shrink-0 grid-cols-[1fr_3fr_1fr] items-center gap-4 px-6 py-3">
+        <div className="truncate text-left">
+          <div className="text-xl leading-none font-black tracking-tight">AVICENNA</div>
+          <div className="truncate text-[0.7rem] tracking-wide opacity-60">
+            {papan.line.plantName ?? ''}
+          </div>
         </div>
-        <div className="text-2xl font-bold tracking-wide">
-          {papan.line.plantCode ? `${papan.line.plantCode} ` : ''}
-          {papan.line.code}
+        <div
+          className="text-center font-black tracking-tight"
+          style={{ fontSize: 'clamp(1.25rem, 2.4vw, 2.25rem)' }}
+        >
+          {papan.line.code} · {papan.line.name}
         </div>
-        <div className="text-2xl font-bold tabular-nums">{jam || ' '}</div>
+        <div
+          className="text-right font-black tabular-nums"
+          style={{ fontSize: 'clamp(1.25rem, 2.4vw, 2.25rem)' }}
+        >
+          {jam || ' '}
+        </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,15rem)] gap-4 px-6 pb-3">
-        {/* ── Kiri: shift dan rencana ──────────────────────────────────── */}
-        <div className="flex min-h-0 flex-col gap-3">
+      {/* ── Badan: 20% / 60% / 20% ───────────────────────────────────────── */}
+      <div className="grid min-h-0 flex-1 grid-cols-[1fr_3fr_1fr] gap-5 px-6 pb-4">
+        {/*
+         * Kiri dan kanan memakai KERANGKA BARIS yang sama persis — tombol,
+         * kotak, tombol, tombol — supaya kotak kuningnya sejajar. Baris
+         * terakhir di kiri kosong, dan itu disengaja.
+         */}
+        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] gap-3">
           <div
-            className="rounded px-4 py-2 text-center text-lg font-bold"
-            style={{ background: '#1e293b', color: KUNING }}
+            className="rounded-md py-2 text-center font-bold"
+            style={{ background: NAVY, color: KUNING, fontSize: 'clamp(0.9rem,1.3vw,1.4rem)' }}
           >
             {papan.shift ?? 'SHIFT —'}
           </div>
@@ -122,57 +146,61 @@ export function PapanStasiun({
             kecil={b ? `${b.rencanaPcs} pcs` : null}
           />
 
-          <button
-            type="button"
-            onClick={onReprint}
-            disabled={!onReprint}
-            className="rounded py-3 text-base font-bold text-black disabled:opacity-40"
-            style={{ background: HIJAU }}
-          >
-            REPRINT
-          </button>
+          <Tombol label="REPRINT" warna={HIJAU} onClick={onReprint} />
+          <div aria-hidden className="h-0" />
         </div>
 
         {/* ── Tengah: perintah kerja yang berjalan ─────────────────────── */}
-        <div className="flex min-h-0 flex-col items-center justify-center text-center">
+        <div className="flex min-h-0 flex-col items-center justify-center gap-1 text-center">
           {b ? (
             <>
-              <div className="text-lg font-bold tracking-wide">
+              <div
+                className="font-bold tracking-wide"
+                style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.6rem)' }}
+              >
                 {b.nomor}
                 {b.customer ? ` (${b.customer})` : ''}
               </div>
               <div
-                className="leading-none font-black"
-                style={{ color: KUNING, fontSize: 'clamp(4rem, 13vw, 11rem)' }}
+                className="leading-[0.9] font-black"
+                style={{ color: KUNING, fontSize: 'clamp(4rem, 12vw, 11rem)' }}
               >
                 {b.backNumber ?? b.partNumber}
               </div>
-              <div className="mt-2 text-2xl font-bold">{b.partNumber}</div>
+              <div
+                className="mt-1 font-bold"
+                style={{ fontSize: 'clamp(1rem, 2vw, 2rem)' }}
+              >
+                {b.partNumber}
+              </div>
               {b.partName ? (
-                <div className="text-lg italic opacity-80">{b.partName}</div>
+                <div
+                  className="truncate italic opacity-80"
+                  style={{ fontSize: 'clamp(0.85rem, 1.4vw, 1.4rem)', maxWidth: '100%' }}
+                >
+                  {b.partName}
+                </div>
               ) : null}
-              <div className="mt-4 text-3xl font-bold">
+              <div
+                className="mt-4 font-bold"
+                style={{ fontSize: 'clamp(1.25rem, 2.6vw, 2.6rem)' }}
+              >
                 {b.kotakTerisi} / {b.kotakKapasitas} PCS
               </div>
             </>
           ) : (
-            <div className="max-w-xl text-2xl font-semibold opacity-70">
+            <div
+              className="max-w-xl font-semibold opacity-70"
+              style={{ fontSize: 'clamp(1rem, 2vw, 1.8rem)' }}
+            >
               {papan.catatan ?? 'Tidak ada perintah kerja yang berjalan.'}
             </div>
           )}
         </div>
 
         {/* ── Kanan: hitungan nyata dan tombol ─────────────────────────── */}
-        <div className="flex min-h-0 flex-col gap-3">
-          <button
-            type="button"
-            onClick={onLineStop}
-            disabled={!onLineStop}
-            className="rounded py-3 text-base font-bold text-black disabled:opacity-40"
-            style={{ background: MERAH }}
-          >
-            STOP
-          </button>
+        <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] gap-3">
+          <Tombol label="STOP" warna={MERAH} onClick={onLineStop} />
 
           <KotakAngka
             atas="ACTUAL"
@@ -181,77 +209,114 @@ export function PapanStasiun({
             kecil={b ? `${b.aktualPcs} pcs` : null}
           />
 
-          <button
-            type="button"
-            onClick={onDandori}
-            disabled={!onDandori}
-            className="rounded py-3 text-base font-bold text-black disabled:opacity-40"
-            style={{ background: HIJAU }}
-          >
-            DANDORI
-          </button>
+          <Tombol label="DANDORI" warna={HIJAU} onClick={onDandori} />
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={onLineStop}
-              disabled={!onLineStop}
-              className="rounded py-2 text-sm font-bold text-black disabled:opacity-40"
-              style={{ background: HIJAU }}
-            >
-              LINE STOP
-            </button>
-            <button
-              type="button"
-              onClick={onReject}
-              disabled={!onReject}
-              className="rounded py-2 text-sm font-bold text-black disabled:opacity-40"
-              style={{ background: HIJAU }}
-            >
-              REJECT/NG
-            </button>
+            <Tombol label="LINE STOP" warna={HIJAU} kecil onClick={onLineStop} />
+            <Tombol label="REJECT/NG" warna={HIJAU} kecil onClick={onReject} />
           </div>
         </div>
       </div>
 
       {/* ── Antrean perintah kerja berikutnya ───────────────────────────── */}
-      <div className="shrink-0 border-t border-white/15">
-        {papan.antrean.length === 0 ? (
-          <div className="px-6 py-4 text-center text-sm opacity-60">
-            Antrean rencana kosong.
-          </div>
-        ) : (
-          <div
-            className="grid"
-            style={{
-              gridTemplateColumns: `repeat(${papan.antrean.length}, minmax(0, 1fr))`,
-            }}
-          >
-            {papan.antrean.map((a) => {
-              const genap = a.aktualPcs >= a.rencanaPcs;
-              return (
+      <AntreanStrip antrean={papan.antrean} />
+    </div>
+  );
+}
+
+/**
+ * Deretan perintah kerja berikutnya.
+ *
+ * Tingginya DIKUNCI seperlima layar, bukan mengikuti isi: deret ini harus
+ * selalu ada di tempat yang sama supaya leader bisa melirik tanpa mencari.
+ * Pita nomor bernavy dipisahkan dari isinya, persis seperti papan INES —
+ * nomor urut adalah penanda posisi, bukan bagian dari angkanya.
+ */
+function AntreanStrip({ antrean }: { antrean: DataPapan['antrean'] }) {
+  if (antrean.length === 0) {
+    return (
+      <div className="shrink-0 border-t border-white/15 px-6 py-6 text-center text-sm opacity-60">
+        Antrean rencana kosong.
+      </div>
+    );
+  }
+  const kolom = `repeat(${antrean.length}, minmax(0, 1fr))`;
+  return (
+    <div className="shrink-0" style={{ height: '21vh' }}>
+      <div className="grid h-full grid-rows-[auto_minmax(0,1fr)]">
+        <div className="grid" style={{ gridTemplateColumns: kolom, background: NAVY_STRIP }}>
+          {antrean.map((a) => (
+            <div
+              key={`no-${a.planId}`}
+              className="border-r border-black/40 py-1 text-center text-sm font-bold last:border-r-0"
+            >
+              {a.urut}
+            </div>
+          ))}
+        </div>
+        <div className="grid min-h-0" style={{ gridTemplateColumns: kolom }}>
+          {antrean.map((a) => {
+            const genap = a.aktualPcs >= a.rencanaPcs;
+            return (
+              <div
+                key={a.planId}
+                className="flex min-w-0 flex-col items-center justify-center gap-0.5 border-r border-white/10 px-1 last:border-r-0"
+                style={{ background: a.berjalan ? 'rgba(242,225,76,0.12)' : 'transparent' }}
+              >
                 <div
-                  key={a.planId}
-                  className="border-r border-white/10 px-2 py-2 text-center last:border-r-0"
+                  className="w-full truncate text-center font-semibold"
+                  style={{ fontSize: 'clamp(0.9rem, 1.7vw, 1.9rem)' }}
+                >
+                  {a.backNumber ?? a.partNumber}
+                </div>
+                <div
+                  className="font-black"
                   style={{
-                    background: a.berjalan ? 'rgba(245,230,99,0.14)' : 'transparent',
+                    fontSize: 'clamp(1.1rem, 2.2vw, 2.4rem)',
+                    opacity: genap ? 0.5 : 1,
+                    color: a.berjalan ? KUNING : undefined,
                   }}
                 >
-                  <div className="text-xs font-bold opacity-70">{a.urut}</div>
-                  <div className="truncate text-xl font-semibold">
-                    {a.backNumber ?? a.partNumber}
-                  </div>
-                  <div className="text-2xl font-black" style={{ opacity: genap ? 0.55 : 1 }}>
-                    {a.aktualPcs}
-                    <span className="text-base font-bold opacity-70">/{a.rencanaPcs}</span>
-                  </div>
-                  <div className="truncate text-[10px] opacity-60">{a.nomor}</div>
+                  {a.aktualPcs}
+                  <span className="text-[0.5em] font-bold opacity-70">/{a.rencanaPcs}</span>
                 </div>
-              );
-            })}
-          </div>
-        )}
+                <div className="w-full truncate text-center text-[0.6rem] opacity-55">
+                  {a.nomor}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
+  );
+}
+
+/** Tombol lebar penuh. Mati bila belum ada penanganannya — bukan disembunyikan. */
+function Tombol({
+  label,
+  warna,
+  kecil,
+  onClick,
+}: {
+  label: string;
+  warna: string;
+  kecil?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className="w-full rounded-md font-bold text-black disabled:opacity-35"
+      style={{
+        background: warna,
+        padding: kecil ? '0.5rem 0.25rem' : '0.75rem 0.5rem',
+        fontSize: kecil ? 'clamp(0.7rem,1vw,1rem)' : 'clamp(0.9rem,1.3vw,1.4rem)',
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -274,25 +339,30 @@ function KotakAngka({
   kecil: string | null;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded border-2" style={{ borderColor: KUNING }}>
+    <div
+      className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] rounded-md border-2"
+      style={{ borderColor: KUNING }}
+    >
       <div
-        className="border-b-2 py-1 text-center text-sm font-bold"
-        style={{ borderColor: KUNING, color: KUNING }}
+        className="border-b-2 py-1 text-center font-bold"
+        style={{ borderColor: KUNING, color: KUNING, fontSize: 'clamp(0.75rem,1.1vw,1.15rem)' }}
       >
         {atas}
       </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center gap-1 px-2">
+      <div className="flex min-h-0 items-center justify-center gap-1 px-2">
         <span
           className="leading-none font-black"
-          style={{ color: KUNING, fontSize: 'clamp(2.5rem, 6vw, 5rem)' }}
+          style={{ color: KUNING, fontSize: 'clamp(2.5rem, 7vw, 6.5rem)' }}
         >
           {angka ?? '—'}
         </span>
-        {kecil ? <span className="self-end pb-2 text-sm opacity-70">{kecil}</span> : null}
+        {kecil ? (
+          <span className="self-end pb-2 text-[0.75rem] opacity-70">{kecil}</span>
+        ) : null}
       </div>
       <div
-        className="border-t-2 py-1 text-center text-sm font-bold"
-        style={{ borderColor: KUNING, color: KUNING }}
+        className="border-t-2 py-1 text-center font-bold"
+        style={{ borderColor: KUNING, color: KUNING, fontSize: 'clamp(0.75rem,1.1vw,1.15rem)' }}
       >
         {bawah}
       </div>

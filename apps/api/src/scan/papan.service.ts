@@ -81,7 +81,10 @@ export class PapanService {
         backNumber: parts.backNumber,
         partName: parts.name,
         qtyPerKanban: parts.qtyPerKanban,
+        customerCode: customers.code,
         customerName: customers.name,
+        customerDock: customers.dock,
+        dock: productionPlans.dock,
       })
       .from(productionPlans)
       .innerJoin(parts, eq(parts.id, productionPlans.partId))
@@ -171,7 +174,21 @@ export class PapanService {
       berjalan: {
         planId: berjalanRow.id,
         nomor: this.nomorPerintah(line.code, tanggalProduksi, berjalanRow.seqNo),
-        customer: berjalanRow.customerName ?? null,
+        /*
+         * Kode customer + dock, bukan nama panjangnya.
+         *
+         * Baris ini duduk tepat di atas back number raksasa dan harus muat
+         * dalam satu baris pada layar lebar mana pun. "Toyota Motor
+         * Manufacturing Indonesia" memaksa barisnya membungkus dan mendorong
+         * angka utama turun; "TMMIN A1" mengatakan hal yang sama kepada orang
+         * yang berdiri di lini. Dock diambil dari rencananya dulu — satu
+         * customer bisa punya beberapa dock, dan yang menentukan dock mana
+         * adalah perintah kerjanya.
+         */
+        customer:
+          [berjalanRow.customerCode, berjalanRow.dock ?? berjalanRow.customerDock]
+            .filter(Boolean)
+            .join(' ') || null,
         partNumber: berjalanRow.partNumber,
         backNumber: berjalanRow.backNumber,
         partName: berjalanRow.partName,
