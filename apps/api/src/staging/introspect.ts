@@ -14,7 +14,12 @@
 // Memuat .env dari ROOT repo, bukan dari apps/api tempat perintah ini dijalankan.
 import '@avicenna/db/load-env';
 import * as sql from 'mssql';
-import { bacaStagingConfig, kekuranganConfig, keMssqlConfig, ringkasanConfig } from './staging.config';
+import {
+  bacaStagingConfig,
+  kekuranganConfig,
+  keMssqlConfig,
+  ringkasanConfig,
+} from './staging.config';
 
 const garis = (judul: string) => `\n── ${judul} ${'─'.repeat(Math.max(0, 66 - judul.length))}`;
 
@@ -29,7 +34,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const r = ringkasanConfig(cfg);
+  const r = ringkasanConfig(cfg, {
+    /* Skrip CLI tidak lewat Nest, jadi tidak ada SettingService.
+         Yang dilaporkan di sini memang nilai .env — skrip ini tidak
+         membaca pengaturan dari database dan tidak mendorong apa pun. */
+    dorongAktif: cfg.pushEnabled,
+    tarikAktif: cfg.pullEnabled,
+  });
   console.log(
     `menyambung ke ${r.host}${r.instance ? '\\' + r.instance : ':' + r.port} / ${r.database} sebagai ${r.user} ...`,
   );
@@ -81,17 +92,13 @@ async function main(): Promise<void> {
   const bersih = targetTabel.replace(/[[\]]/g, '');
   const [skema, nama] = bersih.includes('.') ? bersih.split('.') : ['dbo', bersih];
 
-  const kolom = await pool
-    .request()
-    .input('skema', skema)
-    .input('nama', nama)
-    .query<{
-      nama: string;
-      tipe: string;
-      panjang: number | null;
-      bolehNull: string;
-      bawaan: string | null;
-    }>(`
+  const kolom = await pool.request().input('skema', skema).input('nama', nama).query<{
+    nama: string;
+    tipe: string;
+    panjang: number | null;
+    bolehNull: string;
+    bawaan: string | null;
+  }>(`
       SELECT COLUMN_NAME AS nama, DATA_TYPE AS tipe, CHARACTER_MAXIMUM_LENGTH AS panjang,
              IS_NULLABLE AS bolehNull, COLUMN_DEFAULT AS bawaan
       FROM INFORMATION_SCHEMA.COLUMNS
@@ -113,10 +120,11 @@ async function main(): Promise<void> {
     console.log(`  ${c.nama.padEnd(34)} ${tipe.padEnd(18)} ${nullable}`);
   }
 
-  const indeks = await pool
-    .request()
-    .input('tabel', `${skema}.${nama}`)
-    .query<{ indeks: string; unik: boolean; kolom: string }>(`
+  const indeks = await pool.request().input('tabel', `${skema}.${nama}`).query<{
+    indeks: string;
+    unik: boolean;
+    kolom: string;
+  }>(`
       SELECT i.name AS indeks, i.is_unique AS unik, c.name AS kolom
       FROM sys.indexes i
       JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
@@ -137,7 +145,9 @@ async function main(): Promise<void> {
     console.log('  (tidak ada)');
   } else {
     for (const [namaIdx, v] of perIndeks) {
-      console.log(`  ${(v.unik ? 'UNIQUE ' : '       ') + namaIdx}`.padEnd(50) + v.kolom.join(', '));
+      console.log(
+        `  ${(v.unik ? 'UNIQUE ' : '       ') + namaIdx}`.padEnd(50) + v.kolom.join(', '),
+      );
     }
   }
 

@@ -62,6 +62,7 @@ import { QueueService } from '../queue/queue.service';
 import { LoadingService } from '../loading/loading.service';
 import { BackflushService } from '../backflush/backflush.service';
 import { bacaStagingConfig, keMssqlConfig } from './staging.config';
+import { SettingService } from '../setting/setting.service';
 import { GOODS_MOVEMENT, PRODUCTION_RESULT } from './staging-tables';
 import type { UserPrincipal } from '../auth/auth.types';
 
@@ -175,12 +176,54 @@ async function main() {
     transferAktif: boolean;
     mvt: string | null;
   }> = [
-    { proses: 'MELTING', output: WH.id, transfer: WP.id, produksi: false, transferAktif: true, mvt: '311' },
-    { proses: 'CASTING_WIP', output: WP.id, transfer: null, produksi: false, transferAktif: false, mvt: null },
-    { proses: 'MACHINING_WIP', output: WP.id, transfer: null, produksi: false, transferAktif: false, mvt: null },
-    { proses: 'CASTING_FG', output: FG.id, transfer: null, produksi: true, transferAktif: false, mvt: null },
-    { proses: 'MACHINING_FG', output: FG.id, transfer: null, produksi: true, transferAktif: false, mvt: null },
-    { proses: 'ASSEMBLING_UNIT_FG', output: FG.id, transfer: null, produksi: true, transferAktif: false, mvt: null },
+    {
+      proses: 'MELTING',
+      output: WH.id,
+      transfer: WP.id,
+      produksi: false,
+      transferAktif: true,
+      mvt: '311',
+    },
+    {
+      proses: 'CASTING_WIP',
+      output: WP.id,
+      transfer: null,
+      produksi: false,
+      transferAktif: false,
+      mvt: null,
+    },
+    {
+      proses: 'MACHINING_WIP',
+      output: WP.id,
+      transfer: null,
+      produksi: false,
+      transferAktif: false,
+      mvt: null,
+    },
+    {
+      proses: 'CASTING_FG',
+      output: FG.id,
+      transfer: null,
+      produksi: true,
+      transferAktif: false,
+      mvt: null,
+    },
+    {
+      proses: 'MACHINING_FG',
+      output: FG.id,
+      transfer: null,
+      produksi: true,
+      transferAktif: false,
+      mvt: null,
+    },
+    {
+      proses: 'ASSEMBLING_UNIT_FG',
+      output: FG.id,
+      transfer: null,
+      produksi: true,
+      transferAktif: false,
+      mvt: null,
+    },
   ];
 
   for (const a of aturan) {
@@ -198,9 +241,7 @@ async function main() {
     const [ada] = await db
       .select({ id: routeProcesses.id })
       .from(routeProcesses)
-      .where(
-        and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.processType, a.proses)),
-      )
+      .where(and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.processType, a.proses)))
       .limit(1);
     if (ada) await db.update(routeProcesses).set(nilai).where(eq(routeProcesses.id, ada.id));
     else await db.insert(routeProcesses).values(nilai);
@@ -331,7 +372,17 @@ async function main() {
     processTypes,
   );
   const outbox = new SapOutboxService(db, processTypes);
-  const stagingDb = new StagingDbService();
+  /*
+   * SettingService dirakit dan snapshot-nya dimuat manual.
+   *
+   * Di produksi Nest memanggil onModuleInit; di sini tidak ada Nest, jadi
+   * tanpa pemanggilan itu snapshot kosong dan seluruh saklar jatuh ke .env.
+   * Trial ini justru menguji perilaku yang bergantung pada saklar dorong, jadi
+   * nilainya harus yang sama dengan yang dipakai produksi.
+   */
+  const setting = new SettingService(db);
+  await setting.onModuleInit();
+  const stagingDb = new StagingDbService(setting);
   const push = new StagingPushService(db, stagingDb, new StagingSchemaService(stagingDb));
 
   /*
@@ -381,8 +432,7 @@ async function main() {
     }
   }
 
-  if (ditolak > 0)
-    console.log(`\n  ${ditolak} scan DITOLAK — dokumen di bawah tidak lengkap.`);
+  if (ditolak > 0) console.log(`\n  ${ditolak} scan DITOLAK — dokumen di bawah tidak lengkap.`);
 
   /*
    * ── Backflush, yang biasanya dikerjakan StockWorker ──────────────────────
@@ -466,7 +516,6 @@ async function main() {
       `  #${String(o.id).padStart(4)} ${o.docType.padEnd(14)} ${o.status.padEnd(10)} ` +
         `INT_NUMBER=${o.nomor ?? '-'}${o.lastError ? `  — ${o.lastError.slice(0, 110)}` : ''}`,
     );
-
 
   // ── 6. Baca kembali DARI staging ─────────────────────────────────────────
   console.log(garis('6. Yang benar-benar mendarat di staging'));

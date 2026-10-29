@@ -91,7 +91,13 @@ async function bandingkanLangsung(): Promise<void> {
     return;
   }
 
-  const r = ringkasanConfig(cfg);
+  const r = ringkasanConfig(cfg, {
+    /* Skrip CLI tidak lewat Nest, jadi tidak ada SettingService.
+         Yang dilaporkan di sini memang nilai .env — skrip ini tidak
+         membaca pengaturan dari database dan tidak mendorong apa pun. */
+    dorongAktif: cfg.pushEnabled,
+    tarikAktif: cfg.pullEnabled,
+  });
   console.log(
     garis('Dibandingkan dengan staging sungguhan') +
       `\n  ${r.host}${r.instance ? '\\' + r.instance : ':' + r.port} / ${r.database}`,
@@ -119,17 +125,13 @@ async function bandingkanLangsung(): Promise<void> {
     const bersih = tabel.replace(/[[\]]/g, '');
     const [skema, nama] = bersih.includes('.') ? bersih.split('.') : ['dbo', bersih];
 
-    const { recordset } = await pool
-      .request()
-      .input('skema', skema)
-      .input('nama', nama)
-      .query<{
-        nama: string;
-        tipe: string;
-        panjang: number | null;
-        bolehNull: string;
-        isIdentity: number;
-      }>(`
+    const { recordset } = await pool.request().input('skema', skema).input('nama', nama).query<{
+      nama: string;
+      tipe: string;
+      panjang: number | null;
+      bolehNull: string;
+      isIdentity: number;
+    }>(`
         SELECT c.COLUMN_NAME AS nama, c.DATA_TYPE AS tipe,
                c.CHARACTER_MAXIMUM_LENGTH AS panjang, c.IS_NULLABLE AS bolehNull,
                COLUMNPROPERTY(
@@ -186,8 +188,10 @@ async function bandingkanLangsung(): Promise<void> {
 
     const opsional = belumDiisi.filter((c) => c.bolehNull === 'YES' && c.isIdentity !== 1);
     if (opsional.length > 0) {
-      console.log(`\n  Nullable, belum kita isi (${opsional.length}): ` +
-        opsional.map((c) => c.nama).join(', '));
+      console.log(
+        `\n  Nullable, belum kita isi (${opsional.length}): ` +
+          opsional.map((c) => c.nama).join(', '),
+      );
       console.log('  Tanyakan tim SAP mana di antaranya yang benar-benar mereka baca.');
     }
   }

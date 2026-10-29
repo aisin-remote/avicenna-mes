@@ -32,6 +32,8 @@ export interface StagingStatus {
       encrypt: boolean;
       dorongAktif: boolean;
       tarikAktif: boolean;
+      /** Tarik master BERKALA jalan — beda dari boleh/tidaknya menarik. */
+      tarikBerkalaAktif: boolean;
     };
   };
   target: string;

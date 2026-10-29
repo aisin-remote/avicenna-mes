@@ -526,7 +526,14 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint: 'Kosongkan bila berlaku di semua proses — seperti tombol "DLL" di layar NG.',
       },
       { name: 'category', label: 'Kategori', kind: 'text', max: 64, inList: true },
-      { name: 'sortOrder', label: 'Urutan', kind: 'number', min: 0, defaultValue: 0, numeric: true },
+      {
+        name: 'sortOrder',
+        label: 'Urutan',
+        kind: 'number',
+        min: 0,
+        defaultValue: 0,
+        numeric: true,
+      },
       activeField,
     ],
   },
@@ -569,7 +576,14 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         inList: true,
         hint: 'Dua digit pertama pada barcode, mis. 01, 12, 17.',
       },
-      { name: 'partId', label: 'Part', kind: 'reference', refEntity: 'parts', required: true, inList: true },
+      {
+        name: 'partId',
+        label: 'Part',
+        kind: 'reference',
+        refEntity: 'parts',
+        required: true,
+        inList: true,
+      },
       {
         name: 'product',
         label: 'Model',
@@ -587,7 +601,13 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
          */
         hint: 'Mis. "OPN 889F". Satu part boleh punya beberapa kode; model inilah yang membedakannya.',
       },
-      { name: 'customerId', label: 'Customer', kind: 'reference', refEntity: 'customers', inList: true },
+      {
+        name: 'customerId',
+        label: 'Customer',
+        kind: 'reference',
+        refEntity: 'customers',
+        inList: true,
+      },
       { name: 'isAssy', label: 'Part Rakitan', kind: 'boolean', defaultValue: false },
       activeField,
     ],
@@ -777,7 +797,14 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
     defaultSort: 'partId',
     fields: [
       plantRef,
-      { name: 'partId', label: 'Part', kind: 'reference', refEntity: 'parts', required: true, inList: true },
+      {
+        name: 'partId',
+        label: 'Part',
+        kind: 'reference',
+        refEntity: 'parts',
+        required: true,
+        inList: true,
+      },
       {
         name: 'serialNumber',
         label: 'No. Seri',
@@ -833,7 +860,13 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         defaultValue: 1,
         hint: 'Berapa unit ditempel ke satu kartu. Assembling tertentu menempelkan dua.',
       },
-      { name: 'side', label: 'Side', kind: 'text', max: 8, hint: 'LH / RH untuk part berpasangan.' },
+      {
+        name: 'side',
+        label: 'Side',
+        kind: 'text',
+        max: 8,
+        hint: 'LH / RH untuk part berpasangan.',
+      },
       { name: 'boxType', label: 'Jenis Box', kind: 'text', max: 8 },
       { name: 'customerId', label: 'Customer', kind: 'reference', refEntity: 'customers' },
       activeField,
@@ -983,7 +1016,15 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint: 'Mis. 1, 2, 3.',
       },
       { name: 'name', label: 'Nama', kind: 'text', required: true, max: 64, inList: true },
-      { name: 'startTime', label: 'Mulai', kind: 'text', required: true, max: 8, inList: true, hint: 'Format 24 jam, mis. 07:00.' },
+      {
+        name: 'startTime',
+        label: 'Mulai',
+        kind: 'text',
+        required: true,
+        max: 8,
+        inList: true,
+        hint: 'Format 24 jam, mis. 07:00.',
+      },
       {
         name: 'endTime',
         label: 'Selesai',
@@ -1085,7 +1126,6 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       activeField,
     ],
   },
-
 };
 
 export function isMasterEntity(value: string): value is MasterEntity {
@@ -1094,6 +1134,88 @@ export function isMasterEntity(value: string): value is MasterEntity {
 
 export function getEntityDef(key: MasterEntity): EntityDef {
   return ENTITY_DEFS[key];
+}
+
+/** Awalan parameter URL untuk filter daftar, mis. `f_plantId=1`. */
+export const AWALAN_FILTER = 'f_';
+
+/**
+ * Panjang halaman yang boleh dipilih di daftar master.
+ *
+ * Di sini, bukan di komponennya: API membatasi `perPage` paling banyak 200,
+ * dan daftar pilihan yang melebihi batas itu akan tampak bekerja di dropdown
+ * lalu diam-diam dipotong di server. Yang pertama adalah bawaannya.
+ */
+export const PER_HALAMAN = [25, 50, 100, 200] as const;
+
+/**
+ * Kolom yang bisa dipakai MENYARING daftar.
+ *
+ * Diturunkan dari definisi kolom, bukan didaftar per entitas: kolom yang
+ * nilainya berasal dari himpunan tertutup — pilihan tetap, benar/salah,
+ * referensi ke master lain, atau daftar hidup dari master lain — bisa disajikan
+ * sebagai dropdown tanpa seorang pun menuliskannya dua kali. Entitas master
+ * baru langsung dapat filternya begitu kolomnya didefinisikan.
+ *
+ * Hanya kolom yang TAMPIL di tabel (`inList`). Menyaring dengan kolom yang
+ * tidak kelihatan berarti baris hilang tanpa sebab yang terlihat di layar.
+ *
+ * Kolom teks bebas sengaja TIDAK di sini — itu tugas kotak pencarian, yang
+ * mencari ke seluruh `searchFields` sekaligus.
+ */
+export function filterFields(def: EntityDef): FieldDef[] {
+  return def.fields.filter(
+    (f) =>
+      f.inList === true &&
+      (f.kind === 'boolean' ||
+        f.kind === 'select' ||
+        f.kind === 'reference' ||
+        Boolean(f.optionsFrom)),
+  );
+}
+
+/**
+ * Menafsirkan satu nilai filter dari URL menjadi nilai yang siap dibandingkan
+ * ke kolomnya, atau `undefined` kalau tidak masuk akal.
+ *
+ * Satu tempat, dipakai API maupun layar: kalau penafsirannya berbeda sedikit
+ * saja, jumlah baris di kepala halaman tidak akan sama dengan isi tabelnya.
+ */
+export function tafsirNilaiFilter(
+  field: FieldDef,
+  raw: string | undefined,
+): string | number | boolean | undefined {
+  const nilai = raw?.trim();
+  if (!nilai) return undefined;
+
+  if (field.kind === 'boolean') {
+    if (nilai === 'true') return true;
+    if (nilai === 'false') return false;
+    return undefined;
+  }
+  if (field.kind === 'reference') {
+    /*
+     * Hanya digit. `Number()` saja akan menerima '1e3' sebagai 1000 dan
+     * '0x10' sebagai 16 — id di alamat selalu ditulis sebagai angka biasa,
+     * jadi bentuk lain lebih mungkin alamat rusak daripada maksud orang.
+     */
+    if (!/^\d+$/.test(nilai)) return undefined;
+    const n = Number(nilai);
+    return Number.isSafeInteger(n) && n > 0 ? n : undefined;
+  }
+  /*
+   * Pilihan tetap diperiksa terhadap daftarnya; nilai asing dibuang supaya URL
+   * karangan tidak menghasilkan daftar kosong yang membingungkan.
+   *
+   * Kolom `optionsFrom` TIDAK diperiksa di sini — daftarnya hidup di master
+   * lain dan bisa berubah tanpa deploy, jadi yang menolak kode asing adalah
+   * foreign key di database, bukan pemeriksaan yang bisa basi. Alasan yang
+   * sama dengan validasi formulirnya.
+   */
+  if (field.kind === 'select' && field.options && !field.options.includes(nilai)) {
+    return undefined;
+  }
+  return nilai;
 }
 
 /**
@@ -1197,8 +1319,7 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
           invalid_type_error: `${f.label} harus berupa angka`,
         })
         .int(`${f.label} harus bilangan bulat`);
-      const withRange =
-        f.min !== undefined ? base.min(f.min, `${f.label} minimal ${f.min}`) : base;
+      const withRange = f.min !== undefined ? base.min(f.min, `${f.label} minimal ${f.min}`) : base;
       const target = f.required && mode === 'create' ? withRange : withRange.nullable().optional();
       return z.preprocess((v) => toNumberOrUndefined(kosongDariFormulir(f, mode)(v)), target);
     }
@@ -1223,7 +1344,9 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
         (v) =>
           v === undefined || v === null
             ? fallback
-            : v === '' ? false : v === 'on' || v === 'true' || v === true,
+            : v === ''
+              ? false
+              : v === 'on' || v === 'true' || v === true,
         z.boolean(),
       );
     }
@@ -1241,9 +1364,7 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
       const s = z.enum((f.options ?? ['']) as [string, ...string[]], {
         errorMap: (issue) => ({
           message:
-            issue.code === 'invalid_type'
-              ? `${f.label} wajib dipilih`
-              : `${f.label} tidak valid`,
+            issue.code === 'invalid_type' ? `${f.label} wajib dipilih` : `${f.label} tidak valid`,
         }),
       });
       if (f.required && mode === 'create') return s;

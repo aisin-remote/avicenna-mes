@@ -57,6 +57,13 @@
       "when": 1792730757017,
       "tag": "0007_bored_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793239887558,
+      "tag": "0008_many_centennial",
+      "breakpoints": true
     }
   ]
 }

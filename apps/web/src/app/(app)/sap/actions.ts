@@ -78,3 +78,45 @@ export async function pullDeliveryNowAction(): Promise<
     return { error: toMessage(err) };
   }
 }
+
+/** Satu baris hasil tarik per entitas master. */
+export interface HasilTarikMaster {
+  entitas: string;
+  dibaca: number;
+  baru: number;
+  diperbarui: number;
+  dinonaktifkan: number;
+  dilewati: number;
+  catatan: string[];
+}
+
+/**
+ * Menarik master sekarang juga.
+ *
+ * `uji = true` membaca staging dan MELAPORKAN apa yang akan berubah tanpa
+ * menulis apa pun. Dipakai sebagai langkah pertama yang wajar: tarik master
+ * menimpa isi layar master, dan untuk sesuatu yang jarang dijalankan, melihat
+ * dulu jauh lebih murah daripada membatalkan sesudahnya — yang memang tidak
+ * bisa dibatalkan.
+ */
+export async function tarikMasterAction(
+  uji: boolean,
+): Promise<{ hasil: HasilTarikMaster[]; alasan?: string } | { error: string }> {
+  try {
+    const res = await apiFetch<{ hasil: HasilTarikMaster[]; alasan?: string }>(
+      `/staging/pull?uji=${uji ? 'true' : 'false'}`,
+      { method: 'POST' },
+    );
+    if (!uji) {
+      /* Master menyentuh hampir seluruh layar; yang disebut di sini hanya yang
+         isinya memang berubah karena master, bukan seluruh aplikasi. */
+      revalidatePath('/sap');
+      revalidatePath('/master/parts');
+      revalidatePath('/master/customers');
+      revalidatePath('/master/suppliers');
+    }
+    return res;
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
+}

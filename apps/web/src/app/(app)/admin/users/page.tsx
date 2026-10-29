@@ -1,12 +1,18 @@
 import Link from 'next/link';
-import { Search } from 'lucide-react';
+import { PER_HALAMAN } from '@avicenna/contracts';
 import { getSessionUser } from '@/lib/session';
 import { getMasterOptions } from '@/lib/master-api';
 import { ambilPengguna, ambilRole } from '../actions';
 import { PageHeader } from '@/components/ui/page-header';
+import { FilterBar, type FilterTampil } from '@/components/ui/filter-bar';
 import { UserTable } from '@/components/admin/user-table';
 
 export const dynamic = 'force-dynamic';
+
+/** Nilai tunggal dari query; array (parameter ganda) diambil yang terakhir. */
+function satu(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[v.length - 1] : v;
+}
 
 /**
  * Pengaturan pengguna.
@@ -18,49 +24,85 @@ export const dynamic = 'force-dynamic';
 export default async function AdminUsersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const q = sp.q?.trim() || undefined;
-  const page = Math.max(1, Number(sp.page ?? 1) || 1);
+  const q = satu(sp.q)?.trim() || undefined;
+  const page = Math.max(1, Number(satu(sp.page) ?? 1) || 1);
+
+  const perPageMinta = Number(satu(sp.perPage) ?? 0);
+  const perPage = (PER_HALAMAN as readonly number[]).includes(perPageMinta)
+    ? perPageMinta
+    : PER_HALAMAN[0];
+
+  /*
+   * Nilai penyaring dibersihkan di sini sebelum dikirim: angka yang bukan
+   * angka dan 'aktif' yang bukan true/false dibuang, bukan diteruskan apa
+   * adanya. Tanpa itu, alamat karangan menghasilkan daftar kosong yang tampak
+   * seperti data pengguna hilang.
+   */
+  const roleIdMentah = satu(sp.roleId);
+  const plantIdMentah = satu(sp.plantId);
+  const aktifMentah = satu(sp.aktif);
+  const roleId = Number(roleIdMentah) > 0 ? String(Number(roleIdMentah)) : '';
+  const plantId = Number(plantIdMentah) > 0 ? String(Number(plantIdMentah)) : '';
+  const aktif = aktifMentah === 'true' || aktifMentah === 'false' ? aktifMentah : '';
 
   const [aku, { data, meta }, roles, plants] = await Promise.all([
     getSessionUser(),
-    ambilPengguna({ q, page }),
+    ambilPengguna({ q, page, perPage, roleId, plantId, aktif }),
     ambilRole(),
     getMasterOptions('plants'),
   ]);
+
+  const filters: FilterTampil[] = [
+    {
+      name: 'roleId',
+      label: 'Role',
+      nilai: roleId,
+      pilihan: roles.map((r) => ({ value: String(r.id), label: r.label ?? r.name })),
+    },
+    {
+      name: 'plantId',
+      label: 'Pabrik',
+      nilai: plantId,
+      pilihan: plants.map((p) => ({
+        value: String(p.value),
+        label: p.short ?? String(p.label),
+      })),
+    },
+    {
+      name: 'aktif',
+      label: 'Aktif',
+      nilai: aktif,
+      pilihan: [
+        { value: 'true', label: 'Ya' },
+        { value: 'false', label: 'Tidak' },
+      ],
+    },
+  ];
+
+  const adaPenyempitan = Boolean(q) || roleId !== '' || plantId !== '' || aktif !== '';
 
   return (
     <>
       <PageHeader
         crumbs={[{ label: 'Administrasi' }, { label: 'Pengguna' }]}
         title="Pengguna"
-        description="Akun yang bisa masuk, beserta role dan pabriknya"
+        description={
+          adaPenyempitan
+            ? `${meta.total} pengguna cocok dengan saringan yang dipasang`
+            : 'Akun yang bisa masuk, beserta role dan pabriknya'
+        }
       />
 
-      <form className="mb-5 flex max-w-md items-center gap-2" action="/admin/users">
-        <div className="relative flex-1">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
-            strokeWidth={1.8}
-            aria-hidden
-          />
-          <input
-            name="q"
-            defaultValue={q ?? ''}
-            placeholder="Cari NPK, nama, atau email"
-            aria-label="Cari pengguna"
-            className="w-full rounded-full border border-line bg-card py-2.5 pl-9 pr-3 text-[14px] outline-none transition-colors focus:border-ink"
-          />
-        </div>
-        <button
-          type="submit"
-          className="rounded-full border border-line px-4 py-2.5 text-[14px] font-semibold transition-colors hover:border-ink"
-        >
-          Cari
-        </button>
-      </form>
+      <FilterBar
+        action="/admin/users"
+        cariLabel="NPK, nama, atau email"
+        q={q ?? ''}
+        perPage={perPage}
+        filters={filters}
+      />
 
       <UserTable
         rows={data}
@@ -73,15 +115,22 @@ export default async function AdminUsersPage({
         meAku={aku?.id ?? null}
       />
 
-      {meta.totalPages > 1 ? (
-        <nav className="mt-5 flex items-center justify-between text-[14px]" aria-label="Halaman">
-          <span className="text-ink-muted">
-            Halaman {meta.page} dari {meta.totalPages} · {meta.total} pengguna
-          </span>
+      <nav
+        className="mt-5 flex flex-wrap items-center justify-between gap-3 text-[14px]"
+        aria-label="Halaman"
+      >
+        <span className="text-ink-muted">
+          {meta.total === 0
+            ? 'Tidak ada pengguna yang cocok'
+            : `Menampilkan ${(meta.page - 1) * meta.perPage + 1}–` +
+              `${Math.min(meta.page * meta.perPage, meta.total)} dari ${meta.total}` +
+              (meta.totalPages > 1 ? ` · halaman ${meta.page} dari ${meta.totalPages}` : '')}
+        </span>
+        {meta.totalPages > 1 ? (
           <span className="flex gap-2">
             {meta.page > 1 ? (
               <Link
-                href={`/admin/users?page=${meta.page - 1}${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+                href={tautanHalaman({ page: meta.page - 1, q, perPage, roleId, plantId, aktif })}
                 className="rounded-full border border-line px-4 py-2 font-semibold transition-colors hover:border-ink"
               >
                 Sebelumnya
@@ -89,15 +138,38 @@ export default async function AdminUsersPage({
             ) : null}
             {meta.page < meta.totalPages ? (
               <Link
-                href={`/admin/users?page=${meta.page + 1}${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+                href={tautanHalaman({ page: meta.page + 1, q, perPage, roleId, plantId, aktif })}
                 className="rounded-full border border-line px-4 py-2 font-semibold transition-colors hover:border-ink"
               >
                 Berikutnya
               </Link>
             ) : null}
           </span>
-        </nav>
-      ) : null}
+        ) : null}
+      </nav>
     </>
   );
+}
+
+/**
+ * Alamat halaman lain dengan SELURUH saringan yang berlaku tetap terbawa.
+ *
+ * Tanpa ini "Berikutnya" diam-diam melepas penyaring, dan halaman 2 berisi
+ * pengguna yang tidak ada hubungannya dengan halaman 1.
+ */
+function tautanHalaman(p: {
+  page: number;
+  q?: string;
+  perPage: number;
+  roleId: string;
+  plantId: string;
+  aktif: string;
+}) {
+  const query = new URLSearchParams({ page: String(p.page) });
+  if (p.q) query.set('q', p.q);
+  if (p.perPage !== PER_HALAMAN[0]) query.set('perPage', String(p.perPage));
+  if (p.roleId) query.set('roleId', p.roleId);
+  if (p.plantId) query.set('plantId', p.plantId);
+  if (p.aktif) query.set('aktif', p.aktif);
+  return `/admin/users?${query.toString()}`;
 }

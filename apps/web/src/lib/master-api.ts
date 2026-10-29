@@ -1,5 +1,6 @@
 import 'server-only';
 import { apiFetch } from './api';
+import { AWALAN_FILTER } from '@avicenna/contracts';
 import type { MasterEntity } from '@avicenna/contracts';
 
 /**
@@ -33,7 +34,15 @@ export interface RefOption {
 
 export function listMaster(
   entity: MasterEntity,
-  params: { page: number; perPage: number; q?: string; sort?: string; dir?: 'asc' | 'desc' },
+  params: {
+    page: number;
+    perPage: number;
+    q?: string;
+    sort?: string;
+    dir?: 'asc' | 'desc';
+    /** Penyaring per kolom, kunci = nama kolom TANPA awalan `f_`. */
+    filters?: Record<string, string>;
+  },
 ): Promise<MasterListResult> {
   const qs = new URLSearchParams({
     page: String(params.page),
@@ -42,6 +51,9 @@ export function listMaster(
   });
   if (params.q) qs.set('q', params.q);
   if (params.sort) qs.set('sort', params.sort);
+  for (const [nama, nilai] of Object.entries(params.filters ?? {})) {
+    if (nilai) qs.set(`${AWALAN_FILTER}${nama}`, nilai);
+  }
   return apiFetch<MasterListResult>(`/master/${entity}?${qs.toString()}`);
 }
 

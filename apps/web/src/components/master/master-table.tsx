@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import type { EntityDef, MasterEntity } from '@avicenna/contracts';
-import { MasterForm, type RefOptions } from './master-form';
+import { MasterForm, type PilihanDariMaster, type RefOptions } from './master-form';
 import { deleteMasterAction } from '@/app/(app)/master/actions';
 import { durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
@@ -26,14 +26,20 @@ export function MasterTable({
   entity,
   rows,
   options,
+  pilihanDariMaster,
   refLabels,
+  disaring,
 }: {
   def: EntityDef;
   entity: MasterEntity;
   rows: Row[];
   options: RefOptions;
+  /** Pilihan untuk kolom yang daftarnya hidup di master lain (jenis proses). */
+  pilihanDariMaster?: PilihanDariMaster;
   /** Peta id -> label untuk kolom referensi, disiapkan di server. */
   refLabels: Record<string, Record<string, string>>;
+  /** Ada pencarian/filter aktif; membedakan hasil kosong dari master yang benar-benar kosong. */
+  disaring: boolean;
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
@@ -109,7 +115,6 @@ export function MasterTable({
         </motion.button>
       </div>
 
-
       <div className="scroll-slim overflow-x-auto rounded-card border border-line bg-card">
         <table className="w-full border-collapse text-[14px]">
           <thead>
@@ -138,9 +143,15 @@ export function MasterTable({
                   colSpan={listFields.length + 1}
                   className="px-5 py-14 text-center text-[14px] text-ink-muted"
                 >
-                  Belum ada data {def.label.toLowerCase()}. Tekan
-                  <span className="font-semibold text-ink"> Tambah {def.singular} </span>
-                  untuk membuat yang pertama.
+                  {disaring ? (
+                    <>Tidak ada {def.label.toLowerCase()} yang cocok dengan saringan.</>
+                  ) : (
+                    <>
+                      Belum ada data {def.label.toLowerCase()}. Tekan
+                      <span className="font-semibold text-ink"> Tambah {def.singular} </span>
+                      untuk membuat yang pertama.
+                    </>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -230,6 +241,7 @@ export function MasterTable({
         entity={entity}
         row={editing}
         options={options}
+        pilihanDariMaster={pilihanDariMaster}
         open={formOpen}
         onClose={tutupFormulir}
       />
@@ -237,12 +249,7 @@ export function MasterTable({
   );
 }
 
-function renderCell(
-  name: string,
-  value: unknown,
-  kind: string,
-  labels?: Record<string, string>,
-) {
+function renderCell(name: string, value: unknown, kind: string, labels?: Record<string, string>) {
   if (kind === 'boolean') {
     const on = Boolean(value);
     return (

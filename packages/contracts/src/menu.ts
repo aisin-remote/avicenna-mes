@@ -188,6 +188,22 @@ const MENU_TETAP: MenuDef[] = [
     sortOrder: 20,
     adminOnly: true,
   },
+  {
+    /*
+     * adminOnly, dan bukan menu yang bisa diberikan ke role.
+     *
+     * Saklar di layar ini menentukan apakah sistem menulis ke SAP. Satu
+     * centangan keliru pada hak menu sebuah role produksi akan memberi orang
+     * di lantai kemampuan menghentikan aliran dokumen ke SAP.
+     */
+    key: 'admin.settings',
+    label: 'Pengaturan Sistem',
+    href: '/admin/pengaturan',
+    icon: 'Settings',
+    group: 'Administrasi',
+    sortOrder: 30,
+    adminOnly: true,
+  },
 ];
 
 /*

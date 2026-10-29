@@ -59,7 +59,8 @@ export function bacaStagingConfig(env: NodeJS.ProcessEnv = process.env): Staging
      * diubah bila databasenya ada di luar jaringan pabrik.
      */
     encrypt: saklar(env.STAGING_ENCRYPT),
-    trustServerCertificate: env.STAGING_TRUST_CERT === undefined ? true : saklar(env.STAGING_TRUST_CERT),
+    trustServerCertificate:
+      env.STAGING_TRUST_CERT === undefined ? true : saklar(env.STAGING_TRUST_CERT),
 
     connectionTimeoutMs: angka(env.STAGING_CONNECT_TIMEOUT_MS, 15_000),
 
@@ -126,8 +127,21 @@ export function keMssqlConfig(c: StagingConfig): MssqlConfig {
   };
 }
 
-/** Ringkasan aman untuk log dan layar pemantauan — tanpa kata sandi. */
-export function ringkasanConfig(c: StagingConfig) {
+/**
+ * Ringkasan aman untuk log dan layar pemantauan — tanpa kata sandi.
+ *
+ * Saklar dorong/tarik WAJIB dioper, tidak dibaca dari `c` sendiri.
+ *
+ * Sejak saklarnya bisa diubah dari layar Pengaturan, `c.pushEnabled` hanya
+ * berisi nilai .env — yaitu cadangan, bukan yang berlaku. Melaporkannya di
+ * sini membuat layar diagnostik mengatakan "dorong aktif" padahal saklarnya
+ * baru dimatikan orang, dan diagnosa yang berbohong lebih buruk daripada
+ * tidak ada diagnosa.
+ */
+export function ringkasanConfig(
+  c: StagingConfig,
+  saklar: { dorongAktif: boolean; tarikAktif: boolean; tarikBerkalaAktif?: boolean },
+) {
   return {
     host: c.host || null,
     port: c.instance ? null : (c.port ?? 1433),
@@ -135,7 +149,14 @@ export function ringkasanConfig(c: StagingConfig) {
     database: c.database || null,
     user: c.user || null,
     encrypt: c.encrypt,
-    dorongAktif: c.pushEnabled,
-    tarikAktif: c.pullEnabled,
+    dorongAktif: saklar.dorongAktif,
+    tarikAktif: saklar.tarikAktif,
+    /*
+     * Ikut di sini supaya layar Integrasi SAP tahu kalimat mana yang harus
+     * ditampilkan di samping tombol tarik manual — tanpa memanggil endpoint
+     * pengaturan, yang hanya boleh dibuka admin sedangkan layar ini dibuka
+     * juga oleh orang PPIC.
+     */
+    tarikBerkalaAktif: saklar.tarikBerkalaAktif ?? false,
   };
 }

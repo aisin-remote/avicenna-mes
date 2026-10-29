@@ -16,6 +16,18 @@ import { cn } from '../ui/cn';
 export type RefOption = { value: number; label: string; short?: string; plantId?: number | null };
 export type RefOptions = Record<string, RefOption[]>;
 
+/**
+ * Pilihan untuk kolom yang daftarnya HIDUP di master lain sambil menyimpan
+ * KODE, bukan id — sejauh ini hanya jenis proses.
+ *
+ * Terpisah dari RefOptions karena `RefOption.value` bertipe angka: kolom
+ * seperti ini menyimpan teks, dan memaksanya masuk ke bentuk yang sama akan
+ * membuat id dan kode tertukar tanpa ada yang menolak.
+ *
+ * Kuncinya nama entitas sumbernya, sama seperti `optionsFrom` di registry.
+ */
+export type PilihanDariMaster = Record<string, Array<{ value: string; label: string }>>;
+
 const initial: FormState = {};
 
 /**
@@ -41,6 +53,7 @@ export function MasterForm({
   entity,
   row,
   options,
+  pilihanDariMaster,
   open,
   onClose,
 }: {
@@ -48,6 +61,7 @@ export function MasterForm({
   entity: MasterEntity;
   row?: (Record<string, unknown> & { id: number }) | null;
   options: RefOptions;
+  pilihanDariMaster?: PilihanDariMaster;
   open: boolean;
   onClose: () => void;
 }) {
@@ -61,9 +75,7 @@ export function MasterForm({
    * menolak referensi lintas pabrik — saringan ini supaya orang tidak sampai
    * ke penolakan itu.
    */
-  const [plantId, setPlantId] = useState<string>(
-    row?.plantId == null ? '' : String(row.plantId),
-  );
+  const [plantId, setPlantId] = useState<string>(row?.plantId == null ? '' : String(row.plantId));
   const toast = useToast();
   const router = useRouter();
   const titleId = useId();
@@ -177,13 +189,15 @@ export function MasterForm({
               <input type="hidden" name="__id" value={row?.id ?? ''} />
 
               <div className="scroll-slim flex-1 space-y-5 overflow-y-auto px-6 py-6">
-
                 {def.fields.map((field) => (
                   <Field
                     key={field.name}
                     field={field}
                     value={row?.[field.name]}
                     options={saringPerPabrik(options[field.refEntity ?? ''] ?? [], plantId)}
+                    dariMaster={
+                      field.optionsFrom ? pilihanDariMaster?.[field.optionsFrom] : undefined
+                    }
                     error={state.fieldErrors?.[field.name]}
                     tergantungPabrik={
                       field.kind === 'reference' &&
@@ -251,6 +265,7 @@ function Field({
   field,
   value,
   options,
+  dariMaster,
   error,
   tergantungPabrik = false,
   onChange,
@@ -258,6 +273,8 @@ function Field({
   field: FieldDef;
   value: unknown;
   options: RefOption[];
+  /** Pilihan untuk kolom `optionsFrom`; kosong berarti kolomnya bukan jenis itu. */
+  dariMaster?: Array<{ value: string; label: string }>;
   error?: string;
   /** Pilihannya per pabrik tetapi pabrik belum dipilih — kunci dulu. */
   tergantungPabrik?: boolean;
@@ -331,9 +348,15 @@ function Field({
           className={inputClass}
         >
           <option value="">— pilih —</option>
-          {(field.options ?? []).map((o) => (
-            <option key={o} value={o}>
-              {field.optionLabels?.[o] ?? o}
+          {/* Kolom `optionsFrom` tidak punya daftar tetap di registry: daftarnya
+              diambil dari master sumbernya dan diteruskan ke sini. Tanpa ini
+              dropdown-nya hanya berisi "— pilih —". */}
+          {(
+            dariMaster ??
+            (field.options ?? []).map((o) => ({ value: o, label: field.optionLabels?.[o] ?? o }))
+          ).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>

@@ -35,6 +35,7 @@
     "clean": "rm -rf dist .turbo",
     "db:check-names": "tsx src/check-names.ts",
     "db:import-aiia": "tsx src/import-aiia.ts",
+    "db:impor-gentani": "tsx src/impor-gentani.ts",
     "db:check": "tsx src/check.ts",
     "db:seed-papan-trial": "tsx src/seed-papan-trial.ts"
   },

@@ -4,6 +4,7 @@ import { SapOutboxService } from './sap-outbox.service';
 import { StagingPushService } from '../staging/staging-push.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AdminOnly } from '../auth/admin.guard';
+import { SettingService } from '../setting/setting.service';
 
 const retrySchema = z.object({
   ids: z.array(z.coerce.number().int().positive()).min(1, 'Pilih minimal satu dokumen'),
@@ -21,6 +22,7 @@ export class SapController {
   constructor(
     private readonly outbox: SapOutboxService,
     private readonly push: StagingPushService,
+    private readonly setting: SettingService,
   ) {}
 
   /** Ringkasan antrean, untuk kartu di layar pemantauan. */
@@ -95,11 +97,19 @@ export class SapController {
     return this.outbox.simulateDelivery(body.id, body.outcome);
   }
 
+  /*
+   * Dua syarat, bukan satu — dan keduanya kini dibaca dari pengaturan sistem
+   * supaya cocok dengan apa yang tampil di layar Pengaturan.
+   *
+   * Simulasi hanya boleh jalan saat dorong ke staging MATI. Kalau tidak,
+   * dokumen yang sudah benar-benar dikirim ke SAP bisa dipalsukan balasannya
+   * dari layar, dan status di sini tidak lagi mencerminkan keadaan di SAP.
+   */
   private get simulasiAktif(): boolean {
     return (
       !this.push.aktif &&
-      (process.env.STAGING_PUSH_ENABLED ?? '').trim().toLowerCase() !== 'true' &&
-      (process.env.SAP_SIMULATION_ENABLED ?? '').trim().toLowerCase() === 'true'
+      !this.setting.aktifSekarang('STAGING_PUSH_ENABLED') &&
+      this.setting.aktifSekarang('SAP_SIMULATION_ENABLED')
     );
   }
 }

@@ -11,6 +11,8 @@ import {
   getEntityDef,
   buildCreateSchema,
   buildUpdateSchema,
+  filterFields,
+  tafsirNilaiFilter,
   type MasterEntity,
   type ProcessType,
 } from '@avicenna/contracts';
@@ -30,6 +32,13 @@ export interface ListParams {
   q?: string;
   sort?: string;
   dir?: 'asc' | 'desc';
+  /**
+   * Penyaring per kolom, kunci = nama kolom di definisi master.
+   *
+   * Nilainya apa adanya dari URL; yang menafsirkan dan menolak nama kolom
+   * asing adalah service, bukan pemanggilnya.
+   */
+  filters?: Record<string, string>;
 }
 
 /**
@@ -73,9 +82,45 @@ export class MasterService {
     return parts.length > 0 ? or(...parts) : undefined;
   }
 
+  /**
+   * Syarat penyaring per kolom.
+   *
+   * Hanya kolom yang `filterFields` akui — sama disiplinnya dengan
+   * `sortColumn`: nama kolom dari URL tidak boleh langsung menyentuh query.
+   * Nilai yang tidak masuk akal dibuang, bukan dijadikan syarat yang pasti
+   * tidak cocok, supaya URL karangan tidak menghasilkan tabel kosong yang
+   * tampak seperti datanya hilang.
+   */
+  private filterConditions(entity: MasterEntity, filters?: Record<string, string>) {
+    if (!filters) return [];
+    const def = getEntityDef(entity);
+    const table = this.table(entity);
+    const boleh = new Map(filterFields(def).map((f) => [f.name, f]));
+
+    const syarat = [];
+    for (const [nama, mentah] of Object.entries(filters)) {
+      const field = boleh.get(nama);
+      if (!field) continue;
+      const kolom = table[nama];
+      if (!kolom) continue;
+      const nilai = tafsirNilaiFilter(field, mentah);
+      if (nilai === undefined) continue;
+      syarat.push(eq(kolom, nilai));
+    }
+    return syarat;
+  }
+
   async list(entity: MasterEntity, params: ListParams) {
     const table = this.table(entity);
-    const where = this.searchCondition(entity, params.q);
+    /*
+     * Pencarian dan penyaring digabung dengan AND: mengetik di kotak cari
+     * MENYEMPITKAN hasil yang sudah disaring, bukan menggantinya. Dipakai juga
+     * untuk menghitung total supaya nomor halaman cocok dengan isinya.
+     */
+    const where = and(
+      this.searchCondition(entity, params.q),
+      ...this.filterConditions(entity, params.filters),
+    );
     const order = params.dir === 'desc' ? desc : asc;
     const offset = (params.page - 1) * params.perPage;
 
