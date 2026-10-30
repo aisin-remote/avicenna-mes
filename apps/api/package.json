@@ -6,6 +6,7 @@
     "build": "nest build",
     "clean": "rm -rf dist .turbo",
     "dev": "nest start --watch",
+    "rfid:simulate": "tsx src/loading/rfid-simulate.ts",
     "staging:compare": "tsx src/staging/compare.ts",
     "staging:introspect": "tsx src/staging/introspect.ts",
     "start": "node dist/main.js",
