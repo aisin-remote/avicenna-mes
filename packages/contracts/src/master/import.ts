@@ -42,6 +42,7 @@ export interface KunciAlami {
 export const KUNCI_ALAMI: Record<MasterEntity, KunciAlami> = {
   plants: { kolom: 'code', perPabrik: false },
   customers: { kolom: 'code', perPabrik: false },
+  'driver-destinations': { kolom: 'code', perPabrik: true },
   suppliers: { kolom: 'code', perPabrik: false },
   lines: { kolom: 'code', perPabrik: true },
   locations: { kolom: 'code', perPabrik: true },

@@ -109,6 +109,12 @@ async function main() {
     { name: 'admin', label: 'Administrator', kind: 'ADMIN' as const },
     { name: 'supervisor', label: 'Supervisor Produksi', kind: 'VIEW' as const },
     { name: 'operator', label: 'Operator', kind: 'SCANNING' as const },
+    {
+      name: 'operator_ppic',
+      label: 'Operator PPIC',
+      kind: 'SCANNING' as const,
+      processGroup: 'DELIVERY' as const,
+    },
     { name: 'quality', label: 'Quality Control', kind: 'VIEW' as const },
     { name: 'viewer', label: 'Lihat Saja', kind: 'VIEW' as const },
   ]);
@@ -822,32 +828,32 @@ async function main() {
       plantId: body.id,
       code: 'SHORT',
       name: 'Short Shot',
-      processGroup: 'INJECTION_WIP' as const,
+      processGroup: 'INJECTION' as const,
       sortOrder: 1,
     },
     {
       plantId: body.id,
       code: 'FLASH',
       name: 'Flashing',
-      processGroup: 'INJECTION_WIP' as const,
+      processGroup: 'INJECTION' as const,
       sortOrder: 2,
     },
     {
       plantId: body.id,
       code: 'SILVER',
       name: 'Silver Streak',
-      processGroup: 'INJECTION_WIP' as const,
+      processGroup: 'INJECTION' as const,
       sortOrder: 3,
     },
     {
       plantId: body.id,
       code: 'BUREK',
       name: 'Burek / Kotor',
-      processGroup: 'PAINTING_WIP' as const,
+      processGroup: 'PAINTING' as const,
       sortOrder: 10,
     },
     { plantId: body.id, code: 'DLL', name: 'DLL', processGroup: null, sortOrder: 99 },
-  ]);
+  ] satisfies (typeof ngMasters.$inferInsert)[]);
 
   /*
    * ── Rute proses per PROSES (pengaturan SLOC & SAP) ────────────────────────
@@ -970,7 +976,10 @@ async function seedMenu(): Promise<void> {
   let diberi = 0;
   for (const r of semuaRole) {
     if (r.kind === 'ADMIN' || sudahPunya.has(r.id)) continue;
-    const keys = bawaan[r.kind] ?? [];
+    const keys =
+      r.kind === 'SCANNING' && r.processGroup === 'DELIVERY'
+        ? ['delivery.scan']
+        : bawaan[r.kind] ?? [];
     const values = keys
       .map((k) => idMenu.get(k))
       .filter((id): id is number => id !== undefined)

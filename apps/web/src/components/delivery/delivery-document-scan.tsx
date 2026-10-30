@@ -34,10 +34,10 @@ export function DeliveryDocumentScan() {
     }
     const open = result.matches.filter(
       (item) =>
-        item.status !== 'SHIPPED' && item.status !== 'RECEIVED' && item.status !== 'CANCELLED',
+        ['DRAFT','PICKING'].includes(item.status),
     );
     if (open.length === 1 && result.matches.length === 1) {
-      router.push(`/loading/${open[0]!.id}`);
+      router.push(`/picking/${open[0]!.id}`);
       return;
     }
     setMatches(result.matches);
@@ -111,13 +111,13 @@ export function DeliveryDocumentScan() {
               Pilih loading list
             </p>
             {matches.map((item) => {
-              const closed = ['SHIPPED', 'RECEIVED', 'CANCELLED'].includes(item.status);
+              const closed = !['DRAFT','PICKING'].includes(item.status);
               return (
                 <button
                   key={item.id}
                   type="button"
                   disabled={closed}
-                  onClick={() => router.push(`/loading/${item.id}`)}
+                  onClick={() => router.push(`/picking/${item.id}`)}
                   className="flex w-full items-center gap-4 rounded-2xl border border-line p-4 text-left transition-colors hover:border-ink disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface">

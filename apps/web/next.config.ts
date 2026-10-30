@@ -1,7 +1,11 @@
 import type { NextConfig } from 'next';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { MAKS_UKURAN_FOTO, MAKS_UKURAN_IMPOR } from '@avicenna/contracts';
+import {
+  MAKS_UKURAN_FOTO,
+  MAKS_UKURAN_IMPOR,
+  MAX_DELIVERY_DOCUMENT_BYTES,
+} from '@avicenna/contracts';
 
 // .env tunggal ada di root repo; Next hanya membaca apps/web/.env. Dimuat di
 // sini supaya API_URL dkk. sudah ada sebelum modul server mana pun dievaluasi.
@@ -45,7 +49,8 @@ const config: NextConfig = {
        * Tambahan 256 KB untuk pembungkus multipart (batas bagian, header,
        * nama kolom).
        */
-      bodySizeLimit: Math.max(MAKS_UKURAN_IMPOR, MAKS_UKURAN_FOTO) + 256 * 1024,
+      bodySizeLimit:
+        Math.max(MAKS_UKURAN_IMPOR, MAKS_UKURAN_FOTO, MAX_DELIVERY_DOCUMENT_BYTES) + 256 * 1024,
     },
   },
 };

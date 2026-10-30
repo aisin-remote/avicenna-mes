@@ -511,11 +511,18 @@ export class ReceivingService {
           status: receipts.status,
           sourceSnapshot: receipts.sourceSnapshot,
           closedAt: receipts.closedAt,
-          boxScanned: sql<number>`(SELECT COUNT(*) FROM production."TT_HISTORY_SCAN" s WHERE s."CHR_DEDUPE_KEY" LIKE CONCAT('ares-rcv:', ${receipts.id}, ':%') AND JSON_UNQUOTE(JSON_EXTRACT(s."CHR_META", '$.result'))='OK')`,
+          boxScanned: sql<number>`(
+            SELECT COUNT(*) FROM production."TT_HISTORY_SCAN" s
+            WHERE s."CHR_DEDUPE_KEY" LIKE CONCAT('ares-rcv:', ${receipts.id}, ':%')
+              AND s."CHR_META"->>'result' = 'OK'
+          )`.mapWith(Number),
           // Nama tabel ditulis langsung karena subquery berkorelasi belum bisa
           // dibentuk lewat pembangun query Drizzle. Ikut berubah bila tabelnya
           // diganti nama — tidak ada yang mengingatkan, jadi dicatat di sini.
-          lineCount: sql<number>`(SELECT COUNT(*) FROM logistics."TT_PURCHASE_RECEIPT_L" rl WHERE rl."INT_RECEIPT_ID" = ${receipts.id})`,
+          lineCount: sql<number>`(
+            SELECT COUNT(*) FROM logistics."TT_PURCHASE_RECEIPT_L" rl
+            WHERE rl."INT_RECEIPT_ID" = ${receipts.id}
+          )`.mapWith(Number),
           totalQty: sql<string>`(SELECT COALESCE(SUM(rl."FLT_RECQTY"), 0) FROM logistics."TT_PURCHASE_RECEIPT_L" rl WHERE rl."INT_RECEIPT_ID" = ${receipts.id})`,
         })
         .from(receipts)

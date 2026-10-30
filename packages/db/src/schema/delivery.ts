@@ -1,9 +1,54 @@
-import { date, index, integer, jsonb, time, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import {
+  date,
+  index,
+  integer,
+  jsonb,
+  time,
+  timestamp,
+  uniqueIndex,
+  varchar,
+  boolean,
+} from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { daftarNilai, enumCol, fk, logisticsSchema, pk, timestamps } from './_shared';
 import { parts, customers } from './master';
 import { plants, users } from './org';
 import { locations } from './inventory';
+import type { DeliveryOrderSnapshot } from '@avicenna/contracts';
+
+export const deliveryOrders = logisticsSchema.table(
+  'TT_DELIVERY_ORDER',
+  {
+    id: pk(),
+    number: varchar('CHR_DO_NO', { length: 64 }),
+    year: integer('INT_YEAR'),
+    serial: integer('INT_SERIAL'),
+    intercompany: boolean('FLG_INTERCOMPANY').notNull().default(false),
+    preparedAt: timestamp('DTM_PREPARED_AT', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    driverScannedAt: timestamp('DTM_DRIVER_SCANNED_AT', { withTimezone: true, mode: 'date' }),
+    driverScannedById: fk('INT_DRIVER_SCANNED_BY_ID').references(() => users.id),
+    shippedAt: timestamp('DTM_SHIPPED_AT', { withTimezone: true, mode: 'date' }),
+    customerId: fk('INT_CUSTOMER_ID')
+      .notNull()
+      .references(() => customers.id),
+    pdsNumber: varchar('CHR_PDS_NO', { length: 64 }).notNull(),
+    snapshot: jsonb('CHR_SNAPSHOT').$type<DeliveryOrderSnapshot>().notNull(),
+    issuedAt: timestamp('DTM_ISSUED_AT', { withTimezone: true, mode: 'date' }),
+    issuedById: fk('INT_ISSUED_BY_ID').references(() => users.id),
+  },
+  (t) => [
+    uniqueIndex('TT_DO_NUMBER_UNIQUE').on(t.number),
+    uniqueIndex('TT_DO_CUSTOMER_PDS_UNIQUE').on(t.customerId, t.pdsNumber),
+    uniqueIndex('TT_DO_YEAR_SERIAL_UNIQUE').on(t.year, t.serial),
+  ],
+);
+
+export const deliveryOrderCounters = logisticsSchema.table('TT_DO_COUNTER', {
+  year: integer('INT_YEAR').primaryKey(),
+  lastSerial: integer('INT_LAST_SERIAL').notNull(),
+});
 
 /**
  * Loading list — dokumen muat satu truk.
@@ -27,11 +72,12 @@ export const deliveries = logisticsSchema.table(
     customerId: fk('INT_CUSTOMER_ID')
       .notNull()
       .references(() => customers.id),
-    /** Nomor surat jalan / DN. */
+    /** Nomor DN staging SAP; nomor DO AVICENNA tersimpan terpisah. */
     documentNumber: varchar('CHR_DEL_NO', { length: 64 }).notNull(),
     manifestNumber: varchar('CHR_DOK_NO', { length: 64 }),
     /** Nomor PDS dari customer — rujukan ke dokumen mereka. */
     pdsNumber: varchar('CHR_PDS_NO', { length: 64 }),
+    deliveryOrderId: fk('INT_DO_ID').references(() => deliveryOrders.id),
     /** Nilai referensi dari staging SAP; belum dipakai mengendalikan workflow MES. */
     purchaseOrderNumber: varchar('CHR_PO_NO', { length: 64 }),
     salesOrganization: varchar('CHR_SORG', { length: 16 }),
@@ -108,7 +154,7 @@ export const deliveries = logisticsSchema.table(
     uniqueIndex('TT_DELIVERY_PLANT_DOCUMENT_UNIQUE').on(t.plantId, t.documentNumber),
     index('TT_DELIVERY_DATE_CUSTOMER_IDX').on(t.deliveryDate, t.customerId),
     index('TT_DELIVERY_STATUS_IDX').on(t.status),
-  
+
     daftarNilai('TT_DELIVERY_CHR_STATUS_CHK', t.status, [
       'DRAFT',
       'PICKING',
@@ -118,7 +164,12 @@ export const deliveries = logisticsSchema.table(
       'RECEIVED',
       'CANCELLED',
     ]),
-    daftarNilai('TT_DELIVERY_CHR_TRUCK_STATUS_CHK', t.truckStatus, ['PENDING', 'ARRIVED', 'LOADING', 'DEPARTED']),
+    daftarNilai('TT_DELIVERY_CHR_TRUCK_STATUS_CHK', t.truckStatus, [
+      'PENDING',
+      'ARRIVED',
+      'LOADING',
+      'DEPARTED',
+    ]),
   ],
 );
 

@@ -84,6 +84,8 @@ export function halamanAwal(role: RoleScope): string {
   if (role.kind === 'ADMIN') return '/dashboard';
 
   if (role.kind === 'SCANNING') {
+    // Operator PPIC memakai alur scan pengiriman, bukan stasiun scan produksi.
+    if (role.processGroup === 'DELIVERY') return '/delivery-scan';
     /*
      * Halaman scan per GRUP, bukan per lini. Lini belum diketahui saat login —
      * operator menentukannya dengan men-scan barcode lini di layar itu.

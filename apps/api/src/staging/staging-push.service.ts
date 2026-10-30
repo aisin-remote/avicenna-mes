@@ -174,6 +174,11 @@ export class StagingPushService {
     let ditahan = 0;
 
     for (const row of antre) {
+      if (row.sourceTable === 'TT_DELIVERY' || row.sourceTable === 'TT_DELIVERY_ORDER') {
+        await this.db.update(sapOutbox).set({ status: 'HELD', lastError: 'Pengiriman wajib alur GI AIIA → GR AII → GI AII; kontrak staging SD belum terkonfirmasi.' }).where(eq(sapOutbox.id, row.id));
+        ditahan++;
+        continue;
+      }
       // Jenis dokumen yang belum punya pendorong DITAHAN, bukan digagalkan:
       // yang kurang adalah pemetaan tabelnya, dan itu bukan kesalahan teknis
       // yang bisa pulih dengan mencoba lagi.
@@ -517,7 +522,7 @@ export class StagingPushService {
     const menunggu = await this.db
       .select()
       .from(sapOutbox)
-      .where(and(eq(sapOutbox.status, 'SENT'), eq(sapOutbox.isSimulation, false)))
+      .where(and(eq(sapOutbox.status, 'SENT'), eq(sapOutbox.isSimulation, false), inArray(sapOutbox.docType,['TRANSFER','PRODUCTION'])))
       .orderBy(asc(sapOutbox.sentAt))
       .limit(BATCH_BALASAN);
 

@@ -26,6 +26,8 @@ import {
 } from '@avicenna/domain';
 import type { LocationKind } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
+import { advanceDeliveryOrders } from '../loading/delivery-flow';
+import { DELIVERY_SAP_STAGES } from '@avicenna/contracts';
 
 /** Jeda sebelum sebuah dokumen dianggap lengkap. Lihat catatan di collect(). */
 const SETTLE_SECONDS = 60;
@@ -66,6 +68,7 @@ export class SapOutboxService {
   constructor(@InjectDb() private readonly db: Database) {}
 
   async collect(): Promise<{ dikumpulkan: number; ditahan: number; dilewati: number }> {
+    await advanceDeliveryOrders(this.db);
     // Jeda memberi waktu transaksi scan selesai. Dokumen produksi juga
     // menunggu penanda backflushCompleted sebelum dibuat di bawah.
     const kandidat = await this.db.execute(sql`
@@ -82,6 +85,7 @@ export class SapOutboxService {
       LEFT JOIN ${scanEvents} s
         ON m."CHR_SOURCE_TABLE" = 'TT_HISTORY_SCAN' AND s."INT_ID" = m."INT_SOURCE_ID"
       WHERE m."CHR_SOURCE_TABLE" IS NOT NULL
+        AND m."CHR_SOURCE_TABLE" NOT IN ('TT_DELIVERY', 'TT_DELIVERY_ORDER')
         AND m."INT_SOURCE_ID" IS NOT NULL
         AND (
           m."CHR_SOURCE_TABLE" <> 'TT_HISTORY_SCAN'
@@ -621,6 +625,7 @@ export class SapOutboxService {
 
     let dilepas = 0;
     for (const row of tertahan) {
+      if (row.sourceTable === 'TT_DELIVERY_ORDER' || row.sourceTable === 'TT_DELIVERY') continue;
       if (row.lastError?.startsWith('pendorong untuk ')) continue;
       const payload = row.payload as {
         lines?: Array<{
@@ -875,10 +880,12 @@ export class SapOutboxService {
       .from(sapOutbox)
       .where(eq(sapOutbox.id, id))
       .limit(1);
-    if (!row || row.docType !== 'DELIVERY') {
+    const intercompany = !!row && (DELIVERY_SAP_STAGES as readonly string[]).includes(row.docType);
+    if (intercompany && row?.status === 'CONFIRMED') throw new BadRequestException('Tahap intercompany yang sudah berhasil tidak dapat di-reset lewat simulasi.');
+    if (!row || (row.docType !== 'DELIVERY' && !intercompany)) {
       throw new BadRequestException('Good Issue delivery tidak ditemukan');
     }
-    if (outcome === 'PENDING' ? !row.isSimulation : row.status !== 'PENDING') {
+    if (outcome === 'PENDING' ? !row.isSimulation : !['PENDING', ...(intercompany ? ['HELD'] : [])].includes(row.status)) {
       throw new BadRequestException(`Status ${row.status} tidak bisa disimulasikan`);
     }
 
@@ -894,6 +901,7 @@ export class SapOutboxService {
         lastError: outcome === 'REJECTED' ? 'Simulasi: Good Issue ditolak SAP' : null,
       })
       .where(and(eq(sapOutbox.id, id), eq(sapOutbox.status, row.status)));
+    await advanceDeliveryOrders(this.db);
     return { id, status: outcome, sapDocNumber };
   }
 }

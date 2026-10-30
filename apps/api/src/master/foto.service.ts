@@ -45,7 +45,10 @@ export class FotoService {
    * bisa memuat "../", spasi, atau huruf yang tidak sah di sistem berkas lain,
    * dan dua orang yang mengunggah "foto.jpg" akan saling menimpa.
    */
-  async simpan(input: { fileBase64: string; mimeType?: string | null }): Promise<string> {
+  async simpan(
+    input: { fileBase64: string; mimeType?: string | null },
+    scope?: 'driver-attendance',
+  ): Promise<string> {
     const mime = (input.mimeType ?? '').trim().toLowerCase();
     if (!JENIS_FOTO_DITERIMA.includes(mime as (typeof JENIS_FOTO_DITERIMA)[number])) {
       throw new BadRequestException(
@@ -76,23 +79,28 @@ export class FotoService {
       throw new BadRequestException('Isi berkas bukan gambar JPG, PNG, atau WebP.');
     }
 
-    await mkdir(this.dir, { recursive: true });
+    const dir = scope ? join(this.dir, scope) : this.dir;
+    await mkdir(dir, { recursive: true });
     const nama = `${randomUUID()}${AKHIRAN[mime]}`;
-    await writeFile(join(this.dir, nama), isi);
+    await writeFile(join(dir, nama), isi);
     this.logger.log(`foto disimpan: ${nama} (${isi.length} byte)`);
     return nama;
   }
 
   /** Membaca satu gambar untuk disajikan. */
-  async baca(nama: string): Promise<{ isi: Buffer; mimeType: string; etag: string }> {
+  async baca(
+    nama: string,
+    scope?: 'driver-attendance',
+  ): Promise<{ isi: Buffer; mimeType: string; etag: string }> {
     const aman = this.namaAman(nama);
-    const berkas = join(this.dir, aman);
+    const dir = scope ? join(this.dir, scope) : this.dir;
+    const berkas = join(dir, aman);
     /*
      * Dicek LAGI setelah digabung: `basename` sudah membuang "../", tetapi
      * yang menentukan aman atau tidak adalah berkas yang benar-benar dibuka,
      * bukan nama yang sudah dibersihkan beberapa baris sebelumnya.
      */
-    if (!resolve(berkas).startsWith(this.dir) || !existsSync(berkas)) {
+    if (!resolve(berkas).startsWith(dir) || !existsSync(berkas)) {
       throw new NotFoundException('Gambar tidak ditemukan.');
     }
     const isi = await readFile(berkas);
@@ -109,11 +117,11 @@ export class FotoService {
    * sedangkan menggagalkan penyimpanan master karena berkas lama tidak bisa
    * dihapus akan menghalangi pekerjaan yang sebenarnya sudah benar.
    */
-  async hapusDiam(nama: string | null | undefined): Promise<void> {
+  async hapusDiam(nama: string | null | undefined, scope?: 'driver-attendance'): Promise<void> {
     const v = (nama ?? '').trim();
     if (!v || /^https?:\/\//i.test(v)) return;
     try {
-      await unlink(join(this.dir, this.namaAman(v)));
+      await unlink(join(this.dir, ...(scope ? [scope] : []), this.namaAman(v)));
     } catch (err) {
       this.logger.debug(`foto lama tidak terhapus (${v}): ${String(err)}`);
     }
@@ -131,7 +139,9 @@ export class FotoService {
     if (isi.length < 12) return false;
     if (mime === 'image/jpeg') return isi[0] === 0xff && isi[1] === 0xd8 && isi[2] === 0xff;
     if (mime === 'image/png') {
-      return isi.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+      return isi
+        .subarray(0, 8)
+        .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     }
     if (mime === 'image/webp') {
       return isi.subarray(0, 4).toString() === 'RIFF' && isi.subarray(8, 12).toString() === 'WEBP';

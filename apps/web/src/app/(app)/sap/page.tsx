@@ -250,9 +250,9 @@ export default async function SapPage({
                         </span>
                       ) : null}
                       {ringkas.simulasiAktif &&
-                      d.docType === 'DELIVERY' &&
-                      (d.status === 'PENDING' || d.isSimulation) ? (
-                        <SimulationActions id={d.id} reset={d.status !== 'PENDING'} />
+                      (d.docType === 'DELIVERY' || d.docType.startsWith('DELIVERY_')) &&
+                      (d.status === 'PENDING' || (d.docType.startsWith('DELIVERY_') && d.status === 'HELD') || (d.isSimulation && d.status === 'REJECTED')) ? (
+                        <SimulationActions id={d.id} reset={d.status === 'REJECTED'} />
                       ) : null}
                       {d.isSimulation ? (
                         <span className="ml-2 text-[11px] font-bold text-warn">TRIAL</span>

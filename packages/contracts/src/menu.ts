@@ -137,6 +137,14 @@ const MENU_TETAP: MenuDef[] = [
     sortOrder: 50,
   },
   {
+    key: 'delivery.preparation-monitoring',
+    label: 'Preparation Monitoring',
+    href: '/preparation-monitoring',
+    icon: 'CalendarClock',
+    group: 'Logistik',
+    sortOrder: 45,
+  },
+  {
     key: 'trace',
     label: 'Mutation Delivery',
     href: '/trace',
@@ -154,7 +162,7 @@ const MENU_TETAP: MenuDef[] = [
   },
   {
     key: 'delivery.return',
-    label: 'Scan Surat Jalan',
+    label: 'Absensi Driver',
     href: '/delivery-return',
     icon: 'ClipboardCheck',
     group: 'Logistik',

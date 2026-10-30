@@ -43,6 +43,11 @@ describe('grupProses', () => {
 });
 
 describe('halamanAwal', () => {
+  it('operator PPIC langsung ke scan delivery, tanpa mengubah tujuan admin dan viewer', () => {
+    expect(halamanAwal({ kind: 'SCANNING', processGroup: 'DELIVERY' })).toBe('/delivery-scan');
+    expect(halamanAwal({ kind: 'ADMIN', processGroup: 'DELIVERY' })).toBe('/dashboard');
+    expect(halamanAwal({ kind: 'VIEW', processGroup: 'DELIVERY' })).toBe('/monitor?proses=delivery');
+  });
   it('lasman casting dibawa ke halaman scan casting', () => {
     expect(halamanAwal({ kind: 'SCANNING', processGroup: 'CASTING' })).toBe('/scan/proses/casting');
   });
@@ -71,6 +76,11 @@ describe('halamanAwal', () => {
 });
 
 describe('bolehScanDi', () => {
+  it('operator PPIC tidak mendapat lingkup scan produksi', () => {
+    for (const proses of PROCESS_TYPES) {
+      expect(bolehScanDi({ kind: 'SCANNING', processGroup: 'DELIVERY' }, proses)).toBe(proses === 'DELIVERY');
+    }
+  });
   it('lasman casting boleh di kedua lini casting', () => {
     const r = { kind: 'SCANNING', processGroup: 'CASTING' } as const;
     expect(bolehScanDi(r, 'CASTING_WIP')).toBe(true);

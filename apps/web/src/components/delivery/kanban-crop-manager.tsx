@@ -3,52 +3,10 @@
 import { useRef, useState, useTransition } from 'react';
 import { Download, FileUp, MoveHorizontal, MoveVertical, Save, X } from 'lucide-react';
 import type { KanbanCropProfile, KanbanCropProfileInput } from '@avicenna/contracts';
-import { normalisasiGarisPotong, susunPotonganKanbanDariGaris } from '@avicenna/domain';
+import { normalisasiGarisPotong } from '@avicenna/domain';
+import { loadPdfJs, cutCustomerKanban } from '@/lib/customer-pdf';
 import { saveKanbanCropAction } from '@/app/(app)/kanban/actions';
 import { useToast } from '../ui/toast';
-
-const PDF_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-const PDF_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
-interface PdfJsPage {
-  getViewport(input: { scale: number }): { width: number; height: number };
-  render(input: {
-    canvasContext: CanvasRenderingContext2D;
-    viewport: { width: number; height: number };
-  }): { promise: Promise<void> };
-}
-
-interface PdfJsLibrary {
-  GlobalWorkerOptions: { workerSrc: string };
-  getDocument(input: { data: ArrayBuffer }): {
-    promise: Promise<{ getPage(page: number): Promise<PdfJsPage> }>;
-  };
-}
-
-declare global {
-  interface Window {
-    pdfjsLib?: PdfJsLibrary;
-  }
-}
-
-let pdfJsPromise: Promise<PdfJsLibrary> | null = null;
-
-function loadPdfJs() {
-  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
-  if (pdfJsPromise) return pdfJsPromise;
-  pdfJsPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = PDF_JS_URL;
-    script.onload = () => {
-      if (!window.pdfjsLib) return reject(new Error('pdf.js gagal dimuat.'));
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_URL;
-      resolve(window.pdfjsLib);
-    };
-    script.onerror = () => reject(new Error('Preview PDF gagal dimuat. Periksa koneksi internet.'));
-    document.head.appendChild(script);
-  });
-  return pdfJsPromise;
-}
 
 type Axis = 'horizontal' | 'vertical';
 type DragState = { axis: Axis; index: number; pointerId: number };
@@ -89,7 +47,10 @@ export function KanbanCropManager({ initialProfiles }: { initialProfiles: Kanban
     setPreviewState('loading');
     try {
       const pdfJs = await loadPdfJs();
-      const document = await pdfJs.getDocument({ data: await next.arrayBuffer() }).promise;
+      const document = await pdfJs.getDocument({
+        data: await next.arrayBuffer(),
+        isEvalSupported: false,
+      }).promise;
       const page = await document.getPage(1);
       const viewport = page.getViewport({ scale: 1.8 });
       const canvas = canvasRef.current;
@@ -176,32 +137,11 @@ export function KanbanCropManager({ initialProfiles }: { initialProfiles: Kanban
     if (!file || !selected) return;
     setProcessing(true);
     try {
-      const { PDFDocument } = await import('pdf-lib');
-      const source = await PDFDocument.load(await file.arrayBuffer());
-      const output = await PDFDocument.create();
       const rule = {
         horizontalLines: normalisasiGarisPotong(horizontalLines),
         verticalLines: normalisasiGarisPotong(verticalLines),
       };
-      let total = 0;
-
-      for (const sourcePage of source.getPages()) {
-        const pageHeight = sourcePage.getHeight();
-        const layout = susunPotonganKanbanDariGaris(rule, sourcePage.getWidth(), pageHeight);
-        for (const cell of layout.cells) {
-          const left = cell.left;
-          const right = cell.left + cell.width;
-          const top = pageHeight - cell.top;
-          const bottom = top - cell.height;
-          const embedded = await output.embedPage(sourcePage, { left, bottom, right, top });
-          const target = output.addPage([cell.width, cell.height]);
-          target.drawPage(embedded, { x: 0, y: 0, width: cell.width, height: cell.height });
-          total += 1;
-        }
-      }
-
-      output.setTitle(`Kanban ${selected.customerCode}`);
-      const bytes = await output.save();
+      const { bytes, total } = await cutCustomerKanban(await file.arrayBuffer(), rule);
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -241,7 +181,7 @@ export function KanbanCropManager({ initialProfiles }: { initialProfiles: Kanban
           </select>
         </label>
         <label className="block">
-          <span className="mb-2 block text-sm font-bold">PDF contoh customer</span>
+          <span className="mb-2 block text-sm font-bold">PDF dari portal customer</span>
           <span className="flex h-11 items-center rounded-xl border border-line bg-card px-3">
             <FileUp className="mr-2 size-4 shrink-0 text-ink-muted" aria-hidden />
             <input

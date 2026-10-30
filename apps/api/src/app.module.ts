@@ -18,6 +18,7 @@ import { LoadingModule } from './loading/loading.module';
 import { KanbanCropModule } from './kanban-crop/kanban-crop.module';
 import { SapModule } from './sap/sap.module';
 import { StagingModule } from './staging/staging.module';
+import { PreparationModule } from './preparation/preparation.module';
 import { RoutingModule } from './routing/routing.module';
 import { MqttModule } from './mqtt/mqtt.module';
 import { SyncModule } from './sync/sync.module';
@@ -47,6 +48,7 @@ import { loadEnv } from './config/env';
     KanbanCropModule,
     SapModule,
     StagingModule,
+    PreparationModule,
     RoutingModule,
     MqttModule,
     SyncModule,

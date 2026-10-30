@@ -178,7 +178,7 @@ export async function stockMonitor(params: StockMonitorParams) {
    */
   const urutanMutasi = sql<string>`CONCAT(
     to_char(${mutations.occurredAt}, 'YYYYMMDDHH24MISS'),
-    LPAD(${mutations.id}, 20, '0')
+    LPAD(${mutations.id}::text, 20, '0')
   )`;
   const mutasiSaldo = db
     .select({
@@ -292,12 +292,12 @@ export async function stockMonitor(params: StockMonitorParams) {
           SELECT 1
           FROM inventory."TT_STOCK_MUTATION" mutation_in
           INNER JOIN inventory."TM_LOCATION" location_in
-            ON location_in.INT_ID = mutation_in.INT_LOCATION_ID
-          WHERE mutation_in.CHR_TYPE = 'TRANSFER_IN'
-            AND mutation_in.CHR_SOURCE_TABLE = ${mutations.sourceTable}
-            AND mutation_in.INT_SOURCE_ID = ${mutations.sourceId}
-            AND mutation_in.INT_PART_ID = ${mutations.partId}
-            AND location_in.CHR_KIND = ${locationKind}
+            ON location_in."INT_ID" = mutation_in."INT_LOCATION_ID"
+          WHERE mutation_in."CHR_TYPE" = 'TRANSFER_IN'
+            AND mutation_in."CHR_SOURCE_TABLE" = ${mutations.sourceTable}
+            AND mutation_in."INT_SOURCE_ID" = ${mutations.sourceId}
+            AND mutation_in."INT_PART_ID" = ${mutations.partId}
+            AND location_in."CHR_KIND" = ${locationKind}
         )`,
       )!,
     );
@@ -319,14 +319,14 @@ export async function stockMonitor(params: StockMonitorParams) {
           SELECT 1
           FROM inventory."TT_STOCK_MUTATION" mutation_in
           INNER JOIN inventory."TM_LOCATION" location_in
-            ON location_in.INT_ID = mutation_in.INT_LOCATION_ID
-          WHERE mutation_in.CHR_TYPE = 'TRANSFER_IN'
-            AND mutation_in.CHR_SOURCE_TABLE = ${mutations.sourceTable}
-            AND mutation_in.INT_SOURCE_ID = ${mutations.sourceId}
-            AND mutation_in.INT_PART_ID = ${mutations.partId}
+            ON location_in."INT_ID" = mutation_in."INT_LOCATION_ID"
+          WHERE mutation_in."CHR_TYPE" = 'TRANSFER_IN'
+            AND mutation_in."CHR_SOURCE_TABLE" = ${mutations.sourceTable}
+            AND mutation_in."INT_SOURCE_ID" = ${mutations.sourceId}
+            AND mutation_in."INT_PART_ID" = ${mutations.partId}
             AND (
-              location_in.CHR_CODE LIKE ${term}
-              OR location_in.CHR_NAME LIKE ${term}
+              location_in."CHR_CODE" LIKE ${term}
+              OR location_in."CHR_NAME" LIKE ${term}
             )
         )`,
       )!,

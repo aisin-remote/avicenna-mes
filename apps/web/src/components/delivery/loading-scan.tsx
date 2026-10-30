@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useRouter } from 'next/navigation';
+import { completePickingAction } from '@/app/(app)/delivery/actions';
+import Link from 'next/link';
 import {
   ScanLine,
   CheckCircle2,
@@ -43,10 +46,11 @@ interface QueuedScan {
 /** Kata-kata yang berbeda antara kedua tahap. Sisanya identik. */
 const KATA = {
   PULLING: {
-    judul: 'Ambil dari gudang',
+    judul: 'Scan kanban customer',
     sisa: 'Sisa diambil',
     muatan: 'Yang harus diambil',
-    selesai: 'Semua kanban sudah diambil. Tutup pulling di halaman pengiriman.',
+    selesai:
+      'Semua kanban sudah diambil. Tekan Finish Pulling untuk melanjutkan GI AIIA dan GR AII.',
   },
   LOADING: {
     judul: 'Scan kanban customer',
@@ -80,6 +84,10 @@ export function LoadingScan({
   phase?: LoadingPhase;
 }) {
   const kata = KATA[phase];
+  const router = useRouter();
+  const [finishing, setFinishing] = useState(false);
+  const [confirmFinish, setConfirmFinish] = useState(false);
+  const [finishWarning, setFinishWarning] = useState('');
   const [code, setCode] = useState('');
   const [lines, setLines] = useState<LineState[]>(doc.lines.map((l) => toLineState(l, phase)));
   const [result, setResult] = useState<LoadingScanResult | null>(null);
@@ -183,7 +191,7 @@ export function LoadingScan({
    * sampai customer menghitung ulang. Antrean membuat urutannya tetap terjaga
    * dan tidak ada yang hilang.
    */
-  const threeWay = phase === 'LOADING' && doc.loadingMode === 'TIGA_ARAH';
+  const threeWay = doc.loadingMode === 'TIGA_ARAH';
   const scanTitle = threeWay && customerKanban ? 'Scan kanban internal' : kata.judul;
 
   function acceptScan(raw: string) {
@@ -309,8 +317,82 @@ export function LoadingScan({
   const remaining = Math.max(0, totalPlanned - totalActual);
   const done = remaining === 0 && totalPlanned > 0;
 
+  async function finishPulling() {
+    if (busy || pending > 0 || finishing || customerKanban) return;
+    setFinishing(true);
+    const result = await completePickingAction(doc.id);
+    if ('error' in result) {
+      setError(result.error);
+      setFinishing(false);
+      return;
+    }
+    if (result.shortages.length) {
+      setFinishWarning(
+        `Pulling selesai, tetapi saldo gudang kurang: ${result.shortages.map((s) => `${s.partNumber} perlu ${s.needed}, tersedia ${s.available}, kurang ${s.short}`).join('; ')}.`,
+      );
+      return;
+    }
+    router.push(`/delivery/${doc.id}`);
+  }
+
+  if (finishWarning)
+    return (
+      <section className="rounded-2xl border border-warn/40 bg-warn/10 p-5">
+        <h2 className="font-bold text-warn">Periksa saldo gudang</h2>
+        <p role="alert" className="mt-3 text-sm">
+          {finishWarning}
+        </p>
+        <Link
+          href={`/delivery/${doc.id}`}
+          className="mt-4 inline-flex min-h-12 items-center rounded-full border border-line px-5 font-semibold"
+        >
+          Lihat status pengiriman
+        </Link>
+      </section>
+    );
+
   return (
     <div className="grid gap-3 sm:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      {phase === 'PULLING' ? (
+        <section className="rounded-2xl border border-line bg-card p-4 xl:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-ink-muted">
+              Pulling selesai → GI AIIA → GR AII → surat jalan
+            </p>
+            <button
+              disabled={busy || pending > 0 || finishing || !!customerKanban || totalActual === 0}
+              onClick={() => setConfirmFinish(true)}
+              className="min-h-12 rounded-full bg-accent px-5 text-sm font-bold text-white disabled:opacity-40"
+            >
+              Finish Pulling
+            </button>
+          </div>
+          {confirmFinish ? (
+            <div className="mt-3 border-t border-line pt-3">
+              <p className="text-sm">
+                Selesaikan {totalActual} dari {totalPlanned} kanban? Qty yang dipakai adalah hasil
+                scan aktual.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  disabled={busy || pending > 0 || finishing || !!customerKanban}
+                  onClick={() => void finishPulling()}
+                  className="min-h-12 rounded-full bg-accent px-5 font-bold text-white disabled:opacity-40"
+                >
+                  {finishing ? 'Memproses…' : 'Ya, Finish Pulling'}
+                </button>
+                <button
+                  disabled={finishing}
+                  onClick={() => setConfirmFinish(false)}
+                  className="min-h-12 px-4"
+                >
+                  Kembali
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <dialog
         ref={undoDialog}
         aria-labelledby="undo-title"
@@ -373,30 +455,27 @@ export function LoadingScan({
       {/* ── Kiri: input dan status ──────────────────────────────────────── */}
       <div className="space-y-3 sm:space-y-6">
         <section className="rounded-card border border-line bg-card p-4 sm:p-6">
-          {phase === 'LOADING' ? (
-            <div className="mb-5 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-3">
-              <ScanState
-                label="Dokumen"
-                value={doc.documentNumber}
-                done
-                className="col-span-2 sm:col-span-1"
-              />
-              <ScanState
-                label="Kanban customer"
-                value={currentScan.customer ?? 'Menunggu scan'}
-                done={Boolean(customerKanban)}
-                active={!customerKanban}
-              />
-              <ScanState
-                label="Kanban internal"
-                value={threeWay ? (currentScan.internal ?? 'Menunggu scan') : 'Tidak diperlukan'}
-                done={Boolean(currentScan.internal)}
-                active={threeWay && Boolean(customerKanban)}
-                optional={!threeWay}
-              />
-            </div>
-          ) : null}
-
+          <div className="mb-5 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-3">
+            <ScanState
+              label="Dokumen"
+              value={doc.documentNumber}
+              done
+              className="col-span-2 sm:col-span-1"
+            />
+            <ScanState
+              label="Kanban customer"
+              value={currentScan.customer ?? 'Menunggu scan'}
+              done={Boolean(customerKanban)}
+              active={!customerKanban}
+            />
+            <ScanState
+              label="Kanban internal"
+              value={threeWay ? (currentScan.internal ?? 'Menunggu scan') : 'Tidak diperlukan'}
+              done={Boolean(currentScan.internal)}
+              active={threeWay && Boolean(customerKanban)}
+              optional={!threeWay}
+            />
+          </div>
           <div className="flex items-center justify-between">
             <div>
               <label htmlFor="kanban" className="text-[15px] font-bold">
@@ -460,6 +539,7 @@ export function LoadingScan({
             <input
               id="kanban"
               ref={inputRef}
+              readOnly={finishing}
               value={code}
               onChange={(e) => setCode(e.target.value)}
               autoComplete="off"
@@ -473,7 +553,7 @@ export function LoadingScan({
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
             <p className="text-[13px] text-ink-muted">
-              {phase === 'LOADING'
+              {threeWay
                 ? MODE_LOADING_INSTRUKSI[doc.loadingMode]
                 : 'Scan setiap kanban yang diambil dari gudang ke area staging.'}{' '}
               <span className="font-semibold">
@@ -583,7 +663,7 @@ export function LoadingScan({
               </p>
             </div>
             <p className="tabular pb-2 text-right text-[15px] text-ink-muted">
-              sudah dimuat
+              {phase === 'PULLING' ? 'sudah diambil' : 'sudah dimuat'}
               <span className="block text-[24px] font-bold text-ink">
                 {totalActual} <span className="font-normal text-ink-muted">/ {totalPlanned}</span>
               </span>

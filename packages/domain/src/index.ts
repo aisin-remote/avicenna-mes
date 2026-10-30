@@ -5,6 +5,8 @@ export * from './scan-mode';
 export * from './ng';
 export * from './barcode';
 export * from './loading-mode';
+export * from './delivery-order';
+export * from './preparation';
 export * from './role';
 export * from './stock';
 export * from './shift';
