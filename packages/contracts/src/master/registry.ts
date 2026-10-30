@@ -97,6 +97,15 @@ export type FieldKind =
   | 'select'
   | 'reference'
   /**
+   * Warna, dipilih lewat color picker dan disimpan sebagai hex `#RRGGBB`.
+   *
+   * Disimpan sebagai teks, bukan pilihan dari daftar tetap: warna tombol di
+   * lantai dipilih orang yang tahu kebiasaan pabriknya — merah untuk mesin
+   * rusak, kuning untuk tunggu material — dan daftar tetap akan selalu
+   * kekurangan satu warna yang justru dibutuhkan.
+   */
+  | 'color'
+  /**
    * Berkas gambar yang diunggah dan disimpan aplikasi.
    *
    * Yang tersimpan di kolom tetap teks — nama berkas di penyimpanan, atau
@@ -1115,6 +1124,18 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint: 'Setup dan QC biasanya direncanakan; kerusakan tidak. Memisahkan keduanya di laporan efisiensi.',
       },
       {
+        name: 'color',
+        label: 'Warna Tombol',
+        kind: 'color',
+        required: true,
+        defaultValue: '#DC2626',
+        inList: true,
+        hint:
+          'Warna tombol di layar scan. Operator mengenali tombol dari warnanya sebelum sempat ' +
+          'membaca tulisannya — pakai warna yang sama untuk hal yang sejenis, dan bedakan yang ' +
+          'benar-benar berbeda.',
+      },
+      {
         name: 'sortOrder',
         label: 'Urutan',
         kind: 'number',
@@ -1299,6 +1320,22 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
           v === undefined ? undefined : v === null ? null : String(v),
         ),
       );
+    }
+
+    case 'color': {
+      /*
+       * Hanya `#RRGGBB`. Bentuk tiga digit (#f00) dan nama warna CSS sengaja
+       * ditolak: nilai ini dipakai menghitung warna latar dan garis tepi
+       * dengan memotong komponen RGB-nya, dan satu bentuk yang seragam membuat
+       * perhitungan itu tidak perlu menebak.
+       */
+      const s = z
+        .string({ required_error: `${f.label} wajib dipilih` })
+        .trim()
+        .regex(/^#[0-9a-fA-F]{6}$/, `${f.label} harus berupa kode warna seperti #DC2626`)
+        .transform((v) => v.toUpperCase());
+      if (f.required && mode === 'create') return s;
+      return z.preprocess(kosongDariFormulir(f, mode), s.nullable().optional());
     }
 
     case 'date': {

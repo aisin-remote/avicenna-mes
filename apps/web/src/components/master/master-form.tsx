@@ -5,7 +5,9 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, AlertCircle, Check } from 'lucide-react';
+import { nadaTombol } from '@avicenna/contracts';
 import type { EntityDef, FieldDef, MasterEntity } from '@avicenna/contracts';
+
 import { saveMasterAction, type FormState } from '@/app/(app)/master/actions';
 import { useToast } from '../ui/toast';
 import { useHasilAksi } from '../ui/use-hasil-aksi';
@@ -249,6 +251,67 @@ const inputClass =
   'h-11 w-full rounded-2xl border border-line bg-surface px-4 text-[15px] outline-none transition-colors duration-200 focus:border-line-strong focus:bg-card';
 
 /**
+ * Pemilih warna: kotak color picker + kolom hex yang bisa diketik.
+ *
+ * ── Kenapa dua-duanya, bukan picker saja ────────────────────────────────────
+ *
+ * Picker bawaan browser bagus untuk MEMILIH, tetapi tidak bisa ditempel. Warna
+ * pabrik biasanya sudah ada kodenya di standar visual perusahaan, dan orang
+ * yang memegang kode itu akan menempelnya — bukan mencari-cari nuansa yang
+ * sama di roda warna. Keduanya menulis ke satu nilai, jadi mengubah salah satu
+ * langsung terlihat di yang lain.
+ *
+ * Nilai yang dikirim ke server datang dari kolom teks (yang tersembunyi dari
+ * sisi picker), karena di situlah bentuk `#RRGGBB` dijaga — picker selalu
+ * mengirim bentuk itu, ketikan orang belum tentu.
+ */
+function PilihWarna({ id, name, awal }: { id: string; name: string; awal: string }) {
+  const [warna, setWarna] = useState(awal);
+  const sah = /^#[0-9a-fA-F]{6}$/.test(warna);
+
+  return (
+    <div className="flex items-center gap-3">
+      <input
+        id={id}
+        type="color"
+        aria-label="Pilih warna"
+        value={sah ? warna : '#DC2626'}
+        onChange={(e) => setWarna(e.target.value.toUpperCase())}
+        className="size-11 shrink-0 cursor-pointer rounded-2xl border border-line bg-surface p-1"
+      />
+      <input
+        type="text"
+        name={name}
+        value={warna}
+        onChange={(e) => setWarna(e.target.value.toUpperCase())}
+        placeholder="#DC2626"
+        spellCheck={false}
+        className={cn(inputClass, 'tabular flex-1 uppercase')}
+      />
+      {/* Contoh tombolnya, bukan sekadar kotak warna: yang ingin dilihat orang
+          adalah apakah TULISANNYA terbaca, dan itu hanya terlihat kalau
+          contohnya berbentuk tombol yang sebenarnya. */}
+      <ContohTombol warna={sah ? warna : null} />
+    </div>
+  );
+}
+
+function ContohTombol({ warna }: { warna: string | null }) {
+  const nada = nadaTombol(warna);
+  return (
+    <span
+      aria-hidden
+      className="inline-flex h-11 shrink-0 items-center rounded-2xl border px-4 text-[13px] font-bold uppercase tracking-wide"
+      style={
+        nada ? { backgroundColor: nada.bg, borderColor: nada.border, color: nada.teks } : undefined
+      }
+    >
+      Contoh
+    </span>
+  );
+}
+
+/**
  * Pilihan yang boleh ditawarkan untuk pabrik yang sedang dipilih.
  *
  * Pilihan tanpa pabrik (customer, supplier) selalu lolos. Kalau pabrik belum
@@ -360,6 +423,16 @@ function Field({
             </option>
           ))}
         </select>
+      ) : field.kind === 'color' ? (
+        <PilihWarna
+          id={id}
+          name={field.name}
+          awal={
+            value === undefined || value === null || value === ''
+              ? ((field.defaultValue as string | undefined) ?? '#DC2626')
+              : String(value)
+          }
+        />
       ) : field.kind === 'reference' ? (
         <select
           id={id}

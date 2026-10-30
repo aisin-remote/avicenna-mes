@@ -196,6 +196,8 @@ export interface AlasanBerhenti {
   name: string;
   category: string;
   isPlanned: boolean;
+  /** Hex `#RRGGBB`. Kosong berarti warnanya diturunkan dari `isPlanned`. */
+  color: string | null;
 }
 
 export const mulaiBerhentiSchema = z.object({
@@ -217,6 +219,15 @@ export interface BerhentiLini {
   reasonCode: string | null;
   reasonName: string | null;
   isPlanned: boolean;
+  /**
+   * Warna alasan yang dipilih, hex `#RRGGBB`.
+   *
+   * Ikut di sini supaya kartu "Produksi berhenti" memakai warna tombol yang
+   * barusan ditekan. Tanpa itu, operator menekan tombol kuning lalu layarnya
+   * berubah merah — dan sejenak ia ragu apakah yang tercatat memang yang ia
+   * pilih.
+   */
+  color: string | null;
   startedAt: string;
   /** Kosong = masih berhenti. */
   endedAt: string | null;

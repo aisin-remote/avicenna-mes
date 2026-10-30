@@ -64,6 +64,13 @@
       "when": 1793239887558,
       "tag": "0008_many_centennial",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793325574186,
+      "tag": "0009_swift_power_pack",
+      "breakpoints": true
     }
   ]
 }

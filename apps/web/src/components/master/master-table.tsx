@@ -4,8 +4,10 @@ import { useCallback, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
 import { Plus, Pencil, Trash2, Check, X } from 'lucide-react';
+import { nadaTombol } from '@avicenna/contracts';
 import type { EntityDef, MasterEntity } from '@avicenna/contracts';
 import { MasterForm, type PilihanDariMaster, type RefOptions } from './master-form';
+
 import { deleteMasterAction } from '@/app/(app)/master/actions';
 import { durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
@@ -261,6 +263,22 @@ function renderCell(name: string, value: unknown, kind: string, labels?: Record<
       >
         <span className={cn('size-1.5 rounded-full', on ? 'bg-ok' : 'bg-ink-muted')} />
         {on ? 'Aktif' : 'Non-aktif'}
+      </span>
+    );
+  }
+
+  if (kind === 'color') {
+    const hex = value === null || value === undefined ? '' : String(value);
+    const nada = nadaTombol(hex);
+    if (!nada) return <span className="text-ink-muted">—</span>;
+    /* Ditampilkan sebagai tombol kecil, bukan kotak warna: yang perlu dinilai
+       orang saat memindai daftar adalah apakah tulisannya terbaca. */
+    return (
+      <span
+        className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-bold uppercase tracking-wide"
+        style={{ backgroundColor: nada.bg, borderColor: nada.border, color: nada.teks }}
+      >
+        {hex.toUpperCase()}
       </span>
     );
   }

@@ -807,7 +807,9 @@ export class ScanService {
              * menolaknya hanya membuat lini berhenti karena data kantor.
              */
             productionPlanId:
-              line && part ? await this.rencanaBerjalan(line.id, part.id, normalized.scannedAt) : null,
+              line && part
+                ? await this.rencanaBerjalan(line.id, part.id, normalized.scannedAt)
+                : null,
             // Aturan baca ikut dicatat: saat sebuah barcode terbaca keliru,
             // pertanyaan pertama selalu "dibaca pakai aturan mana".
             meta: {
@@ -1745,6 +1747,7 @@ export class ScanService {
         reasonCode: stopReasons.code,
         reasonName: stopReasons.name,
         isPlanned: stopReasons.isPlanned,
+        color: stopReasons.color,
         startedAt: lineStops.startedAt,
         endedAt: lineStops.endedAt,
         note: lineStops.note,
@@ -1763,6 +1766,7 @@ export class ScanService {
       reasonCode: baris.reasonCode ?? null,
       reasonName: baris.reasonName ?? null,
       isPlanned: baris.isPlanned ?? false,
+      color: baris.color ?? null,
       startedAt: baris.startedAt.toISOString(),
       endedAt: baris.endedAt ? baris.endedAt.toISOString() : null,
       note: baris.note ?? null,
@@ -1785,6 +1789,7 @@ export class ScanService {
         name: stopReasons.name,
         category: stopReasons.category,
         isPlanned: stopReasons.isPlanned,
+        color: stopReasons.color,
       })
       .from(stopReasons)
       .where(

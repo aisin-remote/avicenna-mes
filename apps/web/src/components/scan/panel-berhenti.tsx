@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { OctagonPause, Play, Wrench, ClipboardCheck, AlertTriangle, Package } from 'lucide-react';
+import { nadaPanel, nadaTombol } from '@avicenna/contracts';
 import type { AlasanBerhenti, BerhentiLini } from '@avicenna/contracts';
 import { mulaiBerhentiAction, selesaiBerhentiAction } from '@/app/(app)/scan/actions';
 import { useToast } from '../ui/toast';
@@ -28,11 +29,22 @@ function lamanya(sejak: Date, sekarang: Date): string {
 }
 
 /**
- * Tombol berhenti produksi di layar stasiun.
+ * Tombol berhenti produksi, sebagai kolom tetap di sisi kiri layar stasiun.
  *
- * Mengikuti layar prdreport yang sudah dipakai di BODY: satu tombol per alasan
- * (Problem, Setup, QC Cek), dan saat lini berhenti seluruh panel berubah
- * menjadi satu tombol besar "Mulai" beserta lama berhentinya.
+ * ── Kenapa di sisi, bukan sebaris di atas kotak scan ────────────────────────
+ *
+ * Operator memandangi kotak scan dan panel hasil sepanjang shift. Tombol
+ * berhenti yang ikut di aliran itu bergeser setiap kali isi layar berubah —
+ * dan saat mesin benar-benar rusak, yang dicari orang harus berada di tempat
+ * yang sama persis seperti sejam sebelumnya. Kolom tetap memberi itu, sekaligus
+ * memberi tiap tombol tinggi penuh yang bisa ditekan tanpa melihat.
+ *
+ * ── Kenapa warnanya ditentukan "terencana", bukan kategori ──────────────────
+ *
+ * Dandori dan QC cek rutin adalah berhenti yang MEMANG dijadwalkan; mewarnainya
+ * merah sama seperti mesin rusak membuat merah berhenti berarti apa-apa.
+ * Yang merah hanya yang tidak direncanakan — dan itu pula yang nanti mengurangi
+ * availability di laporan.
  *
  * ── Kenapa lamanya berjalan di layar ────────────────────────────────────────
  *
@@ -87,35 +99,82 @@ export function PanelBerhenti({
     onBerubah(null);
   }
 
+  /*
+   * Saat berhenti, SELURUH kolom berubah merah.
+   *
+   * Di tata letak sebelumnya keadaan ini berupa spanduk melintang yang sulit
+   * dilewatkan. Kolom selebar 250px tidak bisa menandingi itu dengan ukuran,
+   * jadi yang dipakai adalah warna: satu bidang merah setinggi layar terlihat
+   * dari seberang lini, dan jamnya yang berjalan ada di tengahnya.
+   */
   if (berhenti) {
     const sejak = new Date(berhenti.startedAt);
+    /*
+     * Kartu ini memakai warna ALASAN YANG BARUSAN DITEKAN, bukan merah tetap.
+     *
+     * Operator menekan tombol kuning lalu seluruh kolom berubah merah adalah
+     * jeda ragu yang tidak perlu: sejenak ia bertanya apakah yang tercatat
+     * memang yang ia pilih. Warnanya sama, jadi hubungan tombol dan keadaan
+     * terbaca tanpa dijelaskan.
+     *
+     * Alasan tanpa warna jatuh ke aturan lama — merah untuk yang tidak
+     * direncanakan, netral untuk yang direncanakan. Dandori yang berwarna
+     * merah menyala akan membuat berhenti terjadwal terlihat seperti kerusakan.
+     */
+    const nada = nadaPanel(berhenti.color);
+    const netral = !nada && berhenti.isPlanned;
+    const gaya = nada ? { backgroundColor: nada.bg, borderColor: nada.border } : undefined;
+    const warnaIsi = nada ? { color: nada.teks } : undefined;
+
     return (
       <section
         aria-live="polite"
-        className="flex flex-wrap items-center gap-4 rounded-card border-2 border-ng/40 bg-ng/8 p-5"
+        style={gaya}
+        className={cn(
+          'flex h-full min-h-0 flex-col rounded-card border-2 p-5',
+          nada ? '' : netral ? 'border-line bg-surface' : 'border-ng/45 bg-ng/10',
+        )}
       >
-        <OctagonPause className="size-10 shrink-0 text-ng" strokeWidth={1.8} aria-hidden />
-        <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-            Produksi berhenti
-          </div>
-          <div className="truncate text-[20px] font-extrabold text-ng">
-            {berhenti.reasonName ?? berhenti.reasonCode ?? 'Berhenti'}
-          </div>
-          <div className="text-[13px] text-ink-soft">
-            Sejak{' '}
-            {sejak.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-            {berhenti.npk ? ` · ${berhenti.npk}` : ''}
-          </div>
+        <OctagonPause
+          style={warnaIsi}
+          className={cn('size-9 shrink-0', nada ? '' : netral ? 'text-ink-soft' : 'text-ng')}
+          strokeWidth={1.8}
+          aria-hidden
+        />
+        <div className="mt-3 text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
+          Produksi berhenti
         </div>
-        <div className="tabular text-[40px] font-extrabold leading-none text-ng">
+        <div
+          style={warnaIsi}
+          className={cn(
+            'mt-1 text-[22px] font-extrabold leading-tight',
+            nada ? '' : netral ? 'text-ink' : 'text-ng',
+          )}
+        >
+          {berhenti.reasonName ?? berhenti.reasonCode ?? 'Berhenti'}
+        </div>
+
+        <div
+          style={warnaIsi}
+          className={cn(
+            'tabular mt-5 text-[44px] font-extrabold leading-none',
+            nada ? '' : netral ? 'text-ink' : 'text-ng',
+          )}
+        >
           {lamanya(sejak, sekarang)}
         </div>
+        <div className="mt-2 text-[13px] leading-snug text-ink-soft">
+          Sejak {sejak.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+          {berhenti.npk ? ` · ${berhenti.npk}` : ''}
+        </div>
+
+        {/* Tombol didorong ke dasar kolom: posisinya tetap, berapa pun panjang
+            nama alasannya, jadi tangan hafal tempatnya. */}
         <button
           type="button"
           onClick={() => void selesai()}
           disabled={sibuk}
-          className="inline-flex h-14 items-center gap-2 rounded-full bg-ok px-8 text-[18px] font-bold text-white transition-colors hover:brightness-110 disabled:opacity-60"
+          className="mt-auto inline-flex h-16 w-full items-center justify-center gap-2 rounded-2xl bg-ok text-[19px] font-bold text-white transition-[filter] duration-200 hover:brightness-110 disabled:opacity-60"
         >
           <Play className="size-5" strokeWidth={2.4} aria-hidden />
           Mulai
@@ -124,39 +183,91 @@ export function PanelBerhenti({
     );
   }
 
-  if (alasan.length === 0) {
-    return (
-      <p className="rounded-card border border-dashed border-line p-4 text-[13px] text-ink-muted">
-        Belum ada alasan berhenti untuk lini ini. Isi di Master Data › Alasan Berhenti.
-      </p>
-    );
-  }
-
   return (
-    <section className="flex flex-wrap items-center gap-3">
-      <span className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-        Berhenti karena
-      </span>
-      {alasan.map((a) => {
-        const Ikon = IKON[a.category] ?? OctagonPause;
-        return (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => void mulai(a)}
-            disabled={sibuk}
-            className={cn(
-              'inline-flex h-12 items-center gap-2 rounded-full border-2 px-5 text-[15px] font-bold transition-colors disabled:opacity-60',
-              a.isPlanned
-                ? 'border-line text-ink-soft hover:border-ink hover:text-ink'
-                : 'border-ng/40 bg-ng/8 text-ng hover:bg-ng/15',
-            )}
-          >
-            <Ikon className="size-[18px]" strokeWidth={2.2} aria-hidden />
-            {a.name}
-          </button>
-        );
-      })}
+    <section className="flex h-full min-h-0 flex-col rounded-card border border-line bg-card p-5">
+      <h2 className="text-[13px] font-bold uppercase tracking-wide">Berhenti karena</h2>
+      <p className="mt-1.5 text-[12.5px] leading-snug text-ink-muted">
+        Pilih alasan ketika proses produksi berhenti atau tidak ada scan.
+      </p>
+
+      {alasan.length === 0 ? (
+        /*
+         * Kekosongan ini disebut penyebabnya, bukan dibiarkan jadi kolom kosong.
+         * Tanpa satu pun alasan, tombol berhenti tidak bisa ditekan sama sekali
+         * — dan itu bukan hal yang boleh ditemukan operator sendiri saat mesin
+         * sudah terlanjur mati.
+         */
+        <p className="mt-4 rounded-2xl border border-dashed border-line p-4 text-[12.5px] leading-snug text-ink-muted">
+          Belum ada alasan berhenti untuk lini ini. Isi dulu di{' '}
+          <span className="font-semibold">Master Data › Alasan Berhenti</span>, kalau tidak
+          berhentinya tidak akan pernah tercatat.
+        </p>
+      ) : (
+        /*
+         * Daftarnya MENGGULIR, bukan memanjang keluar kolom.
+         *
+         * Alasan yang berlaku umum ditambah alasan khusus lini bisa berjumlah
+         * enam atau lebih di satu lini. Tanpa ini, tombol terakhir terdorong
+         * keluar layar dan kartu "Monitoring aktif" di dasar kolom ikut
+         * hilang — dan tombol berhenti yang tidak terlihat sama saja dengan
+         * tidak ada.
+         */
+        <div className="scroll-slim -mr-1 mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+          {alasan.map((a) => {
+            const Ikon = IKON[a.category] ?? OctagonPause;
+            /*
+             * Warna pilihan orang MENANG atas warna bawaan.
+             *
+             * Yang kosong jatuh ke aturan lama — merah untuk yang tidak
+             * direncanakan, netral untuk yang direncanakan. Baris yang dibuat
+             * sebelum kolom warna ada tidak boleh berubah tampilannya hanya
+             * karena kolomnya ditambahkan.
+             */
+            const nada = nadaTombol(a.color);
+            return (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => void mulai(a)}
+                disabled={sibuk}
+                style={
+                  nada
+                    ? { backgroundColor: nada.bg, borderColor: nada.border, color: nada.teks }
+                    : undefined
+                }
+                className={cn(
+                  'inline-flex min-h-[72px] w-full shrink-0 items-center gap-3 rounded-2xl border px-4 text-left text-[15px] font-bold uppercase tracking-wide transition-colors duration-200 disabled:opacity-60',
+                  nada
+                    ? 'hover:brightness-95'
+                    : a.isPlanned
+                      ? 'border-line bg-card text-ink hover:border-line-strong hover:bg-surface'
+                      : 'border-ng/25 bg-ng/8 text-ng hover:bg-ng/15',
+                )}
+              >
+                <Ikon className="size-[22px] shrink-0" strokeWidth={2.1} aria-hidden />
+                {/* Membungkus dua baris, tidak dipotong: "PART SUPPLY KOSONG"
+                    yang terbaca "PART SUPPLY KOS…" membuat operator ragu
+                    apakah ini tombol yang ia cari. */}
+                <span className="line-clamp-2 min-w-0 flex-1 leading-tight">{a.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Didorong ke dasar: menegaskan lini sedang DIPANTAU, yaitu alasan kenapa
+          memilih alasan yang benar itu penting — angkanya masuk laporan. */}
+      <div className="shrink-0 pt-5">
+        <div className="rounded-2xl border border-line bg-surface p-4">
+          <p className="flex items-center gap-2 text-[13px] font-semibold">
+            <span className="size-2 shrink-0 rounded-full bg-ok" aria-hidden />
+            Monitoring aktif
+          </p>
+          <p className="mt-1 text-[12px] leading-snug text-ink-muted">
+            Pilih alasan berhenti sesuai kondisi aktual line.
+          </p>
+        </div>
+      </div>
     </section>
   );
 }
