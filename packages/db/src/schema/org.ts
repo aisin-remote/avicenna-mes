@@ -75,7 +75,8 @@ export const roles = orgSchema.table(
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_ROLE_NAME_UNIQUE').on(t.name),
+  (t) => [
+    uniqueIndex('TM_ROLE_NAME_UNIQUE').on(t.name),
     daftarNilai('TM_ROLE_CHR_KIND_CHK', t.kind, ROLE_KINDS),
     daftarNilai('TM_ROLE_CHR_PROCESS_GROUP_CHK', t.processGroup, PROCESS_GROUPS),
   ],
@@ -115,7 +116,7 @@ export const menus = orgSchema.table(
   (t) => [
     uniqueIndex('TM_MENU_KEY_UNIQUE').on(t.key),
     index('TM_MENU_GROUP_IDX').on(t.menuGroup, t.sortOrder),
-  
+
     daftarNilai('TM_MENU_CHR_MENU_GROUP_CHK', t.menuGroup, MENU_GROUPS),
   ],
 );
@@ -184,7 +185,9 @@ export const devices = orgSchema.table(
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_DEVICE_CODE_UNIQUE').on(t.code), index('TM_DEVICE_PLANT_IDX').on(t.plantId),
+  (t) => [
+    uniqueIndex('TM_DEVICE_CODE_UNIQUE').on(t.code),
+    index('TM_DEVICE_PLANT_IDX').on(t.plantId),
     daftarNilai('TM_DEVICE_CHR_KIND_CHK', t.kind, ['SCANNER', 'RFID', 'MACHINE_PANEL', 'PRINTER']),
   ],
 );
@@ -216,3 +219,36 @@ export const roleMenusRelations = relations(roleMenus, ({ one }) => ({
 export const devicesRelations = relations(devices, ({ one }) => ({
   plant: one(plants, { fields: [devices.plantId], references: [plants.id] }),
 }));
+
+/**
+ * Pengaturan sistem yang diubah dari layar, bukan dari .env.
+ *
+ * Hanya memuat baris untuk pengaturan yang PERNAH diubah orang. Yang belum
+ * pernah disentuh tidak punya baris di sini, dan nilainya diambil dari
+ * environment variable — lihat catatan di @avicenna/contracts/setting.
+ *
+ * Nilainya disimpan sebagai TEKS, bukan boolean, supaya menambah pengaturan
+ * bertipe angka atau pilihan nanti tidak perlu mengubah bentuk tabel. Yang
+ * menafsirkannya adalah definisi di registry, satu tempat untuk layar dan API.
+ *
+ * Tidak ada kolom pabrik: ini keputusan satu sistem, bukan per pabrik.
+ * Menyalakan dorong ke SAP untuk satu pabrik saja tidak masuk akal — yang
+ * dibatasi per pabrik atau per lini adalah rute prosesnya, di TM_ROUTE_PROCESS.
+ */
+export const settings = orgSchema.table(
+  'TM_SETTING',
+  {
+    id: pk(),
+    key: varchar('CHR_KEY', { length: 64 }).notNull(),
+    value: varchar('CHR_VALUE', { length: 191 }).notNull(),
+    /**
+     * NPK yang mengubahnya terakhir.
+     *
+     * Disimpan sebagai teks, bukan foreign key ke TM_USER: ini catatan jejak,
+     * dan jejak tidak boleh ikut hilang atau menghalangi saat akunnya dihapus.
+     */
+    updatedBy: varchar('CHR_UPDATED_BY', { length: 64 }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('TM_SETTING_KEY_UNIQUE').on(t.key)],
+);

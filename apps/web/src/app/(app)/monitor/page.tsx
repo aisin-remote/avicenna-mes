@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Activity, ArrowUpRight } from 'lucide-react';
 import { listLinesWithProduction, type LineProduksi } from '@/lib/queries';
 import { grupProses, PROCESS_GROUPS, PROCESS_GROUP_LABELS } from '@avicenna/domain';
-import { PROCESS_TYPES, PROCESS_LABELS } from '@avicenna/contracts';
+import { katalogProsesServer } from '@/lib/process-types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
 import { IconBadge } from '@/components/ui/icon-badge';
@@ -19,11 +19,11 @@ export const dynamic = 'force-dynamic';
  * seperti CASTING_WIP tidak cocok dengan 'CASTING' yang tertulis, sehingga
  * seluruh lini jatuh ke penampung "tidak dikenal" dan urutannya acak.
  *
- * PROCESS_TYPES sudah tersusun mengikuti aliran barang, bukan abjad — orang
- * lapangan membaca layar ini sebagai urutan kerja.
+ * Urutannya datang dari INT_SORT_ORDER master jenis proses — tersusun
+ * mengikuti aliran barang, bukan abjad. Orang lapangan membaca layar ini
+ * sebagai urutan kerja.
  */
-const URUTAN_PROSES = PROCESS_TYPES;
-const NAMA_PROSES: Record<string, string> = PROCESS_LABELS;
+
 
 export default async function MonitorIndexPage({
   searchParams,
@@ -45,9 +45,14 @@ export default async function MonitorIndexPage({
     (g) => g.toLowerCase() === (sp.proses ?? '').trim().toLowerCase(),
   );
 
+  const katalog = await katalogProsesServer();
+  const NAMA_PROSES: Record<string, string> = Object.fromEntries(
+    katalog.daftar.map((j) => [j.code, j.label]),
+  );
+  const URUTAN_PROSES = katalog.kode;
   const semuaLine = await listLinesWithProduction();
   const semua = saringan
-    ? semuaLine.filter((l) => grupProses(l.processType as never) === saringan)
+    ? semuaLine.filter((l) => katalog.grup(l.processType) === saringan)
     : semuaLine;
 
   // Proses yang tidak punya line sama sekali tidak ditampilkan; proses di luar
@@ -78,7 +83,7 @@ export default async function MonitorIndexPage({
       <div className="mb-5 flex flex-wrap gap-1.5">
         <Saring aktif={!saringan} href="/monitor" label="Semua proses" />
         {PROCESS_GROUPS.filter((g) =>
-          semuaLine.some((l) => grupProses(l.processType as never) === g),
+          semuaLine.some((l) => katalog.grup(l.processType) === g),
         ).map((g) => (
           <Saring
             key={g}

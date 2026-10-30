@@ -122,6 +122,15 @@ export interface StationSummary {
     code: string;
     name: string;
     processType: string;
+    /**
+     * Grup role proses ini, diturunkan server dari master jenis proses.
+     *
+     * Dikirim jadi, bukan disimpulkan layar: sejak daftar jenis proses pindah
+     * ke master, browser tidak punya petanya — dan mengirim seluruh katalog ke
+     * setiap stasiun scan hanya untuk menjawab satu pertanyaan itu jelas lebih
+     * mahal daripada satu kolom di ringkasan.
+     */
+    processGroup: string | null;
     plantCode: string | null;
     plantName: string | null;
     /** PER_PIECE: scan part per barang. PER_KANBAN: master sample lalu kanban per box. */
@@ -187,6 +196,8 @@ export interface AlasanBerhenti {
   name: string;
   category: string;
   isPlanned: boolean;
+  /** Hex `#RRGGBB`. Kosong berarti warnanya diturunkan dari `isPlanned`. */
+  color: string | null;
 }
 
 export const mulaiBerhentiSchema = z.object({
@@ -208,6 +219,15 @@ export interface BerhentiLini {
   reasonCode: string | null;
   reasonName: string | null;
   isPlanned: boolean;
+  /**
+   * Warna alasan yang dipilih, hex `#RRGGBB`.
+   *
+   * Ikut di sini supaya kartu "Produksi berhenti" memakai warna tombol yang
+   * barusan ditekan. Tanpa itu, operator menekan tombol kuning lalu layarnya
+   * berubah merah — dan sejenak ia ragu apakah yang tercatat memang yang ia
+   * pilih.
+   */
+  color: string | null;
   startedAt: string;
   /** Kosong = masih berhenti. */
   endedAt: string | null;

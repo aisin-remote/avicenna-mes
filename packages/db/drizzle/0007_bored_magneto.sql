@@ -1,0 +1,2 @@
+ALTER TABLE "master"."TM_PARTS" ADD COLUMN "CHR_PRODUCTION_VERSION" varchar(8);--> statement-breakpoint
+ALTER TABLE "kanban"."TM_KANBAN" ADD COLUMN "CHR_PRODUCTION_VERSION" varchar(8);

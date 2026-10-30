@@ -9,7 +9,7 @@ import {
   Search,
   Waypoints,
 } from 'lucide-react';
-import { PROCESS_LABELS, PROCESS_TYPES } from '@avicenna/contracts';
+import { katalogProsesServer } from '@/lib/process-types';
 import {
   JENIS_AKTIVITAS,
   LABEL_AKTIVITAS,
@@ -61,6 +61,7 @@ const INPUT_CLASS =
   'w-full rounded-xl border border-line bg-card px-3 py-2.5 text-[14px] text-ink outline-none transition-colors focus:border-ink';
 
 export default async function StockPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const katalog = await katalogProsesServer();
   const sp = await searchParams;
   const plant = Number(sp.plant);
   const hasil = await stockMonitor({
@@ -130,9 +131,9 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
           </FilterSelect>
           <FilterSelect name="process" label="Proses" value={filters.processType}>
             <option value="">Semua proses</option>
-            {PROCESS_TYPES.map((process) => (
+            {katalog.daftar.map(({ code: process, label }) => (
               <option key={process} value={process}>
-                {PROCESS_LABELS[process]}
+                {label}
               </option>
             ))}
           </FilterSelect>

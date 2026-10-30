@@ -10,6 +10,7 @@ import {
   type ScanMode,
   type ScanModeTersimpan,
   type ProcessType,
+  type KatalogProses,
 } from '@avicenna/contracts';
 
 // Kosakata, label, bawaan, dan penerjemah nilai lama ada di contracts (dipakai
@@ -151,10 +152,11 @@ const SYARAT: Record<ScanMode, SyaratScan> = {
 };
 
 export function syaratScan(
+  katalog: KatalogProses,
   mode: ScanModeTersimpan | null | undefined,
   proses?: ProcessType | null,
 ): SyaratScan {
-  return SYARAT[normalkanModeScan(mode, proses)];
+  return SYARAT[normalkanModeScan(katalog, mode, proses)];
 }
 
 /**
@@ -166,8 +168,9 @@ export function syaratScan(
  * dan seterusnya. Di metode itu duplikat ditentukan oleh status kartunya.
  */
 export function duplikatDariBarcode(
+  katalog: KatalogProses,
   mode: ScanModeTersimpan | null | undefined,
   proses?: ProcessType | null,
 ): boolean {
-  return !scanPerBox(normalkanModeScan(mode, proses));
+  return !scanPerBox(normalkanModeScan(katalog, mode, proses));
 }

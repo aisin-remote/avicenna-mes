@@ -16,6 +16,7 @@ import {
   isMasterEntity,
   ENTITY_DEFS,
   kolomImpor,
+  AWALAN_FILTER,
   MAKS_UKURAN_IMPOR,
   type MasterEntity,
 } from '@avicenna/contracts';
@@ -143,18 +144,34 @@ export class MasterController {
   @Get(':entity')
   list(
     @Param('entity') entity: string,
+    @Query() query: Record<string, string | undefined>,
     @Query('page') page?: string,
     @Query('perPage') perPage?: string,
     @Query('q') q?: string,
     @Query('sort') sort?: string,
     @Query('dir') dir?: string,
   ) {
+    /*
+     * Filter dibawa berawalan `f_` supaya nama kolom master tidak pernah
+     * bertabrakan dengan parameter halaman (`page`, `q`, `sort`, `dir`) —
+     * kolom bernama `sort` atau `page` di master baru tidak akan diam-diam
+     * mengubah urutan atau nomor halaman.
+     *
+     * Yang menolak nama kolom asing tetap service, bukan di sini.
+     */
+    const filters: Record<string, string> = {};
+    for (const [kunci, nilai] of Object.entries(query)) {
+      if (!kunci.startsWith(AWALAN_FILTER) || typeof nilai !== 'string') continue;
+      filters[kunci.slice(AWALAN_FILTER.length)] = nilai;
+    }
+
     return this.master.list(this.assertEntity(entity), {
       page: Math.max(1, Number(page) || 1),
       perPage: Math.min(200, Math.max(1, Number(perPage) || 25)),
       q: q?.trim() || undefined,
       sort: sort || undefined,
       dir: dir === 'desc' ? 'desc' : 'asc',
+      filters,
     });
   }
 

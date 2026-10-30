@@ -16,6 +16,7 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
 import { Reveal } from '@/components/motion/reveal';
 import { OutboxActions } from '@/components/sap/outbox-actions';
+import { MasterPullActions } from '@/components/sap/master-pull-actions';
 import { SimulationActions } from '@/components/sap/simulation-actions';
 import { cn } from '@/components/ui/cn';
 
@@ -162,6 +163,17 @@ export default async function SapPage({
       <div className="mb-5">
         <OutboxActions idGagal={idGagal} tarikAktif={cfg.tarikAktif} />
       </div>
+
+      {/* Tarik master dipisah dari tombol transaksi: arahnya berlawanan dan
+          akibatnya berbeda jauh. Tombol di atas mengirim keluar dan selalu bisa
+          diulang; yang ini menimpa isi layar master dan tidak bisa dibatalkan. */}
+      {cfg.tarikAktif ? (
+        <Reveal>
+          <div className="mb-5">
+            <MasterPullActions berkalaAktif={cfg.tarikBerkalaAktif} />
+          </div>
+        </Reveal>
+      ) : null}
 
       <Reveal>
         <Card>

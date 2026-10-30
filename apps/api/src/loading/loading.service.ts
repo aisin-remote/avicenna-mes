@@ -28,6 +28,9 @@ import {
   devices,
 } from '@avicenna/db';
 import { galatDuplikat } from '@avicenna/db';
+
+/** Lokasi staging sebagai alias kedua dari TM_LOCATION. Lihat rincian() di bawah. */
+const lokasiStaging = alias(locations, 'staging');
 import {
   convertCustomerPartNumber,
   allocateFifo,
@@ -730,7 +733,19 @@ export class LoadingService {
           const riwayat = await tx
             .select({ meta: scanEvents.meta, dedupeKey: scanEvents.dedupeKey })
             .from(scanEvents)
-            .innerJoin(deliveries, sql`${scanEvents.meta}->>'deliveryId' = ${deliveries.id}::text`)
+            .innerJoin(
+              deliveries,
+              /*
+               * Kolomnya dibandingkan sebagai TEKS di kedua sisi.
+               *
+               * `->>` mengembalikan text, sedangkan INT_ID bigint — dan
+               * Postgres tidak memaksa tipe seperti MySQL, jadi tanpa cast
+               * seluruh kueri gagal dengan "operator does not exist: text =
+               * bigint". Dua baris di bawah sudah membandingkan dengan String(),
+               * yang ini terlewat karena sisi kanannya kolom, bukan nilai.
+               */
+              sql`${scanEvents.meta}->>'deliveryId' = ${deliveries.id}::text`,
+            )
             .where(
               and(
                 eq(scanEvents.kind, 'DELIVERY'),
@@ -771,15 +786,28 @@ export class LoadingService {
          * satu kanban hilang dari catatan tanpa jejak apa pun. UPDATE ini
          * mengunci barisnya, jadi yang kedua menunggu dan menulis 7.
          *
-         * PostgreSQL menilai kedua nilai dari baris lama; ORM menulis target SET
-         * tanpa awalan tabel/skema yang tidak sah pada PostgreSQL.
+         * ── Kenapa lewat .set(), bukan SQL mentah ──────────────────────────
+         *
+         * Sebelumnya UPDATE-nya ditulis tangan, dan di Postgres itu gagal:
+         * sisi kiri SET harus nama kolom POLOS, sedangkan Drizzle merender
+         * kolom dengan skema dan tabelnya — "logistics"."TT_DELIVERY_ITEM".
+         * MySQL menerimanya, Postgres menolak dengan "column logistics of
+         * relation TT_DELIVERY_ITEM does not exist". Builder-nya merender
+         * bentuk yang benar untuk kedua sisi.
+         *
+         * Sekalian hilang satu jebakan: catatan lama mengingatkan bahwa urutan
+         * SET penting karena MySQL menilai ekspresi dari kiri ke kanan. Di
+         * Postgres SELURUH ekspresi SET dinilai terhadap baris LAMA, jadi
+         * keduanya memakai nilai sebelum penambahan apa pun urutannya.
          */
+        const tambah = { kanban: sql`${kolom} + 1`, qty: sql`(${kolom} + 1) * ${deliveryLines.qtyPerKanban}` };
         await tx
           .update(deliveryLines)
-          .set({
-            pickedQty: sql`(${deliveryLines.pickedKanban} + 1) * ${deliveryLines.qtyPerKanban}`,
-            pickedKanban: sql`${deliveryLines.pickedKanban} + 1`,
-          })
+          .set(
+            phase === 'PULLING'
+              ? { pickedKanban: tambah.kanban, pickedQty: tambah.qty }
+              : { actualKanban: tambah.kanban, actualQty: tambah.qty },
+          )
           .where(eq(deliveryLines.id, match.lineId));
 
         // Dibaca kembali di dalam transaksi yang sama: barisnya terkunci sampai
@@ -1634,7 +1662,6 @@ export class LoadingService {
   }
 
   async findOne(id: number) {
-    const staging = alias(locations, 'staging');
     const rows = await this.db
       .select({
         id: deliveries.id,
@@ -1671,8 +1698,8 @@ export class LoadingService {
         locationName: locations.name,
         locationCode: locations.code,
         stagingLocationId: deliveries.stagingLocationId,
-        stagingLocationName: staging.name,
-        stagingLocationCode: staging.code,
+        stagingLocationName: lokasiStaging.name,
+        stagingLocationCode: lokasiStaging.code,
         status: deliveries.status,
         truckStatus: deliveries.truckStatus,
         truckNumber: deliveries.truckNumber,
@@ -1697,7 +1724,19 @@ export class LoadingService {
           eq(sapOutbox.docType, 'DELIVERY'),
         ),
       )
-      .leftJoin(staging, eq(staging.id, deliveries.stagingLocationId))
+      /*
+       * Alias tersendiri: tabel lokasi dipakai DUA KALI dalam query ini —
+       * sekali sebagai SLOC asal, sekali sebagai staging.
+       *
+       * Sebelumnya ditulis sebagai SQL mentah `TM_LOCATION AS staging`, dan itu
+       * salah dua kali di Postgres: nama tabelnya tidak dikutip (sehingga dicari
+       * sebagai `tm_location` huruf kecil) dan tidak disebut skemanya. Seluruh
+       * layar rincian loading list gagal dengan "relation does not exist", dan
+       * baru ketahuan saat pemeriksaan pengiriman dijalankan. alias() milik
+       * Drizzle melakukan hal yang sama dengan benar — catatan lama yang
+       * mengatakan Drizzle tidak bisa sudah tidak berlaku.
+       */
+      .leftJoin(lokasiStaging, eq(lokasiStaging.id, deliveries.stagingLocationId))
       .where(eq(deliveries.id, id))
       .limit(1);
 

@@ -1,4 +1,7 @@
-import { PROCESS_LABELS, type LocationKind, type ProcessType } from '@avicenna/contracts';
+import {  type LocationKind, type ProcessType,
+  type SapClass,
+  type JenisProses,
+} from '@avicenna/contracts';
 
 /**
  * ─── APA YANG BOLEH SAMPAI KE SAP ───────────────────────────────────────────
@@ -79,32 +82,21 @@ export type KelasHasilSap = 'SFG' | 'FG' | null;
  * bisa menutup rute sudah punya lini FG-nya sendiri; ia tetap ada untuk hal
  * yang tidak terduga, mis. part yang berhenti di langkah yang biasanya WIP.
  */
-const KELAS_HASIL: Record<ProcessType, KelasHasilSap> = {
-  MELTING: null,
-  CASTING_WIP: 'SFG',
-  CASTING_FG: 'FG',
-  MACHINING_WIP: 'SFG',
-  MACHINING_FG: 'FG',
-  ASSEMBLING_UNIT_FG: 'FG',
-  INJECTION_WIP: 'SFG',
-  INJECTION_FG: 'FG',
-  PAINTING_WIP: 'SFG',
-  PAINTING_FG: 'FG',
-  ASSEMBLING_BODY_FG: 'FG',
-  MOUNTING: 'SFG',
-  INSPECTION_WIP: 'SFG',
-  INSPECTION_FG: 'FG',
-  VACUUM_WIP: 'SFG',
-  VACUUM_FG: 'FG',
-  ANTENNA: 'SFG',
-  // Delivery bukan produksi: itu modul SD, bukan PP.
-  DELIVERY: null,
-};
+/*
+ * Peta jenis proses -> kelas hasil DULU ditulis di sini sebagai Record yang
+ * dijaga compiler. Sejak daftar jenis proses pindah ke master
+ * `TM_PROCESS_TYPE`, kelasnya adalah KOLOM di baris masternya — satu nilai
+ * yang sekaligus menjawab "menghasilkan barang jadi?" dan "dokumen SAP apa",
+ * sehingga keduanya tidak bisa lagi bertentangan.
+ */
+
 
 /**
  * Kelas hasil sebuah langkah produksi.
  *
- * `langkahTerakhir` mengalahkan tabel di atas, dan itu disengaja: yang
+ * `kelasMaster` datang dari kolom CHR_SAP_CLASS baris jenis prosesnya.
+ *
+ * `langkahTerakhir` mengalahkan master, dan itu disengaja: yang
  * menentukan sebuah keluaran barang jadi atau bukan adalah apakah masih ada
  * proses sesudahnya DI RUTE PART ITU, bukan nama prosesnya. Pada proyek 660A,
  * GARNISH melewati Injection lalu langsung Assembling sedangkan HANDLE lewat
@@ -113,10 +105,12 @@ const KELAS_HASIL: Record<ProcessType, KelasHasilSap> = {
  *
  * Dipanggil tanpa argumen kedua, jawabannya mengikuti tabel.
  */
-export function kelasHasilSap(proses: ProcessType, langkahTerakhir?: boolean): KelasHasilSap {
-  const bawaan = KELAS_HASIL[proses];
-  if (bawaan === null) return null;
-  if (langkahTerakhir === undefined) return bawaan;
+export function kelasHasilSap(
+  kelasMaster: SapClass,
+  langkahTerakhir?: boolean,
+): KelasHasilSap {
+  if (kelasMaster === 'NONE') return null;
+  if (langkahTerakhir === undefined) return kelasMaster;
   return langkahTerakhir ? 'FG' : 'SFG';
 }
 
@@ -166,7 +160,8 @@ const BOLEH: KeputusanSap = { kirim: true };
  * sendiri pada putaran berikutnya.
  */
 export function periksaHasilProduksi(opsi: {
-  proses: ProcessType;
+  /** Baris master jenis prosesnya. Kosong = kodenya tidak terdaftar. */
+  jenis: Pick<JenisProses, 'code' | 'label' | 'sapClass'> | undefined;
   /** Jenis SLOC tujuan hasil produksi. Kosong berarti mutasinya tanpa lokasi. */
   slocKind: LocationKind | null;
   /** Kode SLOC-nya, untuk pesan yang bisa ditindaklanjuti. */
@@ -174,18 +169,28 @@ export function periksaHasilProduksi(opsi: {
   /** Apakah langkah ini yang terakhir di rute part. */
   langkahTerakhir?: boolean;
 }): KeputusanSap {
-  const kelas = kelasHasilSap(opsi.proses, opsi.langkahTerakhir);
-  const nama = PROCESS_LABELS[opsi.proses] ?? opsi.proses;
+  /*
+   * Jenis proses yang tidak terdaftar DITAHAN, bukan dilewati diam-diam.
+   *
+   * Foreign key membuat keadaan ini nyaris mustahil; yang tersisa adalah data
+   * yang ditulis sebelum master itu ada. Menahannya memaksa orang melihat,
+   * sedangkan melewatinya membuat hasil produksi hilang dari SAP tanpa jejak.
+   */
+  if (!opsi.jenis) {
+    return { kirim: false, alasan: 'jenis proses tidak terdaftar di master' };
+  }
+  const kelas = kelasHasilSap(opsi.jenis.sapClass, opsi.langkahTerakhir);
+  const nama = opsi.jenis.label || opsi.jenis.code;
 
   if (kelas === null) {
     return {
       kirim: false,
       sengaja: true,
       alasan:
-        opsi.proses === 'MELTING'
+        opsi.jenis.code === 'MELTING'
           ? 'Melting tidak punya nomor material di SAP (keluarannya logam cair) — ' +
             'hasilnya dicatat di Avicenna saja'
-          : `${nama} bukan langkah produksi pada modul PP SAP`,
+          : `${nama} tidak punya padanan langkah produksi di modul PP SAP`,
     };
   }
 

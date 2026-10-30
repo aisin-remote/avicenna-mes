@@ -15,6 +15,7 @@ import {
 } from '@avicenna/db';
 import {
   scanEvents,
+  productionPlans,
   lines,
   parts,
   machines,
@@ -79,6 +80,7 @@ import type {
   StationResult,
 } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
+import { ProcessTypeService } from '../master/process-type.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { QueueService } from '../queue/queue.service';
 import { QUEUES, JOBS } from '../queue/queue.constants';
@@ -151,6 +153,7 @@ export class ScanService {
     private readonly realtime: RealtimeService,
     private readonly queue: QueueService,
     private readonly loading: LoadingService,
+    private readonly processTypes: ProcessTypeService,
   ) {}
 
   /**
@@ -505,12 +508,13 @@ export class ScanService {
      */
     // Penimpa lini didahulukan: satu pabrik bisa punya dua lini dengan cara
     // berbeda pada proses yang sama (injection vs assembling BODY).
-    const modeScan: ScanMode = modeScanBerlaku({
+    const katalog = await this.processTypes.katalog();
+    const modeScan: ScanMode = modeScanBerlaku(katalog, {
       modeLini: line?.scanMode,
       modeProses: aturanProses?.scanMode,
       proses: processType,
     });
-    const syarat = processType ? syaratScan(modeScan, processType) : null;
+    const syarat = processType ? syaratScan(katalog, modeScan, processType) : null;
 
     /*
      * Metode yang dikenal tetapi alurnya belum dibangun ditolak di sini.
@@ -790,6 +794,22 @@ export class ScanService {
             deviceId: principal?.kind === 'device' ? principal.sub : null,
             scannedAt: normalized.scannedAt,
             dedupeKey: normalized.dedupeKey,
+            /*
+             * Baris rencana yang sedang dikerjakan, bila ada.
+             *
+             * Tanpa ini papan perintah kerja tidak bisa menghitung ACTUAL per
+             * perintah — satu part bisa muncul delapan kali dalam sehari
+             * dengan nomor perintah berbeda, dan menjumlahkannya per part
+             * membuat kedelapannya terlihat seperti satu.
+             *
+             * Kosong bila lini belum punya rencana. Itu keadaan yang sah dan
+             * tidak boleh menggagalkan scan: barangnya sudah jadi, dan
+             * menolaknya hanya membuat lini berhenti karena data kantor.
+             */
+            productionPlanId:
+              line && part
+                ? await this.rencanaBerjalan(line.id, part.id, normalized.scannedAt)
+                : null,
             // Aturan baca ikut dicatat: saat sebuah barcode terbaca keliru,
             // pertanyaan pertama selalu "dibaca pakai aturan mana".
             meta: {
@@ -1111,7 +1131,7 @@ export class ScanService {
           qtyPerBox: qtyPerKanban,
           unitPerKanban: qtyPerKanban,
           customerId: doc.customerId,
-          status: 'CREATED',
+          status: 'AVAILABLE',
         });
       }
     }
@@ -1310,7 +1330,10 @@ export class ScanService {
      * "barcode ini sudah discan di proses ini" akan menolak scan kedua dan
      * seterusnya. Di mode itu duplikatnya ditentukan status kartu, di ingestOne.
      */
-    if (processType && duplikatDariBarcode(modeScan, processType)) {
+    if (
+      processType &&
+      duplikatDariBarcode(await this.processTypes.katalog(), modeScan, processType)
+    ) {
       const already = await this.db
         .select({ id: scanEvents.id })
         .from(scanEvents)
@@ -1486,7 +1509,11 @@ export class ScanService {
         ),
       )
       .limit(1);
-    return modeScanBerlaku({ modeLini, modeProses: aturan?.scanMode, proses: processType });
+    return modeScanBerlaku(await this.processTypes.katalog(), {
+      modeLini,
+      modeProses: aturan?.scanMode,
+      proses: processType,
+    });
   }
 
   private async partById(id: number) {
@@ -1496,6 +1523,72 @@ export class ScanService {
 
   /** Jumlah scan yang diterima hari ini pada satu line. */
   /** Bentuk hitungan sebagaimana dikirim ke layar (StationResult / StationSummary). */
+  /**
+   * Baris rencana yang sedang dikerjakan di sebuah lini untuk sebuah part.
+   *
+   * ── Kenapa dipilih dari HITUNGAN, bukan dari status ────────────────────────
+   *
+   * Status RUNNING diubah manusia dan gampang tertinggal — baris yang sudah
+   * selesai tetap RUNNING sampai ada yang menutupnya. Yang tidak pernah bohong
+   * adalah berapa yang sudah discan ke baris itu. Jadi yang dipilih: urutan
+   * terkecil hari ini untuk part tersebut yang BELUM genap.
+   *
+   * Dibatasi pada part-nya sendiri, bukan sekadar urutan terkecil di lini.
+   * Operator yang menyelesaikan satu model lalu mulai model berikutnya
+   * sebelum baris sebelumnya genap akan menempelkan hasilnya ke perintah kerja
+   * yang salah — dan di papan, dua model itu tertukar angkanya.
+   *
+   * Mengembalikan null bila lini belum punya rencana. Scan tetap tersimpan.
+   */
+  private async rencanaBerjalan(
+    lineId: number,
+    partId: number,
+    waktu: Date,
+  ): Promise<number | null> {
+    const { start } = productionDayWindow(waktu);
+    const tanggal = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+
+    const baris = await this.db
+      .select({
+        id: productionPlans.id,
+        orderQty: productionPlans.orderQty,
+        cycle: productionPlans.cycle,
+        seqNo: productionPlans.seqNo,
+      })
+      .from(productionPlans)
+      .where(
+        and(
+          eq(productionPlans.lineId, lineId),
+          eq(productionPlans.partId, partId),
+          eq(productionPlans.planDate, tanggal),
+          inArray(productionPlans.status, ['DRAFT', 'RELEASED', 'RUNNING']),
+        ),
+      )
+      .orderBy(asc(productionPlans.cycle), asc(productionPlans.seqNo));
+    if (baris.length === 0) return null;
+
+    const terisi = await this.db
+      .select({ planId: scanEvents.productionPlanId, pcs: sum(scanEvents.qty) })
+      .from(scanEvents)
+      .where(
+        inArray(
+          scanEvents.productionPlanId,
+          baris.map((b) => b.id),
+        ),
+      )
+      .groupBy(scanEvents.productionPlanId);
+    const peta = new Map(terisi.map((t) => [t.planId, Number(t.pcs ?? 0)]));
+
+    /*
+     * Yang terakhir dipakai sebagai cadangan, bukan null.
+     *
+     * Produksi melebihi rencana itu biasa di lapangan; melemparkannya ke luar
+     * perintah kerja membuat kelebihannya tidak terlihat di papan mana pun,
+     * dan di akhir shift selisihnya tidak bisa dijelaskan siapa pun.
+     */
+    return (baris.find((b) => (peta.get(b.id) ?? 0) < b.orderQty) ?? baris[baris.length - 1]!).id;
+  }
+
   private async hitunganUntukHasil(lineCode?: string | null) {
     const h = await this.hitungHariIni(lineCode);
     return { counterToday: h.scans, pcsToday: h.pcs };
@@ -1622,6 +1715,7 @@ export class ScanService {
         code: line.code,
         name: line.name,
         processType: line.processType,
+        processGroup: (await this.processTypes.katalog()).grup(line.processType) ?? null,
         plantCode: plantRows[0]?.code ?? null,
         plantName: plantRows[0]?.name ?? null,
         /*
@@ -1653,6 +1747,7 @@ export class ScanService {
         reasonCode: stopReasons.code,
         reasonName: stopReasons.name,
         isPlanned: stopReasons.isPlanned,
+        color: stopReasons.color,
         startedAt: lineStops.startedAt,
         endedAt: lineStops.endedAt,
         note: lineStops.note,
@@ -1671,6 +1766,7 @@ export class ScanService {
       reasonCode: baris.reasonCode ?? null,
       reasonName: baris.reasonName ?? null,
       isPlanned: baris.isPlanned ?? false,
+      color: baris.color ?? null,
       startedAt: baris.startedAt.toISOString(),
       endedAt: baris.endedAt ? baris.endedAt.toISOString() : null,
       note: baris.note ?? null,
@@ -1693,6 +1789,7 @@ export class ScanService {
         name: stopReasons.name,
         category: stopReasons.category,
         isPlanned: stopReasons.isPlanned,
+        color: stopReasons.color,
       })
       .from(stopReasons)
       .where(
@@ -1969,8 +2066,9 @@ export class ScanService {
    * pilih.
    */
   async liniGrup(grup: string, principal?: Principal) {
-    const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[0];
-    const jenis = prosesDalamGrup(g);
+    const katalogGrup = await this.processTypes.katalog();
+    const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[1];
+    const jenis = prosesDalamGrup(katalogGrup, g);
     if (jenis.length === 0) {
       throw new BadRequestException(`Grup proses "${grup}" tidak dikenal`);
     }
@@ -2013,7 +2111,8 @@ export class ScanService {
    * pembatasan.
    */
   async bukaLini(kode: string, grup: string, principal?: Principal) {
-    const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[0];
+    const katalogLini = await this.processTypes.katalog();
+    const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[1];
     const bersih = kode.trim();
 
     const [line] = await this.db
@@ -2034,7 +2133,7 @@ export class ScanService {
       throw new BadRequestException(`${REJECT_MESSAGES.LINE_NOT_FOUND} (${bersih})`);
     }
 
-    if (grupProses(line.processType) !== g) {
+    if (grupProses(katalogLini, line.processType) !== g) {
       throw new BadRequestException(
         `Lini ${bersih} bukan lini ${PROCESS_GROUP_LABELS[g] ?? grup}. Periksa barcode lininya.`,
       );
@@ -2073,6 +2172,7 @@ export class ScanService {
       }
 
       const boleh = bolehScanDi(
+        await this.processTypes.katalog(),
         { kind: aku.kind, processGroup: aku.processGroup },
         line.processType,
       );

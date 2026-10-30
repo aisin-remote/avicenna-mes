@@ -1,4 +1,11 @@
-import { PROCESS_GROUPS, ROLE_KINDS, type ProcessGroup, type RoleKind, type ProcessType } from '@avicenna/contracts';
+import {
+  PROCESS_GROUPS,
+  ROLE_KINDS,
+  type KatalogProses,
+  type ProcessGroup,
+  type RoleKind,
+  type ProcessType,
+} from '@avicenna/contracts';
 
 /**
  * Role = PROSES × JABATAN.
@@ -21,37 +28,26 @@ import { PROCESS_GROUPS, ROLE_KINDS, type ProcessGroup, type RoleKind, type Proc
  */
 export { PROCESS_GROUPS, type ProcessGroup };
 
-const GRUP: Record<ProcessType, ProcessGroup> = {
-  MELTING: 'MELTING',
-  CASTING_WIP: 'CASTING',
-  CASTING_FG: 'CASTING',
-  MACHINING_WIP: 'MACHINING',
-  MACHINING_FG: 'MACHINING',
-  ASSEMBLING_UNIT_FG: 'ASSEMBLING',
-  ASSEMBLING_BODY_FG: 'ASSEMBLING',
-  INJECTION_WIP: 'INJECTION',
-  INJECTION_FG: 'INJECTION',
-  PAINTING_WIP: 'PAINTING',
-  PAINTING_FG: 'PAINTING',
-  MOUNTING: 'MOUNTING',
-  // Lini WIP dan lini FG berbagi satu grup: lingkup role memang per bagian,
-  // bukan per lini — "inspection leader" satu orang untuk keduanya.
-  INSPECTION_WIP: 'INSPECTION',
-  INSPECTION_FG: 'INSPECTION',
-  VACUUM_WIP: 'VACUUM',
-  VACUUM_FG: 'VACUUM',
-  ANTENNA: 'ANTENNA',
-  DELIVERY: 'DELIVERY',
-};
+/*
+ * Peta jenis proses -> grup DULU ditulis di sini sebagai Record yang dijaga
+ * compiler. Sejak daftar jenis proses pindah ke master `TM_PROCESS_TYPE`,
+ * jawabannya datang dari katalog yang dioper pemanggil — grup adalah KOLOM di
+ * baris masternya, bukan lagi baris di berkas ini.
+ */
 
-export function grupProses(p: ProcessType): ProcessGroup {
-  return GRUP[p];
+/** Grup role sebuah jenis proses. `undefined` bila kodenya tidak dikenal. */
+export function grupProses(
+  katalog: KatalogProses,
+  p: ProcessType | null | undefined,
+): ProcessGroup | undefined {
+  return katalog.grup(p);
 }
 
 /** Jenis proses yang termasuk sebuah grup. */
-export function prosesDalamGrup(g: ProcessGroup): ProcessType[] {
-  return (Object.keys(GRUP) as ProcessType[]).filter((p) => GRUP[p] === g);
+export function prosesDalamGrup(katalog: KatalogProses, g: ProcessGroup): ProcessType[] {
+  return katalog.dalamGrup(g);
 }
+
 
 /**
  * Apa yang dikerjakan pemegang role.
@@ -97,12 +93,23 @@ export function halamanAwal(role: RoleScope): string {
   return role.processGroup ? `/monitor?proses=${role.processGroup.toLowerCase()}` : '/monitor';
 }
 
-/** Apakah role ini boleh men-scan di lini dengan jenis proses tersebut. */
-export function bolehScanDi(role: RoleScope, proses: ProcessType): boolean {
+/**
+ * Apakah role ini boleh men-scan di lini dengan jenis proses tersebut.
+ *
+ * Proses yang TIDAK dikenal katalog ditolak untuk role berlingkup — bukan
+ * diloloskan. Kode yang tidak terdaftar artinya master belum lengkap, dan
+ * membuka lini atas dasar data yang belum lengkap adalah justru kebalikan dari
+ * guna lingkup role.
+ */
+export function bolehScanDi(
+  katalog: KatalogProses,
+  role: RoleScope,
+  proses: ProcessType,
+): boolean {
   if (role.kind === 'ADMIN') return true;
   if (role.kind !== 'SCANNING') return false;
   if (!role.processGroup) return true;
-  return grupProses(proses) === role.processGroup;
+  return grupProses(katalog, proses) === role.processGroup;
 }
 
 export const ROLE_KIND_LABELS: Record<RoleKind, string> = {

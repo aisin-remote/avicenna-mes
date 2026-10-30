@@ -49,6 +49,7 @@ export const deliveryOrderCounters = logisticsSchema.table('TT_DO_COUNTER', {
   year: integer('INT_YEAR').primaryKey(),
   lastSerial: integer('INT_LAST_SERIAL').notNull(),
 });
+import { kanbans, KANBAN_OWNERS } from './kanban';
 
 /**
  * Loading list — dokumen muat satu truk.
@@ -225,6 +226,76 @@ export const deliveriesRelations = relations(deliveries, ({ one, many }) => ({
   plant: one(plants, { fields: [deliveries.plantId], references: [plants.id] }),
   customer: one(customers, { fields: [deliveries.customerId], references: [customers.id] }),
   lines: many(deliveryLines),
+}));
+
+/**
+ * KARTU KANBAN YANG IKUT SATU PENGIRIMAN.
+ *
+ * Satu baris = satu kartu fisik yang naik truk pada dokumen ini. Ditulis saat
+ * truk dinyatakan BERANGKAT, bukan saat kartunya discan — scan masih bisa
+ * dibatalkan, keberangkatan tidak. Isinya karena itu selalu kartu yang
+ * benar-benar terkirim, bukan yang sempat discan lalu diralat.
+ *
+ * ── Kenapa perlu tabel tersendiri ───────────────────────────────────────────
+ *
+ * Sebelum ini, hubungan kartu dengan pengiriman hanya tersimpan sebagai nomor
+ * seri di dalam `CHR_META` sebuah scan. Cukup untuk menelusuri satu kejadian,
+ * tetapi tidak untuk pertanyaan yang justru sering ditanya: kartu seri 1456
+ * terakhir ikut pengiriman mana, dan sudah berapa kali ia berputar. Menjawab
+ * itu dari JSON berarti memindai seluruh riwayat scan.
+ *
+ * Kolom `DTM_RELEASED_AT` di sini adalah kapan kartu DILEPAS pada pengiriman
+ * ini — berbeda dari kolom bernama sama di TM_KANBAN, yang menyimpan pelepasan
+ * TERAKHIR kartu itu. Yang satu riwayat, yang satu keadaan sekarang.
+ */
+export const deliveryKanbans = logisticsSchema.table(
+  'TT_DELIVERY_KANBAN',
+  {
+    id: pk(),
+    deliveryId: fk('INT_DELIVERY_ID')
+      .notNull()
+      .references(() => deliveries.id, { onDelete: 'cascade' }),
+    /**
+     * Baris rencana yang dipenuhi kartu ini. Kosong bila tak bisa dipastikan.
+     *
+     * Dinamai INT_DEL_ITEM_ID, bukan INT_DELIVERY_ITEM_ID: nama foreign key
+     * yang dibangkitkan dari yang kedua menjadi 66 karakter, dan Postgres
+     * memotong identifier di 63 — dua constraint yang berbeda bisa berakhir
+     * dengan nama yang sama. Singkatan DEL juga sudah dipakai kolom lain di
+     * tabel ini (CHR_DEL_NO, CHR_DEL_ITEM), jadi bukan singkatan baru.
+     */
+    deliveryLineId: fk('INT_DEL_ITEM_ID').references(() => deliveryLines.id),
+    kanbanId: fk('INT_KANBAN_ID')
+      .notNull()
+      .references(() => kanbans.id),
+    /** Pemilik kartu saat itu — disalin supaya riwayat tidak berubah bila masternya diubah. */
+    owner: enumCol('CHR_OWNER', KANBAN_OWNERS).notNull(),
+    /** Berapa unit yang dibawa kartu ini. */
+    qty: integer('INT_QTY').notNull().default(0),
+    /** Kapan kartu ini dilepas pada pengiriman ini. Kosong = kartu ikut ke customer. */
+    releasedAt: timestamp('DTM_RELEASED_AT', { withTimezone: true, mode: 'date' }),
+    ...timestamps,
+  },
+  (t) => [
+    /*
+     * Satu kartu hanya boleh tercatat sekali per pengiriman. Kartu yang sama
+     * BOLEH muncul di pengiriman lain — memang itu gunanya kartu berputar.
+     */
+    uniqueIndex('TT_DELIVERY_KANBAN_UNIQUE').on(t.deliveryId, t.kanbanId),
+    index('TT_DELIVERY_KANBAN_KANBAN_IDX').on(t.kanbanId, t.createdAt),
+  ],
+);
+
+export const deliveryKanbansRelations = relations(deliveryKanbans, ({ one }) => ({
+  delivery: one(deliveries, {
+    fields: [deliveryKanbans.deliveryId],
+    references: [deliveries.id],
+  }),
+  line: one(deliveryLines, {
+    fields: [deliveryKanbans.deliveryLineId],
+    references: [deliveryLines.id],
+  }),
+  kanban: one(kanbans, { fields: [deliveryKanbans.kanbanId], references: [kanbans.id] }),
 }));
 
 export const deliveryLinesRelations = relations(deliveryLines, ({ one }) => ({

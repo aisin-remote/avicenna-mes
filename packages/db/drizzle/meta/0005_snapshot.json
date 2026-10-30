@@ -1,5 +1,5 @@
 {
-  "id": "e74322d9-cf9a-42bc-ba42-b1bb8ca6d88b",
+  "id": "1695d372-f242-4528-a32c-51e31db6187f",
   "prevId": "7fcd3333-f9fe-4ec4-94ea-d6e654e7d328",
   "version": "7",
   "dialect": "postgresql",
@@ -2562,7 +2562,7 @@
       "checkConstraints": {
         "TT_KANBAN_EVENT_CHR_TYPE_CHK": {
           "name": "TT_KANBAN_EVENT_CHR_TYPE_CHK",
-          "value": "\"kanban\".\"TT_KANBAN_EVENT\".\"CHR_TYPE\" IN ('PRODUCED', 'PULLED', 'PAIRED', 'STORED', 'LOADED', 'DELIVERED', 'CANCELLED', 'ADJUSTED', 'VOIDED')"
+          "value": "\"kanban\".\"TT_KANBAN_EVENT\".\"CHR_TYPE\" IN ('PRODUCED', 'PULLED', 'PAIRED', 'STORED', 'LOADED', 'DELIVERED', 'RELEASED', 'CANCELLED', 'ADJUSTED', 'VOIDED')"
         }
       },
       "isRLSEnabled": false
@@ -2791,7 +2791,7 @@
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'CREATED'"
+          "default": "'AVAILABLE'"
         },
         "DTM_PRODUCED_AT": {
           "name": "DTM_PRODUCED_AT",
@@ -2801,6 +2801,19 @@
         },
         "DTM_DELIVERED_AT": {
           "name": "DTM_DELIVERED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "INT_CYCLE_COUNT": {
+          "name": "INT_CYCLE_COUNT",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "DTM_RELEASED_AT": {
+          "name": "DTM_RELEASED_AT",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -2950,7 +2963,7 @@
         },
         "TM_KANBAN_CHR_STATUS_CHK": {
           "name": "TM_KANBAN_CHR_STATUS_CHK",
-          "value": "\"kanban\".\"TM_KANBAN\".\"CHR_STATUS\" IN ('CREATED', 'PRODUCED', 'STORED', 'PULLED', 'LOADED', 'DELIVERED', 'CANCELLED')"
+          "value": "\"kanban\".\"TM_KANBAN\".\"CHR_STATUS\" IN ('AVAILABLE', 'PRODUCED', 'STORED', 'PULLED', 'LOADED', 'DELIVERED', 'CANCELLED')"
         }
       },
       "isRLSEnabled": false
@@ -5641,6 +5654,173 @@
       },
       "isRLSEnabled": false
     },
+    "logistics.TT_DELIVERY_KANBAN": {
+      "name": "TT_DELIVERY_KANBAN",
+      "schema": "logistics",
+      "columns": {
+        "INT_ID": {
+          "name": "INT_ID",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "TT_DELIVERY_KANBAN_INT_ID_seq",
+            "schema": "logistics",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "INT_DELIVERY_ID": {
+          "name": "INT_DELIVERY_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "INT_DEL_ITEM_ID": {
+          "name": "INT_DEL_ITEM_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "INT_KANBAN_ID": {
+          "name": "INT_KANBAN_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "CHR_OWNER": {
+          "name": "CHR_OWNER",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "INT_QTY": {
+          "name": "INT_QTY",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "DTM_RELEASED_AT": {
+          "name": "DTM_RELEASED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "DTM_CREATED_AT": {
+          "name": "DTM_CREATED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "DTM_UPDATED_AT": {
+          "name": "DTM_UPDATED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "TT_DELIVERY_KANBAN_UNIQUE": {
+          "name": "TT_DELIVERY_KANBAN_UNIQUE",
+          "columns": [
+            {
+              "expression": "INT_DELIVERY_ID",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "INT_KANBAN_ID",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "TT_DELIVERY_KANBAN_KANBAN_IDX": {
+          "name": "TT_DELIVERY_KANBAN_KANBAN_IDX",
+          "columns": [
+            {
+              "expression": "INT_KANBAN_ID",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "DTM_CREATED_AT",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "TT_DELIVERY_KANBAN_INT_DELIVERY_ID_TT_DELIVERY_INT_ID_fk": {
+          "name": "TT_DELIVERY_KANBAN_INT_DELIVERY_ID_TT_DELIVERY_INT_ID_fk",
+          "tableFrom": "TT_DELIVERY_KANBAN",
+          "tableTo": "TT_DELIVERY",
+          "schemaTo": "logistics",
+          "columnsFrom": [
+            "INT_DELIVERY_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "TT_DELIVERY_KANBAN_INT_DEL_ITEM_ID_TT_DELIVERY_ITEM_INT_ID_fk": {
+          "name": "TT_DELIVERY_KANBAN_INT_DEL_ITEM_ID_TT_DELIVERY_ITEM_INT_ID_fk",
+          "tableFrom": "TT_DELIVERY_KANBAN",
+          "tableTo": "TT_DELIVERY_ITEM",
+          "schemaTo": "logistics",
+          "columnsFrom": [
+            "INT_DEL_ITEM_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_DELIVERY_KANBAN_INT_KANBAN_ID_TM_KANBAN_INT_ID_fk": {
+          "name": "TT_DELIVERY_KANBAN_INT_KANBAN_ID_TM_KANBAN_INT_ID_fk",
+          "tableFrom": "TT_DELIVERY_KANBAN",
+          "tableTo": "TM_KANBAN",
+          "schemaTo": "kanban",
+          "columnsFrom": [
+            "INT_KANBAN_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "logistics.TT_DELIVERY_ITEM": {
       "name": "TT_DELIVERY_ITEM",
       "schema": "logistics",
@@ -5922,181 +6102,6 @@
         }
       },
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "logistics.TM_PREPARATION_CYCLE": {
-      "name": "TM_PREPARATION_CYCLE",
-      "schema": "logistics",
-      "columns": {
-        "INT_ID": {
-          "name": "INT_ID",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "byDefault",
-            "name": "TM_PREPARATION_CYCLE_INT_ID_seq",
-            "schema": "logistics",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "INT_CUSTOMER_ID": {
-          "name": "INT_CUSTOMER_ID",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "CHR_DEST_NO": {
-          "name": "CHR_DEST_NO",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "CHR_GATE_NO": {
-          "name": "CHR_GATE_NO",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "INT_CYCLE": {
-          "name": "INT_CYCLE",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "DTM_PREP_START": {
-          "name": "DTM_PREP_START",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "DTM_PREP_END": {
-          "name": "DTM_PREP_END",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "INT_DAY_OFFSET": {
-          "name": "INT_DAY_OFFSET",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "DTM_TRUCK_TIME": {
-          "name": "DTM_TRUCK_TIME",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "DTM_SAP_PICK_TIME": {
-          "name": "DTM_SAP_PICK_TIME",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "DTM_SAP_LOADING_TIME": {
-          "name": "DTM_SAP_LOADING_TIME",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "DTM_SAP_DELIVERY_TIME": {
-          "name": "DTM_SAP_DELIVERY_TIME",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "DTM_SYNCED_AT": {
-          "name": "DTM_SYNCED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "FLG_IS_ACTIVE": {
-          "name": "FLG_IS_ACTIVE",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "DTM_CREATED_AT": {
-          "name": "DTM_CREATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "DTM_UPDATED_AT": {
-          "name": "DTM_UPDATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "TM_PREPARATION_CYCLE_KEY": {
-          "name": "TM_PREPARATION_CYCLE_KEY",
-          "columns": [
-            {
-              "expression": "INT_CUSTOMER_ID",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "CHR_DEST_NO",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "CHR_GATE_NO",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "INT_CYCLE",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "TM_PREPARATION_CYCLE_INT_CUSTOMER_ID_TM_CUST_INT_ID_fk": {
-          "name": "TM_PREPARATION_CYCLE_INT_CUSTOMER_ID_TM_CUST_INT_ID_fk",
-          "tableFrom": "TM_PREPARATION_CYCLE",
-          "tableTo": "TM_CUST",
-          "schemaTo": "master",
-          "columnsFrom": [
-            "INT_CUSTOMER_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

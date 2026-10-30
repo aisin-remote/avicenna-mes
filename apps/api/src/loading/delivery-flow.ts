@@ -14,9 +14,14 @@ import {
   scanEvents,
   parts,
   lots,
+  kanbans,
+  kanbanItems,
+  kanbanEvents,
+  deliveryKanbans,
+  count,
   type Database,
 } from '@avicenna/db';
-import { deliveryOrderNumber, allocateFifo } from '@avicenna/domain';
+import { deliveryOrderNumber, allocateFifo, pelepasanKanban } from '@avicenna/domain';
 import { DELIVERY_SAP_STAGES, type DeliverySapStage, type DeliveryFlow } from '@avicenna/contracts';
 import type { Principal } from '../auth/auth.types';
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -285,12 +290,180 @@ export async function advanceDeliveryOrders(db: Database, now = new Date(), orde
           .set({ actualKanban: line.pickedKanban, actualQty: line.pickedQty })
           .where(and(eq(deliveryLines.id, line.id), eq(deliveryLines.deliveryId, line.deliveryId)));
       }
+      // Kartu dilepas di transaksi yang sama dengan keberangkatan; lihat lepaskanKanban().
+      for (const d of group)
+        await lepaskanKanban(tx, { deliveryId: d.id, waktu: now, userId: order.driverScannedById });
       await tx
         .update(deliveries)
         .set({ status: 'SHIPPED', truckStatus: 'DEPARTED', departedAt: now })
         .where(eq(deliveries.deliveryOrderId, id));
       await tx.update(deliveryOrders).set({ shippedAt: now }).where(eq(deliveryOrders.id, id));
     });
+}
+
+/**
+ * ─── MELEPAS KARTU YANG IKUT TRUK ─────────────────────────────────────────
+ *
+ * Dipanggil DI DALAM transaksi keberangkatan. Lihat pelepasanKanban() di
+ * @avicenna/domain untuk alasan kenapa saat berangkat, bukan saat scan.
+ *
+ * ── Kartu mana yang ikut ──────────────────────────────────────────────────
+ *
+ * Diturunkan dari scan pulling yang MASIH AKTIF (alur ini memindai kartu saat
+ * pulling PPIC; tahap LOADING ditolak scan()), dengan aturan yang sama persis
+ * dengan undoScan(): pembatalan bersifat LIFO per baris, jadi riwayat dibaca
+ * berurutan lalu yang terakhir dibuang tiap kali ada UNDO. Menyalin aturannya
+ * — alih-alih memakai ulang yang sudah ada — pernah menjadi sumber selisih di
+ * sistem lama, jadi di sini keduanya memakai bentuk yang sama.
+ *
+ * Satu scan bisa menyebut DUA kartu sekaligus: kartu internal kita dan kartu
+ * customer yang menempel di box yang sama. Keduanya diproses, masing-masing
+ * menurut pemiliknya — yang internal kembali, yang customer ikut pergi.
+ *
+ * Dokumen yang memang tidak memakai kartu (part discan tanpa kanban) tidak
+ * menghasilkan apa pun di sini, dan itu bukan kesalahan.
+ */
+export async function lepaskanKanban(
+  tx: Transaction | Database,
+  opsi: { deliveryId: number; waktu: Date; userId?: number | null },
+): Promise<{ dilepas: number; ikutCustomer: number }> {
+  const riwayat = await tx
+    .select({
+      id: scanEvents.id,
+      partId: scanEvents.partId,
+      qty: scanEvents.qty,
+      meta: scanEvents.meta,
+    })
+    .from(scanEvents)
+    .where(
+      and(
+        eq(scanEvents.kind, 'DELIVERY'),
+        sql`${scanEvents.meta}->>'deliveryId' = ${String(opsi.deliveryId)}`,
+        sql`${scanEvents.meta}->>'phase' = 'PULLING'`,
+      ),
+    )
+    .orderBy(scanEvents.id);
+
+  type Baris = (typeof riwayat)[number];
+  type MetaScan = {
+    action?: string;
+    deliveryLineId?: number;
+    internalSerial?: string | null;
+    customerSerial?: string | null;
+  };
+
+  const aktifPerBaris = new Map<string, Baris[]>();
+  for (const e of riwayat) {
+    const meta = e.meta as MetaScan | null;
+    const kunci = String(meta?.deliveryLineId ?? '-');
+    const daftar = aktifPerBaris.get(kunci) ?? [];
+    if (meta?.action === 'UNDO') daftar.pop();
+    else if (meta?.action !== 'REJECTED') daftar.push(e);
+    aktifPerBaris.set(kunci, daftar);
+  }
+  const aktif = [...aktifPerBaris.values()].flat();
+  if (aktif.length === 0) return { dilepas: 0, ikutCustomer: 0 };
+
+  /*
+   * Seri saja tidak cukup mengenali kartu — seri yang sama bisa dipakai part
+   * yang berbeda (lihat TM_KANBAN_PART_SERIAL_UNIQUE). Karena itu pencarian
+   * selalu berpasangan dengan partId scan-nya.
+   */
+  const seri = new Set<string>();
+  for (const e of aktif) {
+    const meta = e.meta as MetaScan | null;
+    if (meta?.internalSerial) seri.add(meta.internalSerial);
+    if (meta?.customerSerial) seri.add(meta.customerSerial);
+  }
+  if (seri.size === 0) return { dilepas: 0, ikutCustomer: 0 };
+
+  const kartuTerdaftar = await tx
+    .select({
+      id: kanbans.id,
+      partId: kanbans.partId,
+      serialNumber: kanbans.serialNumber,
+      owner: kanbans.owner,
+      status: kanbans.status,
+      cycleCount: kanbans.cycleCount,
+    })
+    .from(kanbans)
+    .where(inArray(kanbans.serialNumber, [...seri]));
+  const perPartSeri = new Map(kartuTerdaftar.map((k) => [`${k.partId}|${k.serialNumber}`, k]));
+
+  let dilepas = 0;
+  let ikutCustomer = 0;
+  const sudahDiproses = new Set<number>();
+
+  for (const e of aktif) {
+    const meta = e.meta as MetaScan | null;
+    for (const s of [meta?.internalSerial, meta?.customerSerial]) {
+      if (!s || e.partId == null) continue;
+      const kartu = perPartSeri.get(`${e.partId}|${s}`);
+      /*
+       * Seri yang tidak terdaftar dilewati tanpa suara. Itu bukan kelalaian:
+       * sebagian customer memakai label yang memang bukan kartu kami, dan
+       * memaksanya menjadi kartu berarti membuat master palsu setiap truk.
+       */
+      if (!kartu || sudahDiproses.has(kartu.id)) continue;
+      sudahDiproses.add(kartu.id);
+
+      const keputusan = pelepasanKanban(kartu.owner === 'CUSTOMER' ? 'CUSTOMER' : 'INTERNAL');
+
+      const [isi] = await tx
+        .select({ n: count() })
+        .from(kanbanItems)
+        .where(eq(kanbanItems.kanbanId, kartu.id));
+      const jumlahUnit = Number(isi?.n ?? 0) || e.qty || 0;
+
+      await tx
+        .insert(deliveryKanbans)
+        .values({
+          deliveryId: opsi.deliveryId,
+          deliveryLineId: meta?.deliveryLineId ?? null,
+          kanbanId: kartu.id,
+          owner: kartu.owner,
+          qty: jumlahUnit,
+          releasedAt: keputusan.hitungSiklus ? opsi.waktu : null,
+        })
+        .onConflictDoNothing();
+
+      /*
+       * Isi kartu dihapus, riwayatnya tidak: TT_KANBAN_EVENT bersifat
+       * append-only dan menyimpan jumlah unitnya, sama seperti yang
+       * dilakukan pembatalan lewat NG.
+       */
+      await tx.delete(kanbanItems).where(eq(kanbanItems.kanbanId, kartu.id));
+
+      await tx
+        .update(kanbans)
+        .set({
+          status: keputusan.status,
+          ...(keputusan.hitungSiklus
+            ? { cycleCount: kartu.cycleCount + 1, releasedAt: opsi.waktu }
+            : { deliveredAt: opsi.waktu }),
+        })
+        .where(eq(kanbans.id, kartu.id));
+
+      await tx.insert(kanbanEvents).values({
+        kanbanId: kartu.id,
+        type: keputusan.event,
+        qty: jumlahUnit,
+        userId: opsi.userId ?? null,
+        occurredAt: opsi.waktu,
+        meta: {
+          deliveryId: opsi.deliveryId,
+          deliveryLineId: meta?.deliveryLineId ?? null,
+          dari: kartu.status,
+          alasan: keputusan.alasan,
+        },
+      });
+
+      if (keputusan.hitungSiklus) dilepas += 1;
+      else ikutCustomer += 1;
+    }
+  }
+
+  return { dilepas, ikutCustomer };
 }
 
 export async function scanDriverDocument(

@@ -40,21 +40,49 @@ export interface ProgramNumberAiia {
  * dan CI18. Keduanya dipertahankan apa adanya di sini supaya tidak ada yang
  * hilang diam-diam; skrip impor yang memutuskan mana yang dipakai, dan ia
  * melaporkannya dengan keras.
+ *
+ * ── Dicocokkan ke Gentani AII, 28 Oktober 2026 ──────────────────────────────
+ *
+ * Nomor part dan back number di bawah ini sudah dibetulkan terhadap sheet
+ * `ALL GTN` berkas "DATABASE GENTANI BODY, UNIT & ELECTRIC.xlsx" — master
+ * resmi AII, lebih mutakhir daripada dump avicenna lama. Pencocokannya lewat
+ * kolom MODEL, bukan kemiripan nomor, supaya tidak menebak:
+ *
+ *   dump lama                    Gentani                      cocok pada
+ *   212110-34140 CI13            212110-34141 CI25            TCC D72/73F
+ *   212110-34340 CI17            212110-34341 CI21            TCC D41E
+ *   212110-34340 CI18            212110-34341-D1 CI22         TCC D41E
+ *   243131-10490 DI02            243131-10490 DI04            CSH D05E
+ *
+ * Tiga yang pertama nomornya naik satu karena revisi teknis — remark Gentani
+ * menyebut "Deletion Protrusion" dan "Eliminate protrusion of TCC".
+ *
+ * DI02 bukan salah ketik: di Gentani DI02 adalah tahap DIE CASTING part itu
+ * (243131-10490-04), sedangkan barang jadinya DI04. Sistem lama mencatat back
+ * number tahap die casting pada part jadinya.
+ *
+ * Dan inilah jawaban kode '13' yang dobel: CI17 dan CI18 bukan dua barang
+ * dengan nomor part sama, melainkan DUA VARIAN CUSTOMER dari satu part —
+ * Gentani memisahkannya dengan sufiks -D1 dan back number berbeda, CI21 ke
+ * ADM KEP dan CI22 ke TMMIN #3. Kode programnya tetap satu, '13', dan itu
+ * memang masalahnya: barcode berkode '13' tidak bisa membedakan keduanya.
+ * Dibiarkan dobel di sini — skrip impor melaporkannya, dan yang memutuskan
+ * kode baru harus orang yang tahu, bukan skrip ini.
  */
 export const PROGRAM_NUMBERS_AIIA: ProgramNumberAiia[] = [
   { code: '01', product: 'TCC D98E', partNumber: '212110-34010', backNumber: 'CI11', partName: 'TCC ASSY', customer: 'TMMIN', isAssy: false },
   { code: '02', product: 'TCC 889F', partNumber: '212110-34040', backNumber: 'CI12', partName: 'TCC ASSY', customer: 'TMMIN', isAssy: false },
-  { code: '03', product: 'TCC D72F', partNumber: '212110-34140', backNumber: 'CI13', partName: 'TCC ASSY', customer: 'TMMIN', isAssy: false },
+  { code: '03', product: 'TCC D72F', partNumber: '212110-34141', backNumber: 'CI25', partName: 'TCC ASSY', customer: 'TMMIN', isAssy: false },
   { code: '04', product: 'TCC D18E', partNumber: '212110-34270', backNumber: 'CI14', partName: 'TCC ASSY', customer: 'TMMIN', isAssy: false },
   { code: '05', product: 'TCC D05E', partNumber: '212110-34300', backNumber: 'CI15', partName: 'TCC ASSY', customer: 'TMMIN', isAssy: false },
   { code: '06', product: 'TCC 4A91', partNumber: '212130-21250', backNumber: 'CI16', partName: 'TCC ASSY', customer: 'TMMIN', isAssy: false },
   { code: '07', product: 'CSH D98E', partNumber: '243131-10260', backNumber: 'DI01', partName: 'CAME S HOUSING', customer: 'TMMIN', isAssy: false },
-  { code: '08', product: 'CSH D05E', partNumber: '243131-10490', backNumber: 'DI02', partName: 'CAME S HOUSING', customer: 'TMMIN', isAssy: false },
+  { code: '08', product: 'CSH D05E', partNumber: '243131-10490', backNumber: 'DI04', partName: 'CAME S HOUSING', customer: 'TMMIN', isAssy: false },
   { code: '10', product: 'OPN 889F', partNumber: '243202-10630', backNumber: 'EI11', partName: 'PAN SUB ASSY OIL NO.1', customer: 'TMMIN', isAssy: false },
   { code: '11', product: 'OPN 922F', partNumber: '243202-10680', backNumber: 'EI12', partName: 'PAN SUB ASSY OIL NO.1', customer: 'TMMIN', isAssy: false },
   { code: '12', product: 'OPN D72F', partNumber: '243202-10710', backNumber: 'EI13', partName: 'PAN SUB ASSY OIL NO.1', customer: 'TMMIN', isAssy: false },
-  { code: '13', product: 'TCC D41E', partNumber: '212110-34340', backNumber: 'CI17', partName: 'CASE ASSY, FR W/WATER PUMP&OIL PUMP', customer: 'TMMIN', isAssy: false },
-  { code: '13', product: 'TCC D41E', partNumber: '212110-34340', backNumber: 'CI18', partName: 'CASE ASSY, FR W/WATER PUMP&OIL PUMP', customer: 'TMMIN', isAssy: false },
+  { code: '13', product: 'TCC D41E', partNumber: '212110-34341', backNumber: 'CI21', partName: 'CASE ASSY, FR W/WATER PUMP&OIL PUMP', customer: 'TMMIN', isAssy: false },
+  { code: '13', product: 'TCC D41E', partNumber: '212110-34341-D1', backNumber: 'CI22', partName: 'CASE ASSY, FR W/WATER PUMP&OIL PUMP', customer: 'TMMIN', isAssy: false },
   { code: '14', product: 'OPN D41E', partNumber: '243202-10750', backNumber: 'EI14', partName: 'PAN SUB ASSY OIL NO.1', customer: 'TMMIN', isAssy: false },
   { code: '15', product: 'OPN D81F', partNumber: '243202-10630', backNumber: 'EI11', partName: 'PAN SUB ASSY OIL NO.1', customer: 'TMMIN', isAssy: false },
   { code: '17', product: 'OPN D72F (PULSE)', partNumber: '243202-10710', backNumber: 'EI13', partName: 'PAN SUB ASSY OIL NO.1', customer: 'TMMIN', isAssy: false },
@@ -65,23 +93,26 @@ export const PROGRAM_NUMBERS_AIIA: ProgramNumberAiia[] = [
 /**
  * Part yang berbeda-beda, diturunkan dari daftar di atas.
  *
- * Kuncinya (part number + back number), BUKAN part number saja: 212110-34340
- * muncul dua kali dengan back number CI17 dan CI18 — dua barang berbeda yang
- * di sistem lama berbagi nomor part.
+ * Kuncinya (part number + back number), BUKAN part number saja: di dump lama
+ * 212110-34340 muncul dua kali dengan back number CI17 dan CI18. Gentani
+ * menunjukkan keduanya dua VARIAN CUSTOMER, dan memberinya nomor part sendiri
+ * (212110-34341 dan 212110-34341-D1), jadi sejak dibetulkan nomornya pun sudah
+ * berbeda. Kuncinya tetap gabungan keduanya supaya tidak ada yang hilang kalau
+ * nanti ketemu lagi kasus serupa.
  */
 export const PARTS_AIIA = [
   { partNumber: '243202-10630', backNumber: 'EI11', name: 'PAN SUB ASSY OIL NO.1', customer: 'TMMIN' },
   { partNumber: '243202-10680', backNumber: 'EI12', name: 'PAN SUB ASSY OIL NO.1', customer: 'TMMIN' },
   { partNumber: '212110-34010', backNumber: 'CI11', name: 'TCC ASSY', customer: 'TMMIN' },
   { partNumber: '212110-34040', backNumber: 'CI12', name: 'TCC ASSY', customer: 'TMMIN' },
-  { partNumber: '212110-34140', backNumber: 'CI13', name: 'TCC ASSY', customer: 'TMMIN' },
+  { partNumber: '212110-34141', backNumber: 'CI25', name: 'TCC ASSY', customer: 'TMMIN' },
   { partNumber: '212110-34270', backNumber: 'CI14', name: 'TCC ASSY', customer: 'TMMIN' },
   { partNumber: '243131-10260', backNumber: 'DI01', name: 'CAME S HOUSING', customer: 'TMMIN' },
   { partNumber: '243202-10710', backNumber: 'EI13', name: 'PAN SUB ASSY OIL NO.1', customer: 'TMMIN' },
-  { partNumber: '243131-10490', backNumber: 'DI02', name: 'CAME S HOUSING', customer: 'TMMIN' },
+  { partNumber: '243131-10490', backNumber: 'DI04', name: 'CAME S HOUSING', customer: 'TMMIN' },
   { partNumber: '212110-34300', backNumber: 'CI15', name: 'TCC ASSY', customer: 'TMMIN' },
   { partNumber: '212130-21250', backNumber: 'CI16', name: 'TCC ASSY', customer: 'TMMIN' },
   { partNumber: '243202-10750', backNumber: 'EI14', name: 'PAN SUB ASSY OIL NO.1', customer: 'TMMIN' },
-  { partNumber: '212110-34340', backNumber: 'CI18', name: 'CASE ASSY, FR W/WATER PUMP&OIL PUMP', customer: 'TMMIN' },
-  { partNumber: '212110-34340', backNumber: 'CI17', name: 'CASE ASSY, FR W/WATER PUMP&OIL PUMP', customer: 'TMMIN' },
+  { partNumber: '212110-34341-D1', backNumber: 'CI22', name: 'CASE ASSY, FR W/WATER PUMP&OIL PUMP', customer: 'TMMIN' },
+  { partNumber: '212110-34341', backNumber: 'CI21', name: 'CASE ASSY, FR W/WATER PUMP&OIL PUMP', customer: 'TMMIN' },
 ] as const;

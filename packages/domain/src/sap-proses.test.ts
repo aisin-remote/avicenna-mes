@@ -1,5 +1,5 @@
+import { KATALOG_UJI } from './katalog-uji';
 import { describe, it, expect } from 'vitest';
-import { PROCESS_TYPES } from '@avicenna/contracts';
 import {
   kelasHasilSap,
   slocHasilWajib,
@@ -11,21 +11,21 @@ describe('kelasHasilSap', () => {
   it('seluruh jenis proses punya kelas — termasuk Electric', () => {
     // Record<ProcessType, …> sudah dijaga typecheck; ini menjaga agar jenis
     // baru tidak diam-diam jatuh ke undefined saat dibaca lewat string.
-    for (const p of PROCESS_TYPES) {
-      expect(['SFG', 'FG', null]).toContain(kelasHasilSap(p));
+    for (const p of KATALOG_UJI.kode) {
+      expect(['SFG', 'FG', null]).toContain(kelasHasilSap(KATALOG_UJI.kelasSap(p)));
     }
   });
 
   it('lini FG menghasilkan FG, lini WIP menghasilkan SFG', () => {
-    expect(kelasHasilSap('CASTING_FG')).toBe('FG');
-    expect(kelasHasilSap('CASTING_WIP')).toBe('SFG');
-    expect(kelasHasilSap('MACHINING_FG')).toBe('FG');
-    expect(kelasHasilSap('MACHINING_WIP')).toBe('SFG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('CASTING_FG'))).toBe('FG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('CASTING_WIP'))).toBe('SFG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('MACHINING_FG'))).toBe('FG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('MACHINING_WIP'))).toBe('SFG');
   });
 
   it('assembling kedua pabrik menghasilkan FG', () => {
-    expect(kelasHasilSap('ASSEMBLING_UNIT_FG')).toBe('FG');
-    expect(kelasHasilSap('ASSEMBLING_BODY_FG')).toBe('FG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('ASSEMBLING_UNIT_FG'))).toBe('FG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('ASSEMBLING_BODY_FG'))).toBe('FG');
   });
 
   /*
@@ -35,10 +35,13 @@ describe('kelasHasilSap', () => {
    * lupa diklasifikasikan langsung ketahuan.
    */
   it('akhiran _WIP selalu SFG dan _FG selalu FG, untuk semua pasangan', () => {
-    const pasangan = PROCESS_TYPES.filter((p) => p.endsWith('_WIP') || p.endsWith('_FG'));
+    const pasangan = KATALOG_UJI.kode.filter((p) => p.endsWith('_WIP') || p.endsWith('_FG'));
     expect(pasangan.length).toBeGreaterThan(8);
     for (const p of pasangan) {
-      expect([p, kelasHasilSap(p)]).toEqual([p, p.endsWith('_FG') ? 'FG' : 'SFG']);
+      expect([p, kelasHasilSap(KATALOG_UJI.kelasSap(p))]).toEqual([
+        p,
+        p.endsWith('_FG') ? 'FG' : 'SFG',
+      ]);
     }
   });
 
@@ -51,24 +54,24 @@ describe('kelasHasilSap', () => {
    * Antena diteruskan ke Assembling Body di pabrik lain.
    */
   it('lini FG Electric menghasilkan barang jadi, lini WIP-nya tidak', () => {
-    expect(kelasHasilSap('INSPECTION_WIP')).toBe('SFG');
-    expect(kelasHasilSap('INSPECTION_FG')).toBe('FG');
-    expect(kelasHasilSap('VACUUM_WIP')).toBe('SFG');
-    expect(kelasHasilSap('VACUUM_FG')).toBe('FG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('INSPECTION_WIP'))).toBe('SFG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('INSPECTION_FG'))).toBe('FG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('VACUUM_WIP'))).toBe('SFG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('VACUUM_FG'))).toBe('FG');
   });
 
   it('mounting dan antena menghasilkan setengah jadi', () => {
-    expect(kelasHasilSap('MOUNTING')).toBe('SFG');
-    expect(kelasHasilSap('ANTENNA')).toBe('SFG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('MOUNTING'))).toBe('SFG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('ANTENNA'))).toBe('SFG');
   });
 
   it('part Electric yang dikirim langsung tetap bisa jadi FG lewat posisi rute', () => {
-    expect(kelasHasilSap('ANTENNA', true)).toBe('FG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('ANTENNA'), true)).toBe('FG');
   });
 
   it('melting dan delivery tidak punya padanan produksi di SAP', () => {
-    expect(kelasHasilSap('MELTING')).toBeNull();
-    expect(kelasHasilSap('DELIVERY')).toBeNull();
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('MELTING'))).toBeNull();
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('DELIVERY'))).toBeNull();
   });
 
   /*
@@ -77,13 +80,13 @@ describe('kelasHasilSap', () => {
    * mengalahkan tabel.
    */
   it('langkah terakhir di rute menghasilkan FG walau tabelnya bilang SFG', () => {
-    expect(kelasHasilSap('INJECTION_WIP', true)).toBe('FG');
-    expect(kelasHasilSap('INJECTION_WIP', false)).toBe('SFG');
-    expect(kelasHasilSap('PAINTING_WIP', true)).toBe('FG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('INJECTION_WIP'), true)).toBe('FG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('INJECTION_WIP'), false)).toBe('SFG');
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('PAINTING_WIP'), true)).toBe('FG');
   });
 
   it('langkah terakhir tidak membuat melting jadi punya material SAP', () => {
-    expect(kelasHasilSap('MELTING', true)).toBeNull();
+    expect(kelasHasilSap(KATALOG_UJI.kelasSap('MELTING'), true)).toBeNull();
   });
 
   it('kelas menentukan jenis SLOC yang wajib', () => {
@@ -96,13 +99,13 @@ describe('kelasHasilSap', () => {
 describe('periksaHasilProduksi', () => {
   it('meloloskan SFG yang keluar ke SLOC WIP', () => {
     expect(
-      periksaHasilProduksi({ proses: 'CASTING_WIP', slocKind: 'WIP', slocCode: 'WP80' }).kirim,
+      periksaHasilProduksi({ jenis: KATALOG_UJI.cari('CASTING_WIP'), slocKind: 'WIP', slocCode: 'WP80' }).kirim,
     ).toBe(true);
   });
 
   it('meloloskan FG yang keluar ke SLOC barang jadi', () => {
     expect(
-      periksaHasilProduksi({ proses: 'ASSEMBLING_UNIT_FG', slocKind: 'FINISH_GOOD', slocCode: 'FG80' })
+      periksaHasilProduksi({ jenis: KATALOG_UJI.cari('ASSEMBLING_UNIT_FG'), slocKind: 'FINISH_GOOD', slocCode: 'FG80' })
         .kirim,
     ).toBe(true);
   });
@@ -114,7 +117,7 @@ describe('periksaHasilProduksi', () => {
    */
   it('menahan SFG yang keluar ke SLOC barang jadi, dan menyebut sebabnya', () => {
     const hasil = periksaHasilProduksi({
-      proses: 'MACHINING_WIP',
+      jenis: KATALOG_UJI.cari('MACHINING_WIP'),
       slocKind: 'FINISH_GOOD',
       slocCode: 'FG80',
     });
@@ -125,20 +128,20 @@ describe('periksaHasilProduksi', () => {
   });
 
   it('menahan FG yang keluar ke SLOC WIP', () => {
-    const hasil = periksaHasilProduksi({ proses: 'CASTING_FG', slocKind: 'WIP', slocCode: 'WP80' });
+    const hasil = periksaHasilProduksi({ jenis: KATALOG_UJI.cari('CASTING_FG'), slocKind: 'WIP', slocCode: 'WP80' });
     expect(hasil.kirim).toBe(false);
     expect(hasil.alasan).toContain('barang jadi');
   });
 
   it('melting dilewati dengan sengaja, bukan ditahan', () => {
-    const hasil = periksaHasilProduksi({ proses: 'MELTING', slocKind: 'WIP' });
+    const hasil = periksaHasilProduksi({ jenis: KATALOG_UJI.cari('MELTING'), slocKind: 'WIP' });
     expect(hasil.kirim).toBe(false);
     expect(hasil.sengaja).toBe(true);
     expect(hasil.alasan).toContain('logam cair');
   });
 
   it('SLOC kosong menahan, bukan melewati', () => {
-    const hasil = periksaHasilProduksi({ proses: 'CASTING_WIP', slocKind: null });
+    const hasil = periksaHasilProduksi({ jenis: KATALOG_UJI.cari('CASTING_WIP'), slocKind: null });
     expect(hasil.kirim).toBe(false);
     expect(hasil.sengaja).not.toBe(true);
   });
@@ -146,7 +149,7 @@ describe('periksaHasilProduksi', () => {
   it('part yang berhenti di injection boleh keluar ke SLOC barang jadi', () => {
     expect(
       periksaHasilProduksi({
-        proses: 'INJECTION_WIP',
+        jenis: KATALOG_UJI.cari('INJECTION_WIP'),
         slocKind: 'FINISH_GOOD',
         slocCode: 'FG70',
         langkahTerakhir: true,

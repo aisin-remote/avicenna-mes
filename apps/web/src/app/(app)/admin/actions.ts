@@ -79,10 +79,7 @@ export async function simpanPenggunaAction(
   return { ok: true };
 }
 
-export async function gantiSandiAction(
-  _prev: AksiState,
-  formData: FormData,
-): Promise<AksiState> {
+export async function gantiSandiAction(_prev: AksiState, formData: FormData): Promise<AksiState> {
   const id = String(formData.get('__id') ?? '');
   const password = String(formData.get('password') ?? '');
   const ulangi = String(formData.get('ulangi') ?? '');
@@ -120,10 +117,7 @@ export async function aktifkanPenggunaAction(id: number, isActive: boolean): Pro
 
 /* ── Role ─────────────────────────────────────────────────────────────────── */
 
-export async function simpanRoleAction(
-  _prev: AksiState,
-  formData: FormData,
-): Promise<AksiState> {
+export async function simpanRoleAction(_prev: AksiState, formData: FormData): Promise<AksiState> {
   const id = String(formData.get('__id') ?? '');
   const sunting = id !== '';
 
@@ -167,9 +161,25 @@ export async function hapusRoleAction(_prev: AksiState, formData: FormData): Pro
 
 /* ── Bacaan ───────────────────────────────────────────────────────────────── */
 
-export async function ambilPengguna(params: { q?: string; page?: number }) {
-  const q = new URLSearchParams({ page: String(params.page ?? 1), perPage: '25' });
+export async function ambilPengguna(params: {
+  q?: string;
+  page?: number;
+  perPage?: number;
+  roleId?: string;
+  plantId?: string;
+  /** 'true' | 'false'; kosong berarti aktif maupun tidak. */
+  aktif?: string;
+}) {
+  const q = new URLSearchParams({
+    page: String(params.page ?? 1),
+    perPage: String(params.perPage ?? 25),
+  });
   if (params.q) q.set('q', params.q);
+  /* Nama parameternya sudah dikenal endpoint /admin/users sejak awal — yang
+     kurang cuma kendalinya di layar. */
+  if (params.roleId) q.set('roleId', params.roleId);
+  if (params.plantId) q.set('plantId', params.plantId);
+  if (params.aktif) q.set('aktif', params.aktif);
   return apiFetch<{
     data: UserRow[];
     meta: { page: number; perPage: number; total: number; totalPages: number };

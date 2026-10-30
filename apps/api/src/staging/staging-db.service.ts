@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import * as sql from 'mssql';
+import { SettingService } from '../setting/setting.service';
 import {
   bacaStagingConfig,
   kekuranganConfig,
@@ -42,6 +43,8 @@ export class StagingDbService implements OnModuleDestroy {
   private readonly logger = new Logger(StagingDbService.name);
   private readonly config: StagingConfig = bacaStagingConfig();
 
+  constructor(private readonly setting: SettingService) {}
+
   private pool?: sql.ConnectionPool;
   private penyambung?: Promise<sql.ConnectionPool>;
   private tersambungSejak: Date | null = null;
@@ -56,12 +59,44 @@ export class StagingDbService implements OnModuleDestroy {
     return kekuranganConfig(this.config).length === 0;
   }
 
+  /*
+   * Saklar dorong/tarik dibaca dari PENGATURAN SISTEM, bukan lagi dari .env
+   * langsung — supaya bisa dimatikan dari layar saat ada yang tidak benar,
+   * tanpa menyentuh server dan tanpa restart. Nilai di .env tetap jadi
+   * cadangan bila barisnya belum pernah diubah orang; lihat catatan di
+   * @avicenna/contracts/setting.
+   *
+   * `terkonfigurasi` tetap jadi syarat kedua: menyalakan saklar tidak membuat
+   * sambungan ada. Tanpa host dan kredensial, dorong harus tetap mati meski
+   * saklarnya hidup — kalau tidak, setiap dokumen akan mencoba menyambung lalu
+   * gagal satu per satu.
+   */
   get dorongAktif(): boolean {
-    return this.config.pushEnabled && this.terkonfigurasi;
+    return this.setting.aktifSekarang('STAGING_PUSH_ENABLED') && this.terkonfigurasi;
   }
 
   get tarikAktif(): boolean {
-    return this.config.pullEnabled && this.terkonfigurasi;
+    return this.setting.aktifSekarang('STAGING_PULL_ENABLED') && this.terkonfigurasi;
+  }
+
+  /**
+   * Apakah tarik master BERKALA jalan — berbeda dari boleh/tidaknya menarik.
+   *
+   * Master jarang berubah, jadi tarikan berkala bisa dimatikan sementara
+   * tombol manual tetap bekerja. Lihat catatan di @avicenna/contracts/setting
+   * pada STAGING_PULL_SCHEDULED.
+   */
+  get tarikBerkalaAktif(): boolean {
+    return this.tarikAktif && this.setting.aktifSekarang('STAGING_PULL_SCHEDULED');
+  }
+
+  /** Ketiga saklar sekaligus, untuk ringkasan status. */
+  private get saklar() {
+    return {
+      dorongAktif: this.dorongAktif,
+      tarikAktif: this.tarikAktif,
+      tarikBerkalaAktif: this.tarikBerkalaAktif,
+    };
   }
 
   /**
@@ -120,7 +155,7 @@ export class StagingDbService implements OnModuleDestroy {
       this.tersambungSejak = new Date();
       this.galatTerakhir = null;
       this.bolehCobaLagiPada = 0;
-      const r = ringkasanConfig(this.config);
+      const r = ringkasanConfig(this.config, this.saklar);
       this.logger.log(
         `tersambung ke staging ${r.host}${r.instance ? '\\' + r.instance : ':' + r.port} / ${r.database}`,
       );
@@ -187,7 +222,7 @@ export class StagingDbService implements OnModuleDestroy {
       kurang,
       sejak: this.tersambungSejak?.toISOString() ?? null,
       galatTerakhir: this.galatTerakhir,
-      config: ringkasanConfig(this.config),
+      config: ringkasanConfig(this.config, this.saklar),
     };
   }
 
@@ -201,7 +236,7 @@ export class StagingDbService implements OnModuleDestroy {
         kurang,
         sejak: null,
         galatTerakhir: null,
-        config: ringkasanConfig(this.config),
+        config: ringkasanConfig(this.config, this.saklar),
       };
     }
 
@@ -216,7 +251,7 @@ export class StagingDbService implements OnModuleDestroy {
         kurang: [],
         sejak: this.tersambungSejak?.toISOString() ?? null,
         galatTerakhir: null,
-        config: ringkasanConfig(this.config),
+        config: ringkasanConfig(this.config, this.saklar),
       };
     } catch (err) {
       return {
@@ -225,7 +260,7 @@ export class StagingDbService implements OnModuleDestroy {
         kurang: [],
         sejak: null,
         galatTerakhir: err instanceof Error ? err.message : String(err),
-        config: ringkasanConfig(this.config),
+        config: ringkasanConfig(this.config, this.saklar),
       };
     }
   }

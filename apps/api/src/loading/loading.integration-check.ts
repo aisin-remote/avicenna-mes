@@ -2,11 +2,14 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import {
+  bacaKatalogProses,
   getDb,
   closeDb,
   eq,
   and,
   sql,
+  count,
+  inArray,
   parts,
   plants,
   customers,
@@ -15,8 +18,8 @@ import {
   deliveries,
   kanbans,
   kanbanItems,
+  deliveryKanbans,
   mutations,
-  sapOutbox,
   deliverySyncs,
 } from '@avicenna/db';
 import { productionDayWindow, DELIVERY_DAY_START_HOUR, bacaKanban } from '@avicenna/domain';
@@ -259,7 +262,15 @@ async function main() {
       await assert.rejects(service.ship(doc.id), /Absensi Driver/);
       const flow = (await service.intercompanyFlow(doc.id)).data;
       assert(flow);
-      const outbox = new SapOutboxService(db);
+      /*
+       * Layanan dibuat langsung, tanpa wadah DI. Katalog jenis prosesnya karena itu
+       * dibaca di sini dan diberikan sebagai layanan tiruan — isinya sama dengan
+       * yang dibaca aplikasi sungguhan, hanya tanpa cache.
+       */
+      const outbox = new SapOutboxService(db, {
+        katalog: () => bacaKatalogProses(db, { termasukNonaktif: true }),
+        segarkan: () => undefined,
+      } as never);
       const gi = flow.steps.find((s) => s.type === 'DELIVERY_GI_AIIA');
       assert(gi);
       assert.equal(gi.isSimulation, true, 'Dokumen LL-TRIAL ditandai simulasi sejak GI pertama');
@@ -283,6 +294,42 @@ async function main() {
       const finalGi = driver.flow.steps.find((s) => s.type === 'DELIVERY_GI_AII');
       assert(finalGi);
       await outbox.simulateDelivery(finalGi.id, 'CONFIRMED');
+      /*
+       * Kartu yang ikut truk harus kembali ke peredaran saat GI AII terkonfirmasi.
+       * Kartu yang TIDAK di-pull tidak boleh ikut terlepas — melepas kartu yang
+       * masih memegang barang berarti barang itu hilang dari catatan.
+       */
+      const kartuSesudah = await db
+        .select({
+          id: kanbans.id,
+          serial: kanbans.serialNumber,
+          status: kanbans.status,
+          cycleCount: kanbans.cycleCount,
+          releasedAt: kanbans.releasedAt,
+        })
+        .from(kanbans)
+        .where(and(eq(kanbans.partId, part.id), inArray(kanbans.serialNumber, serials)));
+      const ikutTruk = kartuSesudah.filter((k) => k.serial !== serials[2]);
+      assert.equal(ikutTruk.length, 2, 'Dua kartu ikut truk');
+      for (const k of ikutTruk) {
+        assert.equal(k.status, 'AVAILABLE', `Kartu ${k.serial} kembali ke peredaran`);
+        assert.equal(k.cycleCount, 1, `Putaran kartu ${k.serial} bertambah satu`);
+        assert(k.releasedAt, `Waktu lepas kartu ${k.serial} tercatat`);
+        const [isi] = await db
+          .select({ n: count() })
+          .from(kanbanItems)
+          .where(eq(kanbanItems.kanbanId, k.id));
+        assert.equal(Number(isi?.n ?? 0), 0, `Kartu ${k.serial} dikosongkan`);
+      }
+      const tidakDipull = kartuSesudah.find((k) => k.serial === serials[2]);
+      assert.equal(tidakDipull?.cycleCount, 0, 'Kartu yang tidak di-pull tidak ikut terlepas');
+      assert.equal(tidakDipull?.status, 'PRODUCED', 'Kartu yang tidak di-pull tetap memegang barang');
+      const penghubung = await db
+        .select({ owner: deliveryKanbans.owner })
+        .from(deliveryKanbans)
+        .where(eq(deliveryKanbans.deliveryId, doc.id));
+      assert.equal(penghubung.length, 2, 'Dua kartu tercatat ikut pengiriman ini');
+      assert(penghubung.every((p) => p.owner === 'INTERNAL'), 'Pemilik kartu disalin');
       await assert.rejects(
         service.undoScan(doc.id, first.lineId!, 'PULLING', undefined, 'Sudah berangkat'),
         /ditutup/,
@@ -325,7 +372,7 @@ async function main() {
         .where(eq(deliverySyncs.operationalDate, date));
       console.log(`Delivery integration checks passed: ${number}, id=${doc.id}, date=${date}`);
       console.log(
-        'Tested: import/item identity, 3-way pulling, retry/duplicate/undo, source refresh, intercompany GI/GR simulation, return/audit. Fixtures rolled back.',
+        'Tested: import/item identity, 3-way pulling, retry/duplicate/undo, source refresh, intercompany GI/GR simulation, kanban release, return/audit. Fixtures rolled back.',
       );
       throw rollback;
     }),

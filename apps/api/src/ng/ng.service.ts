@@ -52,6 +52,7 @@ import type {
   ProcessType,
 } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
+import { ProcessTypeService } from '../master/process-type.service';
 import { ScanService } from '../scan/scan.service';
 import type { Principal } from '../auth/auth.types';
 
@@ -88,6 +89,7 @@ export class NgService {
   constructor(
     @InjectDb() private readonly db: Database,
     private readonly scan: ScanService,
+    private readonly processTypes: ProcessTypeService,
   ) {}
 
   /* ──────────────────────────────────────────────────────────────────────────
@@ -504,7 +506,7 @@ export class NgService {
         // Kartunya sendiri tetap sah dan kembali ke lini untuk diisi ulang.
         await tx
           .update(kanbans)
-          .set({ status: 'CREATED', producedAt: null })
+          .set({ status: 'AVAILABLE', producedAt: null })
           .where(eq(kanbans.id, k.kanban.id));
       }
     });
@@ -734,6 +736,7 @@ export class NgService {
    */
   private async jenisNg(id: number, plantId: number, processType: ProcessType | null) {
     const [row] = await this.db.select().from(ngMasters).where(eq(ngMasters.id, id)).limit(1);
+    const katalog = await this.processTypes.katalog();
 
     if (!row || row.isActive !== '1') {
       throw new NgRejected('NG_TYPE_UNKNOWN', `${NG_REJECT_MESSAGES.NG_TYPE_UNKNOWN} (id ${id})`);
@@ -742,7 +745,7 @@ export class NgService {
       throw new NgRejected('NG_TYPE_WRONG_PLANT', NG_REJECT_MESSAGES.NG_TYPE_WRONG_PLANT);
     }
     // Lingkup kosong berarti berlaku di semua proses — padanan tombol "DLL".
-    if (row.processGroup && processType && row.processGroup !== grupProses(processType)) {
+    if (row.processGroup && processType && row.processGroup !== grupProses(katalog, processType)) {
       throw new NgRejected(
         'NG_TYPE_WRONG_PROCESS',
         `${NG_REJECT_MESSAGES.NG_TYPE_WRONG_PROCESS} (${row.name} untuk ${row.processGroup})`,

@@ -1,4 +1,4 @@
-import { GOODS_MOVEMENT, PURCHASE_RECEIPT, DELIVERY, FLAG } from './staging-tables';
+import { GOODS_MOVEMENT, PURCHASE_RECEIPT, DELIVERY, FLAG, AWAL } from './staging-tables';
 
 /**
  * Peta lengkap: kolom di staging ← kolom mana di Avicenna.
@@ -59,6 +59,13 @@ export const PETA_GM_KEPALA: PetaField[] = [
       'dikonfirmasi, jadi dalam keadaan normal selalu terisi.' },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.user, field: 'user', arah: 'tulis',
     asal: { jenis: 'tetap', nilai: 'AVICENNA' } },
+  { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.validate, field: 'validate', arah: 'tulis',
+    asal: { jenis: 'tetap', nilai: 'X' },
+    catatan:
+      'Penanda SIAP DIJEMPUT. Pada contoh data AII, setiap baris CHR_VALIDATE=X punya ' +
+      'CHR_MATDOC dan setiap baris Y tidak — termasuk baris Y yang masuk pada menit yang ' +
+      'sama dengan baris X yang kemudian terproses. Tanpa kolom ini barisnya kemungkinan ' +
+      'besar dilewati, dan diamnya sempurna: dokumen menggantung selamanya sebagai SENT.' },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.tanggalEntry, field: 'tanggalEntry', arah: 'tulis',
     asal: { jenis: 'turunan', rumus: 'jam sekarang → char(8) YYYYMMDD' } },
   { tabelStaging: GOODS_MOVEMENT.kepala, staging: H.jamEntry, field: 'jamEntry', arah: 'tulis',
@@ -100,15 +107,25 @@ export const PETA_GM_BARIS: PetaField[] = [
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.jamEntry, field: 'jamEntry', arah: 'tulis',
     asal: { jenis: 'turunan', rumus: 'jam sekarang → char(6) HHMMSS' } },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.status, field: 'status', arah: 'tulis',
-    asal: { jenis: 'tetap', nilai: FLAG.baru },
-    catatan: 'Status awal. Sejak baris ini ada di staging, SAP yang menimpanya.' },
+    asal: { jenis: 'tetap', nilai: AWAL.perpindahan.status },
+    catatan:
+      'Nilai awal, sama dengan DEFAULT di DDL staging. Jalur STNG menyaring ' +
+      "CHR_STATUS = 'N' secara tersurat, jadi mengosongkannya membuat barisnya dilewati." },
+  { tabelStaging: GOODS_MOVEMENT.baris, staging: L.upload, field: 'upload', arah: 'tulis',
+    asal: { jenis: 'tetap', nilai: AWAL.perpindahan.upload },
+    catatan:
+      "Disyaratkan KETIGA program penjemput goods movement: CHR_UPLOAD = '0'. " +
+      "Pernah kita tulis '-', dan akibatnya seluruh dokumen perpindahan tersaring habis." },
 ];
 
 /** Kolom yang DIISI SAP di TT_GOODS_MOVEMENT_L, dibaca balik untuk menutup dokumen. */
 export const PETA_GM_BALASAN: PetaField[] = [
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.status, field: 'status', arah: 'baca',
     asal: { jenis: 'kolom', tabel: 'TT_SAP_OUTBOX', kolom: 'CHR_STATUS' },
-    catatan: `"${FLAG.berhasil}" menjadi CONFIRMED, "${FLAG.gagal}" menjadi REJECTED.` },
+    catatan:
+      `Hanya "${FLAG.berhasil}" menjadi CONFIRMED. Kosong dan ` +
+      `${FLAG.sedangJalan.map((s) => `"${s}"`).join('/')} berarti masih menunggu; ` +
+      'sisanya REJECTED — kolom ini memuat message type ABAP, bukan dua nilai.' },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.pesan, field: 'pesan', arah: 'baca',
     asal: { jenis: 'kolom', tabel: 'TT_SAP_OUTBOX', kolom: 'CHR_LAST_ERROR' } },
   { tabelStaging: GOODS_MOVEMENT.baris, staging: L.matdoc, field: 'matdoc', arah: 'baca',

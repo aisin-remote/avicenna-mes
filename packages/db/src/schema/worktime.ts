@@ -1,4 +1,13 @@
-import { boolean, date, index, integer, time, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  time,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { daftarNilai, enumCol, fk, pk, productionSchema, timestamps } from './_shared';
 import { plants, users } from './org';
@@ -113,6 +122,15 @@ export const stopReasons = productionSchema.table(
     name: varchar('CHR_NAME', { length: 128 }).notNull(),
     category: enumCol('CHR_CATEGORY', STOP_REASON_CATEGORIES).notNull().default('PROBLEM'),
     /** Direncanakan = tidak dihitung sebagai kerugian yang harus ditindaklanjuti. */
+    /**
+     * Warna tombol di layar scan, hex `#RRGGBB`.
+     *
+     * Kosong berarti warnanya diturunkan dari `isPlanned` — merah untuk yang
+     * tidak direncanakan, netral untuk yang direncanakan. Itu perilaku sebelum
+     * kolom ini ada, dan baris lama tidak boleh berubah tampilannya hanya
+     * karena kolomnya ditambahkan.
+     */
+    color: varchar('CHR_COLOR', { length: 9 }),
     isPlanned: boolean('FLG_IS_PLANNED').notNull().default(false),
     /** Urutan tampil di layar operator — yang paling sering dipakai di atas. */
     sortOrder: integer('INT_SORT_ORDER').notNull().default(0),
@@ -122,7 +140,7 @@ export const stopReasons = productionSchema.table(
   (t) => [
     uniqueIndex('TM_STOP_REASON_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
     index('TM_STOP_REASON_LINE_IDX').on(t.lineId, t.isActive),
-  
+
     daftarNilai('TM_STOP_REASON_CHR_CATEGORY_CHK', t.category, STOP_REASON_CATEGORIES),
   ],
 );
@@ -176,7 +194,7 @@ export const lineStops = productionSchema.table(
      * operator maupun dashboard — tiap kali layar dimuat, untuk tiap lini.
      */
     index('TT_LINE_STOP_OPEN_IDX').on(t.lineId, t.endedAt),
-  
+
     daftarNilai('TT_LINE_STOP_CHR_CLOSED_BY_CHK', t.closedBy, STOP_CLOSED_BY),
   ],
 );

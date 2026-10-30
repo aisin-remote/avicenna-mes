@@ -635,6 +635,54 @@ sesuai BOM. Karena itu `CONSUMPTION_OUT` di `sap-movement.ts` diberi
 `kirim: false`. Mengirimnya berarti komponen terpotong DUA KALI, tanpa galat
 apa pun yang muncul.
 
+### Production Version sebagai syarat kanban
+
+Blueprint PP-MD-05 langkah 1: Project Control memastikan dulu Production
+Version material tersedia dan valid, **baru** kartunya dibuat. Di SAP sebuah
+Production Version adalah pasangan BOM + Rate Routing untuk satu material di
+satu plant, bernomor `0001`, `0002`, dan seterusnya.
+
+Di sini ia tersimpan di DUA tempat, dan itu disengaja:
+
+| Kolom | Isi | Kenapa |
+| --- | --- | --- |
+| `TM_PARTS.CHR_PRODUCTION_VERSION` | versi material sekarang | satu part punya ribuan kartu; mengetiknya satu per satu adalah cara paling pasti membuat sebagian kartu memakai versi berbeda tanpa ada yang menyadarinya |
+| `TM_KANBAN.CHR_PRODUCTION_VERSION` | versi yang dipakai saat kartu ini dibuat | **disalin, bukan dirujuk** |
+
+Salinan itu yang membuatnya berguna: begitu versi material diganti, kartu yang
+sudah beredar tetap menyatakan versi yang BENAR-BENAR dipakai membuatnya.
+Merujuk akan membuat seluruh riwayat ikut berubah secara surut — dan riwayat
+yang berubah sendiri tidak bisa dipakai menjawab apa pun.
+
+Kartu **internal** tidak bisa dibuat bila part-nya belum punya versi; pesannya
+menunjuk master Part, bukan formulir kartu, sebab di situlah yang harus
+dibetulkan. Kartu **customer** dikecualikan: label DN yang didaftarkan otomatis
+saat scan adalah milik customer, bukan master kanban kita, dan mewajibkannya
+akan menghentikan scan pengiriman.
+
+**Yang belum:** versinya diketik orang. Blueprint menyebut SAP sebagai
+pemiliknya dan akan mendorongnya ke sistem ini, tetapi spesifikasi antarmukanya
+termasuk yang masih harus diminta.
+
+### Satu singkatan yang berarti dua hal berbeda
+
+`CHR_PV` di staging — pada `TM_PROCESS_PARTS` (kunci `CHR_PART_NO` + `CHR_PV`)
+dan pada `TT_PRODUCTION_RESULT` — **belum dipastikan** apakah ia Production
+Version atau nomor urut langkah.
+
+Yang mendukung "nomor urut langkah": satu part yang melewati empat proses
+menghasilkan empat baris, dan tiap baris punya work center serta SLOC tujuan
+sendiri. Yang mendukung "Production Version": namanya, lebarnya char(4), dan
+bentuk nilainya (`0001`, `0002`) — di SAP sebuah Production Version memang
+bernomor begitu, dan ia memang membawa routing.
+
+Keduanya menghasilkan nilai yang mirip, dan itulah yang membuat perbedaannya
+mudah terlewat. Kita **tidak pernah mengisi** `CHR_PV` saat mendorong hasil
+produksi — kolomnya dipetakan tetapi dibiarkan kosong — jadi sampai sekarang
+tidak ada data salah yang terkirim. Yang perlu dipastikan tim SAP: kolom itu
+menunggu yang mana, dan apakah membiarkannya kosong membuat SAP memilih versi
+bawaan atau menolak barisnya.
+
 ### Cycle time ada di SAP
 
 Standard Value Key **Z002** pada Rate Routing: `ZCT001` Cycle Time, `ZMT001`
@@ -647,8 +695,8 @@ Setiap kali dokumen itu menulis "Third-Party System", yang dimaksud adalah
 Avicenna:
 
 - pembuatan master kanban dan pencetakan kartunya (PP-MD-05), dengan
-  **Production Version dari SAP sebagai syarat** — kolom itu belum ada di
-  `TM_KANBAN`;
+  **Production Version dari SAP sebagai syarat** — sudah ada, lihat bagian
+  tersendiri di bawah;
 - klasifikasi kanban **cyclic** (kartu berputar, kembali ke available) atau
   **one-way** (sekali pakai lewat procurement);
 - scan kanban sebagai pemicu seluruh posting: stock transfer, confirmation,
@@ -670,10 +718,10 @@ diminta, bukan dirancang ulang: pemetaan field, nilai flag status, isi
 
 ## Yang masih terbuka
 
-- **Movement type SAP** untuk tiap jenis mutasi. Dugaan sementara sudah
-  dituliskan di `packages/domain/src/sap-movement.ts` — 101 (GR), 311
-  (transfer antar SLOC), 601 (pengiriman), 309 (penyesuaian). **Angka-angka itu
-  BELUM dikonfirmasi tim SAP**, kecuali 261 yang disebut blueprint sebagai
+- **Movement type SAP** untuk tiap jenis mutasi. **311 sudah TERBUKTI** dari
+  data AII — lihat bagian 23 Oktober. **101 juga TERBUKTI** dari kode penjemput
+  penerimaan barang, beserta dua syarat tambahan: `MVT_IND = 'B'` dan nomor PO
+  beserta nomor barisnya. Yang belum: 601 (pengiriman), 309 (penyesuaian). Angka-angka itu **BELUM dikonfirmasi tim SAP**, kecuali 261 yang disebut blueprint sebagai
   movement konsumsi komponen — dan itu pun diposting SAP sendiri lewat
   backflush, bukan oleh sistem ini. Angka 551 untuk scrap sudah DIBUANG, bukan
   sekadar belum dikonfirmasi: blueprint menyebut barang NG masuk ke SLOC reject,
@@ -694,9 +742,41 @@ diminta, bukan dirancang ulang: pemetaan field, nilai flag status, isi
   menahan dokumen dobel saat jaringan tersendat, bukan logika di sisi kita.
 - **Pemetaan kolom master** untuk `SUMBER_MASTER`, supaya arah tarik bisa
   dinyalakan.
-- **Apakah `QTY` di staging tanpa tanda.** Sekarang kita mengirim nilai mutlak,
-  dengan arah dibawa oleh movement type — itu kebiasaan SAP MM, tetapi perlu
-  dipastikan cocok dengan program di sisi sana.
+- ~~**Arti `CHR_PV`**~~ — TERJAWAB data AII: Production Version. Kini diisi dari
+  `TM_PARTS.CHR_PRODUCTION_VERSION`.
+- ~~**Isi `CHR_TYPE_TRANS`**~~ — TERJAWAB dari kode penjemput: kunci dispatch
+  dengan 18 nilai yang dikenal. Lihat bagian 26 Oktober. Yang tersisa hanya
+  **nilai mana yang dipakai AIIA untuk perpindahan antar SLOC produksi** —
+  kita memakai `STRM`, bisa diubah lewat `STAGING_TYPE_TRANS_TRANSFER`.
+- ~~**Nilai flag GAGAL**~~ — TERJAWAB: `CHR_STATUS` memuat message type ABAP,
+  jadi `E`/`W`/`A` semuanya berarti tidak berhasil, dan hanya `S` yang berarti
+  selesai. Lihat `tafsirStatus()`.
+- ~~**Lewat mana NG sampai ke SAP di AII?**~~ — TERJAWAB: function module
+  terpisah `ZFM_WDE_PROD_RESULT_NG` dari baris yang sama, dipicu
+  `INT_TOTAL_NG <> 0`. Yang BELUM dikerjakan: kita masih menulis 0 ke kolom
+  itu, dan satu baris outbox produksi perlu DUA status (OK dan NG) karena
+  keduanya dibukukan terpisah.
+- **Menarik Production Storage Location** dari `TM_PROCESS_PARTS.CHR_SLOC_TO`,
+  supaya SLOC keluaran rute kita tidak lagi perlu dicocokkan dengan tangan.
+  Sekarang lebih penting daripada sebelumnya: hasil produksi TIDAK mengirim
+  plant maupun SLOC, jadi SAP menurunkan keduanya dari Production Version.
+- **Sumber Production Version.** Blueprint menyebut SAP pemiliknya dan akan
+  mendorongnya ke sistem ini; sampai antarmukanya ada, versinya diketik orang
+  di master Part.
+- ~~**Apakah `QTY` di staging tanpa tanda**~~ — TERJAWAB: `ENTRY_QNT`
+  bertipe Integer, arah dibawa movement type. Catatan: Integer, jadi tidak ada
+  pecahan.
+- **Nilai `CHR_TYPE_TRANS` AIIA untuk perpindahan antar SLOC produksi.** Kita
+  memakai `STRM`; `STNG` dipakai AII untuk menarik barang jadi ke SLOC staging,
+  yang di AIIA belum ada padanannya.
+- **Apa itu `Z_TW_AIIA_GR`?** Tabel bernama AIIA yang disebut kode MFBF pada
+  `INSERT INTO Z_TW_AIIA_GR (no_picking)` — baris yang tidak pernah dieksekusi
+  karena perintahnya ditimpa sebelum dijalankan.
+- **Membaca `TT_ERR_LOG_INTERFACE`.** Bila penjemput jatuh, dokumen kita
+  terlihat `SENT` dan satu-satunya jejaknya ada di tabel itu. Belum kita baca.
+- **Apakah ABAP menyaring ulang `LONGNUM`?** Perlu dipastikan, sebab tabel RFC
+  di jalur `T_GOODSMVT` menumpuk antar iterasi dan baris yang sama terkirim
+  berulang dalam satu lintasan.
 - **Apakah satu dokumen per scan produksi terlalu banyak.** Sekarang tiap scan
   menghasilkan satu dokumen SAP. Kalau volumenya memberatkan, pengelompokan per
   shift atau per jam bisa ditambahkan di pengumpul tanpa mengubah yang lain.
@@ -888,6 +968,435 @@ Dua akibat langsungnya:
 
 ---
 
+## Kode penjemput AII, dibaca 26 Oktober 2026
+
+Handika mengirim kode sumber program yang menjemput tabel staging. Dengan ini
+pertanyaan soal flag dan `CHR_TYPE_TRANS` **tidak lagi perlu ditanyakan ke tim
+SAP** — jawabannya terbaca langsung dari `WHERE` yang menyaring baris kita.
+
+Berkas: `AII_SHARE/PP/VB_MFBF`, `AII_SHARE/PP/VB_GOODS_MOVEMENT_PP&SD`,
+`VB for Move SD.zip` → `VB_GOODS_MOVEMENT_SD`, `VB for GR.zip` →
+`VB_GOODS_MOVEMENT_ELISA` + `VB_RECEIPT` + `VB_RECEIPT_SLITTING` +
+`VB_RDS_CANCEL`.
+
+### Bentuknya: scheduled task, bukan servis
+
+Tiap program adalah Windows Forms yang menyembunyikan dirinya sendiri, bekerja
+seluruhnya di `Form1_Load`, lalu `Me.Close()`. Satu lintasan, lalu mati — jadi
+dijalankan Task Scheduler berkala. Itu menjelaskan batch 06:30:07 pada data
+contoh.
+
+Alurnya: baca SQL Server lokal (`DB_AIS`) → panggil RFC lewat SAP .NET
+Connector (destination `PRD`) → selesai. `Thread.Sleep(500)` per baris, satu
+panggilan RFC per baris, serial. Langit-langitnya sekitar 120 baris/menit.
+
+### `CHR_TYPE_TRANS` adalah kunci dispatch
+
+Dipakai DUA kali: di `WHERE` untuk memilih baris yang menjadi tanggung jawab
+build itu, lalu di rantai `If/ElseIf` untuk memilih function module.
+
+| `CHR_TYPE_TRANS` | Function module | Kolom tambahan yang dibaca |
+| --- | --- | --- |
+| `SUBC` `RTRN` `STLT` `VCLM` `CKIP` | `ZZBAPI_GOODSMVT_CREATE` (`ZTAB`, `ZCODE`=04) | `CHR_VENDOR_NAME`, `CHR_REMARKS`, `ZREF_DOC_NO` |
+| `FGDL` `DLFG` | `ZZBAPI_AIIECC_SD00001` | `CHR_DEL_NO`, `CHR_DEL_ITEM`, `CHR_PICK_STATUS` |
+| `NOFG` `NODL` | `ZZBAPI_AIIECC_SD00004` | idem |
+| **selain itu** | `ZZBAPI_AIIECC_PP00010` | — |
+
+`ZCODE` adalah `GM_CODE` standar: 04 = transfer posting (MB1B), 01 = GR untuk
+purchase order (MB01).
+
+Kosakata lengkapnya terbagi di antara tiga build yang masing-masing menjemput
+sebagiannya:
+
+| Build | `CHR_TYPE_TRANS` yang dijemput | Syarat |
+| --- | --- | --- |
+| PP | `STRM` `RERM` | `CHR_VALIDATE='X'` + `CHR_UPLOAD='0'` |
+| PP | `STNG` | `CHR_STATUS='N'` + `CHR_UPLOAD='0'` + `INT_TOTAL_QTY<>0` |
+| SD | `FGDL` `DLFG` `NOFG` `NODL` `DLGD` `DLRP` `DLCL` `GDDL` `RPDL` `CLDL` | `CHR_VALIDATE='X'` + `CHR_UPLOAD='0'` |
+| GR | `SUBC` `RTRN` `STLT` `VCLM` `CKIP` | `CHR_VALIDATE='X'` + `CHR_UPLOAD='0'` |
+
+Bentuknya pasangan arah empat huruf — `DLGD`/`GDDL`, `DLRP`/`RPDL`,
+`DLCL`/`CLDL`, `FGDL`/`DLFG` — jadi dua huruf pertama asal, dua huruf terakhir
+tujuan. Enam nilai terakhir di baris SD tidak disebut satu pun cabang `If`,
+jadi mereka jatuh ke `Else` dan diposting `PP00010` sebagai perpindahan biasa.
+
+**Yang dulu kita kirim, `potong(row.docType, 4)` → `TRAN`, tidak ada dalam
+daftar mana pun.** Jadi dari dua kemungkinan buruk yang sempat dicatat, yang
+berlaku adalah yang pertama: dokumennya tidak dibawa ke cabang yang salah, ia
+tersaring di `WHERE` dan tidak pernah terjemput sama sekali.
+
+### Nilai flag, dan keadaan awal yang berbeda antar tabel
+
+DDL staging menyimpan keadaan awal sebagai DEFAULT, dan `WHERE` penjemputnya
+mensyaratkan nilai itu:
+
+| Kolom | `TT_PRODUCTION_RESULT` | `TT_GOODS_MOVEMENT_L` | `TT_PURCHASE_RECEIPT_H` |
+| --- | --- | --- | --- |
+| `CHR_VALIDATE` | DEFAULT NULL, **wajib `X`** | DEFAULT `' '`, **wajib `X`** | — |
+| `CHR_STATUS` awal | DEFAULT `'-'` (NULL juga diterima) | DEFAULT **`'N'`**, diwajibkan jalur STNG | — |
+| `CHR_UPLOAD` awal | DEFAULT NULL, tidak disaring | DEFAULT **`'0'`**, diwajibkan | DEFAULT **`'0'`**, diwajibkan |
+
+`CHR_UPLOAD='0'` muncul di keempat program. **Kita menulis `'-'` ke sana**, dan
+akibatnya seluruh dokumen perpindahan akan tersaring habis tanpa jejak — sekelas
+dengan `CHR_VALIDATE` yang tidak pernah kita tulis.
+
+Keputusan 23 Oktober untuk berhenti menulis `CHR_STATUS='N'` ternyata benar
+HANYA untuk hasil produksi (query-nya memang menerima `CHR_STATUS IS NULL`).
+Untuk goods movement, `'N'` justru diwajibkan.
+
+### `CHR_STATUS` memuat message type ABAP, bukan dua nilai
+
+Middleware menulis `CHR_STATUS = M_TYPE` dengan `M_TYPE` diambil dari export
+parameter `CHR_TYPE` milik function module — yaitu message type ABAP. Nilainya:
+
+| Nilai | Arti | Penulis |
+| --- | --- | --- |
+| `S` | berhasil | middleware, dari balasan SAP |
+| `E` `W` `A` `I` | message type ABAP lainnya | idem |
+| `5` | sedang terbang — ditulis **sebelum** `Invoke` | middleware |
+| `R` | direvisi, akan didorong ulang sebesar nettonya | aplikasi MES |
+| `-` / `N` / NULL | keadaan awal | DDL |
+
+Tebakan `'E'` untuk gagal benar, tetapi tidak lengkap. Satu-satunya uji yang
+benar adalah `= 'S'` untuk berhasil. Kode kita dulu memperlakukan apa pun selain
+`'E'` sebagai berhasil, yang berarti baris ber-`CHR_STATUS='5'` — dokumen yang
+**belum tentu sampai** — ditutup sebagai CONFIRMED tanpa nomor dokumen material.
+
+### Hasil produksi hanya mengirim LIMA field
+
+```
+ZFM_WDE_PROD_RESULT_OK(PART_NO, POSTING_DATE, QTY, PROD_VERSION, V_INT_NUMBER)
+ZFM_WDE_PROD_RESULT_NG(PART_NO, POSTING_DATE, QTY, PROD_VERSION, V_INT_NUMBER)
+```
+
+Dari 70-an kolom `TT_PRODUCTION_RESULT`, hanya lima yang sampai ke SAP. Plant,
+work center, shift, mesin, NPK, qty per box, dan keenam rincian NG **tidak
+pernah dikirim** — semuanya milik MES.
+
+Dua akibat:
+
+- Parameter `PROD_VERSION` **membuktikan** `CHR_PV` = Production Version.
+  Bukan lagi kesimpulan dari pola data.
+- Plant dan SLOC tidak dikirim; SAP menurunkannya dari Production Version,
+  persis `TM_PROCESS_PARTS.CHR_SLOC_TO`. Jadi **tanpa Production Version, SAP
+  tidak punya cara tahu di mana memposting**. Versi itu prasyarat, bukan
+  pelengkap.
+
+`QTY` diambil `INT_TOTAL_QTY - INT_TOTAL_QTY_REV`, tanpa tanda.
+
+### NG memang sampai ke SAP — lewat function module kedua
+
+Dari baris yang SAMA, dengan kolom balasan sendiri: `CHR_STATUS_NG`,
+`CHR_MATDOC_NG`, `CHR_MESSAGE_NG`. Pemicunya `INT_TOTAL_NG <> 0`, dan **hanya
+`INT_TOTAL_NG`** yang dipakai — rincian per penyebab tidak dikirim.
+
+Itu menjawab dua pertanyaan yang menahan kita mengisi NG:
+
+1. Pembagian `INT_NG_PRC` vs `INT_TOTAL_NG` — rincian tidak dikirim, tidak ada
+   penjumlahan ganda.
+2. Hubungan dengan `INT_QTY_OK`/`INT_TOTAL_QTY` — **tidak ada**. Dua panggilan
+   RFC terpisah, dua dokumen material terpisah. Mengisi NG tidak mengurangi
+   goods receipt.
+
+Keenam kolom NG bernilai 0 pada data contoh 23 Oktober karena baris-baris itu
+memang tidak ada NG-nya, bukan karena NG tidak dilaporkan.
+
+Konsekuensinya untuk kita: satu baris outbox produksi bisa **setengah
+terkonfirmasi** — OK berhasil, NG gagal, atau sebaliknya. Model status kita
+masih satu kolom.
+
+Catatan presisi dari `If`-nya: baris qty 0 tidak didorong kecuali statusnya
+`'R'`, dan NG didorong terpisah bila `INT_TOTAL_NG <> 0`. Jadi scan yang
+seluruhnya NG tetap sampai — hanya lewat dokumen NG saja.
+
+### Tiga pola koreksi yang berbeda
+
+| Tabel | Pola |
+| --- | --- |
+| `TT_PRODUCTION_RESULT` | kolom `*_REV` + `CHR_STATUS='R'`, lalu baris aslinya didorong ulang sebesar nettonya |
+| `TT_PURCHASE_RECEIPT_H` | flag `CHR_FLG_DEL='1'` + pasangan kolom dokumen pembatalan `CHR_RPTNO_R3_DEL(_Y)` → `ZZBAPI_GOODSMVT_CANCEL(PDS_NO, RECOVERY, PO_NO, MATERIALDOCUMENT, MATDOCUMENTYEAR, GOODSMVT_PSTNG_DATE)` |
+| `TT_GOODS_MOVEMENT` | tidak terlihat; dugaan: movement type kebalikannya (542 untuk 541) |
+
+Pola kedua layak disalin apa adanya: baris aslinya menyimpan dokumen asli DAN
+dokumen pembatalannya, plus flag yang diisi orang untuk meminta pembatalan. Itu
+jauh lebih sederhana daripada jalur pembatalan yang sempat kurancang untuk
+PP-PE-06.
+
+### Penerimaan barang
+
+```
+ZCODE "01" · ZMOVE_TYPE "101" · ZMVT_IND "B" · ZPO_NUMBER + ZPO_ITEM
+```
+
+**Tebakan `101` untuk penerimaan benar**, dan ada dua syarat tambahan yang belum
+kita catat: `MVT_IND = 'B'` (GR untuk purchase order) serta nomor PO beserta
+nomor barisnya — keduanya wajib untuk GR berbasis PO.
+
+`ZPLANT "600"` dan `ZSTGE_LOC "WH00"` **dipaku di dalam kode**; AII memang plant
+600. Untuk AIIA keduanya harus datang dari data (700/800/900).
+
+Program ini memproses **satu PDS per lintasan**: `SELECT TOP 1` memilih nomor
+PDS terlama, lalu seluruh barisnya didorong. `ZNUMROWS` memberi tahu ABAP berapa
+baris yang harus ditunggu — jadi tabel RFC yang menumpuk antar iterasi
+(`tab1.Insert()` tanpa pembersihan) di jalur ini **memang protokolnya**: ABAP
+memposting ketika jumlah barisnya cocok, dan invoke-invoke sebelumnya tidak
+lengkap.
+
+Pada jalur `T_GOODSMVT` (`PP00010`, `SD00001`, `SD00004`) tidak ada
+`ZNUMROWS`, sehingga penumpukan di situ tetap berarti baris yang sama terkirim
+berulang dalam satu lintasan. Stok AII tidak kacau, jadi ABAP di sana hampir
+pasti menyaring ulang berdasarkan `LONGNUM` (`INT_NUMBER` kita). Itu dugaan,
+dan ia menegaskan bahwa yang melindungi kita dari dokumen dobel tetap **unique
+index pada `CHR_WO_NUMBER`**, bukan logika di sisi SAP — `INT_NUMBER` diberikan
+IDENTITY, jadi insert dobel dari sisi kita melahirkan dua nomor berbeda dan
+lolos dedupe mereka.
+
+### Tidak ada penyaringan per plant
+
+Tidak satu pun `WHERE` memuat `CHR_PLANT`. Satu penjemput melayani semua plant;
+plant hanya ikut di payload. Untuk AIIA dengan tiga plant, itu berarti tidak
+perlu tiga instalasi penjemput.
+
+### `TT_ERR_LOG_INTERFACE`, dan kedua jalurnya rusak
+
+`(CHR_FUNCTION, CHR_ERROR_MESSAGE, CHR_DATE, CHR_TIME)` — tempat middleware
+menulis kegagalannya sendiri (`'ERR_PP'`, `'ERR_PRD_RESULT'`). Kita belum pernah
+membacanya, padahal bila penjemput jatuh, baris kita terlihat `SENT` dan
+satu-satunya jejaknya ada di sana.
+
+Keduanya cacat: goods movement memanggil
+`Err.Description.Substring(0, 300)`, yang melempar `ArgumentOutOfRangeException`
+bila pesannya lebih pendek dari 300 karakter — yaitu hampir selalu; MFBF
+mengomentari baris `err_msg = ...` sehingga yang tersimpan string kosong. Jadi
+di AII kegagalan middleware praktis tak terlihat.
+
+`VB_RDS_CANCEL` dan `VB_RECEIPT` lebih buruk lagi: `Catch` → `MessageBox.Show`
+pada form yang disembunyikan. Satu galat berarti dialog modal tak terlihat dan
+proses menggantung memegang koneksi SQL-nya.
+
+### Yang jangan disalin
+
+- Kredensial SQL (`user_view` / `P@ssw0rd`) dan SAP lima lingkungan termasuk
+  PRD tertulis di dalam kode sumber.
+- `user_view` punya hak UPDATE dan INSERT — namanya menipu.
+- SQL dirangkai string; `CHR_MESSAGE` dari SAP dimasukkan ke `UPDATE` tanpa
+  escape, jadi satu petik tunggal dalam pesan SAP menggagalkan penulisan
+  balasan.
+- `CHR_DATE > '20250310'` — batas tanggal dipaku di dalam binary.
+- `INSERT INTO Z_TW_AIIA_GR (no_picking)` di MFBF tidak pernah dieksekusi
+  (`cmd2` ditimpa sebelum `ExecuteNonQuery`). Namanya menyebut **AIIA**;
+  tabel apa itu belum diketahui.
+
+### Koreksi: format `CHR_DATE`, dari data sungguhan
+
+`Sample Data for All Table Linked to SAP - PP.xlsx` menyelesaikan satu hal yang
+selama ini hanya disimpulkan dari lebar kolom:
+
+```
+CHR_DATE = "20260930  "    char(10), delapan angka + dua spasi padding
+```
+
+Catatan 5 Oktober menyimpulkan `YYYY-MM-DD` semata-mata karena kolomnya
+char(10), dan **kode kita mengirimnya begitu**. Itu salah, dan salahnya mahal:
+penjemput meneruskan nilai ini **apa adanya** sebagai `POSTING_DATE` ke RFC,
+tanpa memformat ulang dan tanpa `Trim`. Tanda hubung berarti konversi tanggal
+ABAP yang gagal.
+
+Penyaring `CHR_DATE > '20250310'` di penjemput sendiri sudah membuktikannya
+tanpa perlu data: dengan `YYYY-MM-DD`, seluruh baris bertahun 2025 akan terbuang
+karena `'-'` (0x2D) lebih kecil daripada angka — dan aplikasi itu tidak akan
+pernah memposting apa pun sepanjang 2025.
+
+Nilai awal dari data yang sama, dan semuanya cocok dengan yang sudah kita tulis:
+
+| Kolom | Baris belum diproses | Baris berhasil |
+| --- | --- | --- |
+| `CHR_VALIDATE` | `Y` | `X` |
+| `CHR_STATUS` | `-` | `S` |
+| `CHR_UPLOAD` | NULL | `X` |
+| `CHR_STATUS_NG` | `0` | `0` |
+| `CHR_MATDOC` | NULL | 10 digit |
+
+`CHR_STATUS_NG = '0'` adalah satu-satunya yang belum kita tulis; sekarang
+ditulis. Keenam kolom NG bernilai 0 — bukan NULL — jadi keenamnya kita tulis 0.
+
+Satu pengamatan yang bukan soal format: `CHR_WO_NUMBER` di AII berbentuk
+`ASHV01/20260930/SHIFT1` — **satu baris per work center per tanggal per shift**,
+bukan per scan. Kita mendorong per scan, yang berarti dokumen SAP lebih banyak
+dan lebih kecil. Penjemput tidak membaca kolom itu sama sekali, jadi tidak ada
+yang rusak; tetapi perbedaan granularitasnya layak disepakati dengan tim SAP
+sebelum volume produksi sungguhan masuk.
+
+### Struktur AIIA = struktur AII
+
+`staging:compare --live` terhadap `172.18.3.19 / A_DB_STG` mencocokkan persis
+dengan DDL AII: `TT_GOODS_MOVEMENT_H` 17 kolom, `TT_GOODS_MOVEMENT_L` 44,
+`TT_PRODUCTION_RESULT` 68, dan **0 kolom yang kita konfigurasikan tetapi tidak
+ada**. Jadi DDL AII di `AII_SHARE` sah dipakai sebagai rujukan lebar dan
+DEFAULT untuk AIIA — itulah dasar `LEBAR` di `staging-tables.ts`.
+
+Perbandingan live itu sendiri sebelumnya **tidak memeriksa
+`TT_PRODUCTION_RESULT`** — tabel dengan kolom terbanyak yang kita tulis, dan
+tempat bug `CHR_DATE` bersembunyi. Sekarang ikut diperiksa. Kolom IDENTITY juga
+tidak lagi dilaporkan sebagai "NOT NULL tetapi belum kita isi — setiap INSERT
+akan gagal", yang justru kebalikan dari kebenarannya.
+
+### Dua dokumen yang sekarang ditolak lebih awal
+
+Keduanya PASTI gagal, dan keduanya dulu lolos tanpa jejak:
+
+- **Production Version kosong.** Hasil produksi tidak mengirim plant maupun
+  SLOC; SAP menurunkan keduanya dari versi. Pada seluruh contoh AII kolom ini
+  selalu terisi (`0001`, `0003`, `0004`).
+- **Kuantitas 0.** Penjemput melewatkan baris ber-`INT_TOTAL_QTY = 0` kecuali
+  statusnya `'R'`. Baris seperti itu akan duduk di staging selamanya.
+
+### Yang berubah di kode kita
+
+| | |
+| --- | --- |
+| `CHR_UPLOAD` baris perpindahan | `'-'` → **`'0'`** |
+| `CHR_STATUS` baris perpindahan | tidak ditulis → **`'N'`** |
+| `CHR_STATUS` hasil produksi | tidak ditulis → `'-'` (sama dengan DEFAULT-nya) |
+| `CHR_UPLOAD` hasil produksi | `'-'` → tidak ditulis (DEFAULT NULL) |
+| `CHR_TYPE_TRANS` | `potong(docType,4)` → `TYPE_TRANS`, `TRANSFER` → `STRM` |
+| jenis dokumen tanpa `CHR_TYPE_TRANS` | didorong apa adanya → **HELD** dengan sebab tertulis |
+| pembacaan `CHR_STATUS` | `=== 'E'` gagal, sisanya berhasil → `tafsirStatus()` |
+| `CHR_DATE` hasil produksi | `YYYY-MM-DD` → **`YYYYMMDD`** |
+| `CHR_STATUS_NG` | tidak ditulis → `'0'` |
+| kolom NG | dua kolom → **keenamnya** 0, seperti AII |
+| qty hasil produksi | dikirim apa adanya → dibulatkan (`numeric(13,0)`) |
+| Production Version kosong / qty 0 | didorong → **ditolak** dengan sebab terbaca |
+| lebar kolom | literal tersebar → `LEBAR`, satu peta dari DDL |
+
+Keadaan awal kini terkumpul di `AWAL` pada `staging-tables.ts`, per tabel, dan
+diuji `staging-flags.test.ts`.
+
+## Data SAP AII sungguhan, 23 Oktober 2026
+
+Handika mengirim isi lima tabel staging dari sistem AII yang berjalan — plant
+600, transaksi 30 September 2026. Ini pertama kalinya kita melihat BARIS, bukan
+hanya struktur. Yang berikut bukan lagi dugaan.
+
+### Nilai flag, akhirnya pasti
+
+| Kolom | Berhasil | Belum diproses |
+| --- | --- | --- |
+| `CHR_STATUS` | `S` | **NULL** |
+| `CHR_MESSAGE` | `Success` (goods movement), kosong (produksi) | NULL |
+| `CHR_MATDOC` | nomor dokumen material 10 digit | NULL |
+| `CHR_UPLOAD` | `X` (produksi) · `1` (goods movement) | `-` |
+| `CHR_PICK_STATUS` | `S` | — |
+
+Tebakan `S` untuk berhasil **benar**. Tebakan `N` untuk baris baru **salah**:
+baris yang belum diproses CHR_STATUS-nya NULL. Kita tidak lagi menulis `N` ke
+sana — kalau penjemput di sisi SAP menyaring dengan `CHR_STATUS IS NULL`, baris
+bernilai `N` tidak akan pernah terjemput, dan diamnya sempurna.
+
+Nilai GAGAL masih tidak diketahui: contohnya hanya memuat baris yang berhasil.
+
+### `CHR_VALIDATE` — yang paling menentukan, dan selama ini tidak kita tulis
+
+Pada 52 baris `TT_PRODUCTION_RESULT`, korelasinya sempurna:
+
+```
+CHR_VALIDATE = X  →  CHR_UPLOAD = X, CHR_STATUS = S, CHR_MATDOC terisi
+CHR_VALIDATE = Y  →  CHR_UPLOAD = -, CHR_STATUS NULL, tanpa dokumen material
+```
+
+Dan ini bukan soal waktu: baris `Y` yang masuk pukul 06:24:19 tetap kosong,
+sementara baris `X` yang masuk pukul 06:24:41 terproses pada batch 06:30:07
+yang sama. **Yang membedakan flag-nya, bukan urutannya.**
+
+Seluruh baris `TT_GOODS_MOVEMENT_H` pun bernilai `X`.
+
+Kita **tidak pernah menulis kolom ini**. Kalau ia memang penyaring penjemput,
+setiap dokumen yang kita dorong akan duduk di staging tanpa pernah disentuh —
+dan di layar pemantauan terlihat sebagai `SENT` selamanya, sebab `SENT` memang
+berarti "sudah di staging, menunggu SAP". Sekarang ditulis `X`.
+
+Masih mungkin ia sekadar keadaan internal aplikasi AII yang kebetulan selalu
+sejalan. Tetapi kita tidak punya langkah validasi terpisah, jadi menulis `X`
+benar dalam kedua tafsir.
+
+### `CHR_PV` adalah Production Version, bukan urutan langkah
+
+Catatan 5 Oktober menyebutnya "urutan langkah (0001, 0002, …)". Data
+membantahnya: ada part yang baris SATU-SATUNYA bernilai `0002`
+(`41133111050B0`) atau `0003` (`41134012260`). Nomor urut langkah mustahil
+berperilaku begitu — sebuah part selalu punya langkah pertama.
+
+Artinya `TM_PROCESS_PARTS` bukan tabel rute berisi satu baris per langkah,
+melainkan **master Production Version**: satu baris per (part, versi), membawa
+work center, SLOC keluaran, cycle time, dan lot size untuk versi itu. Persis
+pengertian Production Version di SAP — pasangan BOM dan Rate Routing.
+
+Dua akibat langsung:
+
+- `TT_PRODUCTION_RESULT.CHR_PV` kini kita isi dari
+  `TM_PARTS.CHR_PRODUCTION_VERSION`. Kosong bila part-nya belum punya versi —
+  **tidak** diisi `0001`, sebab menebak versi berarti hasil produksi dibukukan
+  terhadap pasangan BOM dan routing yang belum tentu dipakai.
+- `TM_PROCESS_PARTS.CHR_SLOC_TO` adalah **Production Storage Location** per
+  versi. Pertanyaan "SLOC mana yang dipakai SAP saat GR" — yang di blueprint
+  hanya muncul sebagai field MRP 2 nomor 11 — ternyata bisa dibaca dari staging.
+  Belum kita tarik; lihat daftar terbuka.
+
+### Movement type dan jenis transaksi
+
+| Nilai | Dipakai untuk |
+| --- | --- |
+| `311` | perpindahan antar SLOC — `PP02→PP04`, `PP03→PP04`, `WH00→PP04` |
+| `541` | kirim ke subkontraktor |
+| `542` | pembatalan kiriman subkontraktor |
+
+Tebakan `311` untuk transfer antar SLOC **benar**. `CHR_TYPE_TRANS` berisi
+`SUBC` di kepala dan `CHR_TYPE_TRANS_L` berisi `FGDL` di baris — keduanya
+kosakata SAP/AII, sedangkan kita menulis jenis dokumen kita sendiri (`TRAN`,
+`PROD`). Itu masuk daftar pertanyaan: nilai apa yang mereka harapkan.
+
+`INT_TOTAL_QTY` selalu positif — arah dibawa movement type, seperti dugaan kita.
+
+### Yang ternyata sudah benar
+
+- **Qty produksi.** Pada SELURUH 52 baris, `INT_ACTUAL` = `INT_QTY_OK` =
+  `INT_TOTAL_QTY`. Perilaku kita sama.
+- **NG.** Keenam kolom NG (`INT_NG_PRC`, `INT_NG_BRKNTEST`, `INT_NG_SETUP`,
+  `INT_NG_TRIAL`, `INT_NG_OTHERS`, `INT_TOTAL_NG`) bernilai 0 di semua baris.
+  Jadi **AII pun tidak melaporkan NG lewat tabel ini**, dan nilai 0 kita bukan
+  kekurangan melainkan sama dengan sistem yang berjalan. Pertanyaannya berubah:
+  lewat mana NG sampai ke SAP di AII?
+- **SLOC AII**: `WH00`, `PP01`, `PP02`, `PP03`, `PP04` — persis kode lama kita,
+  yang memang disalin dari sana. Blueprint menggantinya untuk AIIA.
+
+### Yang ternyata tidak terpakai
+
+`INT_FLG_METHODS`, `INT_IS_SCAN_CUST_KANBAN`, `INT_CYCLE_TIME`, `INT_MP`
+bernilai 0 di seluruh baris; `CHR_LOTSIZE`, `CHR_STDDAY`, `CHR_FLAG_ACTIVE`
+seluruhnya NULL. Jadi legenda `INT_FLG_METHODS` yang kita tunggu kemungkinan
+besar tidak pernah ada isinya — metode scan tidak bisa ditarik dari SAP, dan
+master kita sendiri yang memegangnya.
+
+### Work center
+
+`TM_PROCESS` AII memakai `CHR_PERSON_RESPONSIBLE` berupa ANGKA (`011`–`014`),
+sedangkan blueprint AIIA memakai huruf (`INJ`, `PTG`, `ASY`, `DCT`, `MAC`,
+`MNT`, `INS`, `VAC`, `ANT`). Kode work center 6–7 karakter dengan awalan dua
+huruf: `AS`/`SA` assembly, `WE` welding, `PR` press, `PK` packing, `MA`, `BD`,
+`RF`. `CHR_AREA` berbentuk `CC-001`, `ASWE-002`, `STP-003`.
+
+Dua baris cacat yang perlu diingat saat menarik: `ASSR01` punya `CHR_AREA`
+berisi kode work center (`PK0002`), dan `ASPD01` area-nya kosong. Penarik tidak
+boleh menganggap area selalu berbentuk `XX-999`.
+
+### Satu hal yang perlu ditanyakan untuk AIIA
+
+Di AII, `311` dipakai juga untuk **pulling barang jadi ke PP04** (staging
+sebelum truk) dengan `CHR_TYPE_TRANS_L = FGDL`. Daftar SLOC AIIA di blueprint
+tidak punya padanan PP04 — hanya WH/WP/FG/RE. Jadi entah langkah itu tidak ada
+di AIIA, entah SLOC staging akan ditambahkan. Sampai jelas, dokumen pulling
+`FG→ST` kita tetap dilewati dengan sebabnya tertulis.
+
 ## Pembacaan ulang struktur staging, 5 Oktober 2026
 
 Dibaca lagi dari `172.18.3.19 / A_DB_STG` — **34 tabel** (sebelumnya 32). Yang
@@ -944,9 +1453,9 @@ pernah cocok dengan rutenya.
   ini sudah tidak berlaku.
 - **Kolom NOT NULL hanya kuncinya**, jadi INSERT kita tidak akan gagal karena
   kolom wajib yang tidak diisi.
-- `TT_PRODUCTION_RESULT.CHR_DATE` memang char(10) — format `YYYY-MM-DD` yang
-  sudah kita kirim benar. `CHR_PLANT` di tabel itu char(4), berbeda dari char(3)
-  di `TT_GOODS_MOVEMENT_H`.
+- `TT_PRODUCTION_RESULT.CHR_DATE` memang char(10). **Kesimpulan bahwa isinya
+  `YYYY-MM-DD` SALAH** — lihat koreksinya di bagian 26 Oktober. `CHR_PLANT` di
+  tabel itu char(4), berbeda dari char(3) di `TT_GOODS_MOVEMENT_H`.
 
 ### Yang masih menunggu jawaban
 

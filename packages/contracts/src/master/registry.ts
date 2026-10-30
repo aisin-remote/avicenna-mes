@@ -27,6 +27,7 @@ export const MASTER_ENTITIES = [
   'bom',
   'part-processes',
   'route-processes',
+  'process-types',
   'kanbans',
   'program-numbers',
   'work-times',
@@ -44,10 +45,10 @@ export type MasterEntity = (typeof MASTER_ENTITIES)[number];
  * di kolom enum, lalu setiap penyimpanan gagal dengan pesan dari MySQL yang
  * tidak menyebut sebabnya.
  */
-export { PROCESS_TYPES, PROCESS_GROUPS, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
+export { PROCESS_GROUPS, SAP_CLASSES, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
 import {
-  PROCESS_TYPES,
   PROCESS_GROUPS,
+  SAP_CLASSES,
   SCAN_MODES,
   SCAN_MODE_LABELS,
   LOCATION_KINDS,
@@ -97,6 +98,15 @@ export type FieldKind =
   | 'select'
   | 'reference'
   /**
+   * Warna, dipilih lewat color picker dan disimpan sebagai hex `#RRGGBB`.
+   *
+   * Disimpan sebagai teks, bukan pilihan dari daftar tetap: warna tombol di
+   * lantai dipilih orang yang tahu kebiasaan pabriknya — merah untuk mesin
+   * rusak, kuning untuk tunggu material — dan daftar tetap akan selalu
+   * kekurangan satu warna yang justru dibutuhkan.
+   */
+  | 'color'
+  /**
    * Berkas gambar yang diunggah dan disimpan aplikasi.
    *
    * Yang tersimpan di kolom tetap teks — nama berkas di penyimpanan, atau
@@ -125,6 +135,19 @@ export interface FieldDef {
   optionLabels?: Readonly<Record<string, string>>;
   /** Entitas tujuan untuk kind 'reference'. */
   refEntity?: MasterEntity;
+  /**
+   * Pilihan select yang datang dari MASTER LAIN, bukan dari daftar tetap.
+   *
+   * Dipakai kolom jenis proses: daftarnya hidup di master `process-types`,
+   * jadi pilihan di formulir harus ikut berubah begitu ada proses baru — tanpa
+   * deploy. Nilainya KODE (CHR_CODE), bukan id, karena itulah yang disimpan
+   * kolomnya dan itu pula yang ditunjuk foreign key-nya.
+   *
+   * Validasinya di sini sengaja hanya "teks tidak kosong": daftar yang sah
+   * berubah-ubah, dan yang menolak kode asing adalah foreign key di database —
+   * satu penjaga yang tidak bisa basi, bukan dua yang bisa berbeda.
+   */
+  optionsFrom?: MasterEntity;
   /** Tampil sebagai kolom di tabel daftar. */
   inList?: boolean;
   /** Rata kanan di tabel — untuk angka. */
@@ -216,7 +239,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'processType',
         label: 'Proses',
         kind: 'select',
-        options: PROCESS_TYPES,
+        optionsFrom: 'process-types',
         required: true,
         inList: true,
       },
@@ -284,7 +307,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'processType',
         label: 'Proses',
         kind: 'select',
-        options: PROCESS_TYPES,
+        optionsFrom: 'process-types',
         required: true,
         inList: true,
       },
@@ -315,6 +338,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint: 'SERIAL untuk part berbarcode satuan. LOT untuk raw material dan komponen beli yang datang per batch.',
       },
       { name: 'uom', label: 'Satuan', kind: 'text', max: 16, hint: 'pcs, kg, liter, …' },
+      {
+        name: 'productionVersion',
+        label: 'Production Version',
+        kind: 'text',
+        max: 8,
+        inList: true,
+        hint:
+          'Nomor Production Version SAP untuk material ini, mis. 0001. Blueprint ' +
+          'menjadikannya syarat pembuatan kanban — kartu mewarisinya dari sini.',
+      },
       {
         name: 'photoPath',
         label: 'Foto Part',
@@ -624,6 +657,91 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
   },
 
   /**
+   * ─── JENIS PROSES ─────────────────────────────────────────────────────────
+   *
+   * Kosakata yang sampai Oktober 2026 hidup sebagai enum di kode. Satu baris =
+   * satu LINI yang berbeda secara fisik: Casting WIP dan Casting FG dua baris,
+   * bukan satu baris dengan penanda.
+   *
+   * Ketiga kolom klasifikasi WAJIB, dan itu pengganti penjagaan yang hilang.
+   * Dulu compiler menolak proses baru yang belum diklasifikasikan — itulah yang
+   * menangkap proses Electric yang lupa diberi kelas SFG/FG. Sekarang formulir
+   * ini yang menanyakannya, dan tidak ada bawaan untuk ditebak diam-diam.
+   *
+   * Ada di menu Integrasi bersama Rute Proses: pengurusnya PPIC/IT, bukan
+   * leader produksi. Salah mengisi kelas SAP berarti hasil produksi mendarat di
+   * SLOC yang keliru dan dokumen SAP-nya ikut salah.
+   */
+  'process-types': {
+    key: 'process-types',
+    label: 'Jenis Proses',
+    singular: 'Jenis Proses',
+    icon: 'Workflow',
+    description: 'Daftar proses produksi beserta klasifikasinya — dulu ditanam di kode',
+    searchFields: ['code', 'label'],
+    defaultSort: 'sortOrder',
+    fields: [
+      {
+        name: 'code',
+        label: 'Kode',
+        kind: 'text',
+        required: true,
+        inList: true,
+        hint:
+          'Dipakai sebagai nilai di seluruh data: lini, part, rute, scan, NG. ' +
+          'HURUF BESAR tanpa spasi, mis. INJECTION_FG. Tidak bisa diubah setelah dipakai.',
+      },
+      { name: 'label', label: 'Nama di Layar', kind: 'text', required: true, inList: true },
+      {
+        name: 'processGroup',
+        label: 'Grup',
+        kind: 'select',
+        options: PROCESS_GROUPS,
+        required: true,
+        inList: true,
+        hint: 'Lingkup role — menentukan siapa boleh men-scan di lini proses ini.',
+      },
+      {
+        name: 'sapClass',
+        label: 'Kelas Hasil SAP',
+        kind: 'select',
+        options: SAP_CLASSES,
+        optionLabels: {
+          SFG: 'SFG — setengah jadi, hasil masuk SLOC WIP',
+          FG: 'FG — barang jadi, hasil masuk SLOC Finish Good',
+          NONE: 'NONE — tidak ada padanannya di SAP',
+        },
+        required: true,
+        inList: true,
+        hint:
+          'Menentukan SLOC tempat hasil produksi mendarat DAN jenis dokumen SAP-nya. ' +
+          'FG berarti proses ini menutup rute dan di sinilah kanban ditempel.',
+      },
+      {
+        name: 'scanMode',
+        label: 'Metode Scan Bawaan',
+        kind: 'select',
+        options: SCAN_MODES,
+        optionLabels: SCAN_MODE_LABELS,
+        required: true,
+        defaultValue: 'PART_SAJA',
+        inList: true,
+        hint: 'Bawaan untuk lini proses ini. Rute Proses per pabrik boleh menimpanya.',
+      },
+      {
+        name: 'sortOrder',
+        label: 'Urutan Kolom',
+        kind: 'number',
+        inList: true,
+        hint:
+          'Urutan kolom di matriks rute saja — BUKAN urutan rute. ' +
+          'Rute disusun dari urutan klik dan melekat pada tiap part.',
+      },
+      { name: 'isActive', label: 'Aktif', kind: 'boolean', defaultValue: true, inList: true },
+    ],
+  },
+
+  /**
    * Pengaturan stok & SAP PER PROSES — satu baris per jenis proses per pabrik.
    *
    * Berlaku untuk semua part yang melewati proses itu. Kosong berarti memakai
@@ -644,7 +762,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'processType',
         label: 'Proses',
         kind: 'select',
-        options: PROCESS_TYPES,
+        optionsFrom: 'process-types',
         required: true,
         inList: true,
       },
@@ -741,6 +859,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       },
       { name: 'kanbanNo', label: 'No. Kanban SAP', kind: 'number', inList: true },
       {
+        name: 'productionVersion',
+        label: 'Production Version',
+        kind: 'text',
+        max: 8,
+        inList: true,
+        hint:
+          'Dikosongkan = mewarisi dari master Part. Kartu internal tidak bisa ' +
+          'dibuat bila part-nya pun belum punya versi.',
+      },
+      {
         name: 'owner',
         label: 'Pemilik Kartu',
         kind: 'select',
@@ -814,7 +942,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'processType',
         label: 'Proses',
         kind: 'select',
-        options: PROCESS_TYPES,
+        optionsFrom: 'process-types',
         required: true,
         inList: true,
       },
@@ -1030,6 +1158,18 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint: 'Setup dan QC biasanya direncanakan; kerusakan tidak. Memisahkan keduanya di laporan efisiensi.',
       },
       {
+        name: 'color',
+        label: 'Warna Tombol',
+        kind: 'color',
+        required: true,
+        defaultValue: '#DC2626',
+        inList: true,
+        hint:
+          'Warna tombol di layar scan. Operator mengenali tombol dari warnanya sebelum sempat ' +
+          'membaca tulisannya — pakai warna yang sama untuk hal yang sejenis, dan bedakan yang ' +
+          'benar-benar berbeda.',
+      },
+      {
         name: 'sortOrder',
         label: 'Urutan',
         kind: 'number',
@@ -1049,6 +1189,88 @@ export function isMasterEntity(value: string): value is MasterEntity {
 
 export function getEntityDef(key: MasterEntity): EntityDef {
   return ENTITY_DEFS[key];
+}
+
+/** Awalan parameter URL untuk filter daftar, mis. `f_plantId=1`. */
+export const AWALAN_FILTER = 'f_';
+
+/**
+ * Panjang halaman yang boleh dipilih di daftar master.
+ *
+ * Di sini, bukan di komponennya: API membatasi `perPage` paling banyak 200,
+ * dan daftar pilihan yang melebihi batas itu akan tampak bekerja di dropdown
+ * lalu diam-diam dipotong di server. Yang pertama adalah bawaannya.
+ */
+export const PER_HALAMAN = [25, 50, 100, 200] as const;
+
+/**
+ * Kolom yang bisa dipakai MENYARING daftar.
+ *
+ * Diturunkan dari definisi kolom, bukan didaftar per entitas: kolom yang
+ * nilainya berasal dari himpunan tertutup — pilihan tetap, benar/salah,
+ * referensi ke master lain, atau daftar hidup dari master lain — bisa disajikan
+ * sebagai dropdown tanpa seorang pun menuliskannya dua kali. Entitas master
+ * baru langsung dapat filternya begitu kolomnya didefinisikan.
+ *
+ * Hanya kolom yang TAMPIL di tabel (`inList`). Menyaring dengan kolom yang
+ * tidak kelihatan berarti baris hilang tanpa sebab yang terlihat di layar.
+ *
+ * Kolom teks bebas sengaja TIDAK di sini — itu tugas kotak pencarian, yang
+ * mencari ke seluruh `searchFields` sekaligus.
+ */
+export function filterFields(def: EntityDef): FieldDef[] {
+  return def.fields.filter(
+    (f) =>
+      f.inList === true &&
+      (f.kind === 'boolean' ||
+        f.kind === 'select' ||
+        f.kind === 'reference' ||
+        Boolean(f.optionsFrom)),
+  );
+}
+
+/**
+ * Menafsirkan satu nilai filter dari URL menjadi nilai yang siap dibandingkan
+ * ke kolomnya, atau `undefined` kalau tidak masuk akal.
+ *
+ * Satu tempat, dipakai API maupun layar: kalau penafsirannya berbeda sedikit
+ * saja, jumlah baris di kepala halaman tidak akan sama dengan isi tabelnya.
+ */
+export function tafsirNilaiFilter(
+  field: FieldDef,
+  raw: string | undefined,
+): string | number | boolean | undefined {
+  const nilai = raw?.trim();
+  if (!nilai) return undefined;
+
+  if (field.kind === 'boolean') {
+    if (nilai === 'true') return true;
+    if (nilai === 'false') return false;
+    return undefined;
+  }
+  if (field.kind === 'reference') {
+    /*
+     * Hanya digit. `Number()` saja akan menerima '1e3' sebagai 1000 dan
+     * '0x10' sebagai 16 — id di alamat selalu ditulis sebagai angka biasa,
+     * jadi bentuk lain lebih mungkin alamat rusak daripada maksud orang.
+     */
+    if (!/^\d+$/.test(nilai)) return undefined;
+    const n = Number(nilai);
+    return Number.isSafeInteger(n) && n > 0 ? n : undefined;
+  }
+  /*
+   * Pilihan tetap diperiksa terhadap daftarnya; nilai asing dibuang supaya URL
+   * karangan tidak menghasilkan daftar kosong yang membingungkan.
+   *
+   * Kolom `optionsFrom` TIDAK diperiksa di sini — daftarnya hidup di master
+   * lain dan bisa berubah tanpa deploy, jadi yang menolak kode asing adalah
+   * foreign key di database, bukan pemeriksaan yang bisa basi. Alasan yang
+   * sama dengan validasi formulirnya.
+   */
+  if (field.kind === 'select' && field.options && !field.options.includes(nilai)) {
+    return undefined;
+  }
+  return nilai;
 }
 
 /**
@@ -1134,6 +1356,22 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
       );
     }
 
+    case 'color': {
+      /*
+       * Hanya `#RRGGBB`. Bentuk tiga digit (#f00) dan nama warna CSS sengaja
+       * ditolak: nilai ini dipakai menghitung warna latar dan garis tepi
+       * dengan memotong komponen RGB-nya, dan satu bentuk yang seragam membuat
+       * perhitungan itu tidak perlu menebak.
+       */
+      const s = z
+        .string({ required_error: `${f.label} wajib dipilih` })
+        .trim()
+        .regex(/^#[0-9a-fA-F]{6}$/, `${f.label} harus berupa kode warna seperti #DC2626`)
+        .transform((v) => v.toUpperCase());
+      if (f.required && mode === 'create') return s;
+      return z.preprocess(kosongDariFormulir(f, mode), s.nullable().optional());
+    }
+
     case 'date': {
       const base = z
         .string({ required_error: `${f.label} wajib diisi` })
@@ -1185,6 +1423,15 @@ function fieldSchema(f: FieldDef, mode: 'create' | 'update'): z.ZodTypeAny {
     }
 
     case 'select': {
+      if (f.optionsFrom) {
+        const teks = z
+          .string({ required_error: `${f.label} wajib dipilih` })
+          .trim()
+          .min(1, `${f.label} wajib dipilih`)
+          .max(32, `${f.label} terlalu panjang`);
+        if (f.required && mode === 'create') return teks;
+        return z.preprocess(kosongDariFormulir(f, mode), teks.nullable().optional());
+      }
       const s = z.enum((f.options ?? ['']) as [string, ...string[]], {
         errorMap: (issue) => ({
           message:

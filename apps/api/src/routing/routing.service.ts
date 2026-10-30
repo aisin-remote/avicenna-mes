@@ -1,9 +1,10 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { eq, and, asc, inArray, count, type Database } from '@avicenna/db';
 import { partProcesses, routeProcesses, parts, plants, lines } from '@avicenna/db';
-import { PROCESS_TYPES, menghasilkanFinishGood, type ProcessType } from '@avicenna/contracts';
+import type { ProcessType } from '@avicenna/contracts';
 import { periksaRute } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
+import { ProcessTypeService } from '../master/process-type.service';
 
 export interface BarisMatriks {
   partId: number;
@@ -44,11 +45,16 @@ export interface BarisMatriks {
 export class RoutingService {
   private readonly logger = new Logger(RoutingService.name);
 
-  constructor(@InjectDb() private readonly db: Database) {}
+  constructor(
+    @InjectDb() private readonly db: Database,
+    private readonly processTypes: ProcessTypeService,
+  ) {}
 
   /** Seluruh part beserta rutenya — bahan layar matriks. */
   async matriks(plantId?: number): Promise<{
     proses: readonly ProcessType[];
+    /** Nama tiap proses untuk kepala kolom — layar tidak lagi punya petanya. */
+    label: Record<string, string>;
     /** Proses yang lininya menghasilkan finish good — dipakai layar menandainya. */
     finishGood: readonly ProcessType[];
     /** plantId -> processType -> push SAP aktif. Dari TM_ROUTE_PROCESS. */
@@ -83,9 +89,10 @@ export class RoutingService {
       )
       .orderBy(plants.code, parts.project, parts.partNumber);
 
-    const finishGood = PROCESS_TYPES.filter(menghasilkanFinishGood);
+    const katalog = await this.processTypes.katalog();
+    const finishGood = katalog.kode.filter((p: string) => katalog.menghasilkanFinishGood(p));
     if (daftarPart.length === 0) {
-      return { proses: PROCESS_TYPES, finishGood, sapAktif: {}, prosesTerdaftar: {}, prosesTakTerdaftar: {}, baris: [] };
+      return { proses: katalog.kode, label: Object.fromEntries(katalog.daftar.map((j) => [j.code, j.label])), finishGood, sapAktif: {}, prosesTerdaftar: {}, prosesTakTerdaftar: {}, baris: [] };
     }
 
     const langkah = await this.db
@@ -177,7 +184,8 @@ export class RoutingService {
     }
 
     return {
-      proses: PROCESS_TYPES,
+      proses: katalog.kode,
+      label: Object.fromEntries(katalog.daftar.map((j) => [j.code, j.label])),
       finishGood,
       sapAktif,
       prosesTerdaftar,
@@ -188,6 +196,7 @@ export class RoutingService {
           ...p,
           rute,
           masalah: periksaRute(
+            katalog,
             Object.entries(rute).map(([processType, seqNo]) => ({
               processType: processType as ProcessType,
               seqNo,
@@ -217,12 +226,13 @@ export class RoutingService {
       .limit(1);
     if (!part) throw new BadRequestException(`Part id=${partId} tidak ditemukan`);
 
+    const katalog = await this.processTypes.katalog();
     const unik = [...new Set(proses)];
     if (unik.length !== proses.length) {
       throw new BadRequestException('Satu proses tidak boleh muncul dua kali dalam satu rute');
     }
     for (const p of unik) {
-      if (!PROCESS_TYPES.includes(p)) {
+      if (!katalog.cari(p)) {
         throw new BadRequestException(`Jenis proses "${p}" tidak dikenal`);
       }
 
@@ -272,7 +282,10 @@ export class RoutingService {
      * proses kembar, proses tak dikenal, dan proses yang belum terdaftar di
      * master Rute Proses pabrik itu.
      */
-    const masalah = periksaRute(unik.map((processType, i) => ({ processType, seqNo: (i + 1) * 10 })));
+    const masalah = periksaRute(
+      katalog,
+      unik.map((processType, i) => ({ processType, seqNo: (i + 1) * 10 })),
+    );
 
     /*
      * ── Langkah yang lininya ada di PABRIK LAIN ───────────────────────────────

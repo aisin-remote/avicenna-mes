@@ -114,6 +114,8 @@ export const GOODS_MOVEMENT = {
     user: 'CHR_USER',
     npk: 'CHR_NPK',
     ip: 'CHR_IP',
+    /** Penanda siap dijemput SAP. Tanpa ini barisnya dilewati — lihat FLAG.validasi. */
+    validate: 'CHR_VALIDATE',
     tanggalEntry: 'CHR_DATE_ENTRY',
     jamEntry: 'CHR_TIME_ENTRY',
   },
@@ -161,7 +163,13 @@ export const PRODUCTION_RESULT = {
      * diketahui setelah INSERT berhasil.
      */
     woNumber: 'CHR_WO_NUMBER',
-    /** Langkah proses menurut SAP (TM_PROCESS_PARTS.CHR_PV). */
+    /**
+     * Production Version — pasangan BOM dan Rate Routing yang dipakai, BUKAN
+     * nomor urut langkah. Terbukti dari data AII: ada part yang baris
+     * satu-satunya bernilai 0002, yang mustahil bila ini urutan langkah.
+     * Diisi dari TM_PARTS.CHR_PRODUCTION_VERSION, dan dibiarkan kosong bila
+     * part-nya belum punya versi.
+     */
     pv: 'CHR_PV',
     tanggal: 'CHR_DATE',
     bulan: 'INT_BULAN',
@@ -175,15 +183,47 @@ export const PRODUCTION_RESULT = {
     qtyOk: 'INT_QTY_OK',
     qtyTotal: 'INT_TOTAL_QTY',
     qtyActual: 'INT_ACTUAL',
+    /*
+     * Keenam kolom NG. Pada data AII SEMUANYA bernilai 0 — bukan NULL — jadi
+     * keenamnya kita tulis 0 juga: baris kita sebaiknya tidak bisa dibedakan
+     * dari baris mereka, dan nilai 0 tidak pernah mengejutkan penjumlahan di
+     * layar siapa pun seperti NULL bisa.
+     *
+     * Yang DIBACA penjemput hanya INT_TOTAL_NG; rinciannya milik MES.
+     */
     ngProcess: 'INT_NG_PRC',
+    ngBrokenTest: 'INT_NG_BRKNTEST',
+    ngSetup: 'INT_NG_SETUP',
+    ngTrial: 'INT_NG_TRIAL',
+    ngOthers: 'INT_NG_OTHERS',
     ngTotal: 'INT_TOTAL_NG',
     tanggalEntry: 'CHR_DATE_ENTRY',
     jamEntry: 'CHR_TIME_ENTRY',
     user: 'CHR_USER',
+    /** Penanda siap dijemput SAP. Tanpa ini barisnya dilewati — lihat FLAG.validasi. */
+    validate: 'CHR_VALIDATE',
     status: 'CHR_STATUS',
     upload: 'CHR_UPLOAD',
     pesan: 'CHR_MESSAGE',
     matdoc: 'CHR_MATDOC',
+
+    /*
+     * ── Jalur NG, terpisah sepenuhnya ──────────────────────────────────────
+     *
+     * NG dibukukan function module SENDIRI (ZFM_WDE_PROD_RESULT_NG) dari baris
+     * yang SAMA, dipicu INT_TOTAL_NG <> 0, dan menghasilkan dokumen material
+     * sendiri. Karena itu statusnya, pesannya, dan nomor dokumennya pun kolom
+     * terpisah — satu baris bisa berhasil di sisi OK dan gagal di sisi NG.
+     *
+     * Kolom-kolomnya sudah dipetakan; yang belum ada adalah model status ganda
+     * di outbox kita, jadi balasannya belum dibaca.
+     */
+    statusNg: 'CHR_STATUS_NG',
+    pesanNg: 'CHR_MESSAGE_NG',
+    matdocNg: 'CHR_MATDOC_NG',
+    /** Kuantitas revisi; penjemput mengirim INT_TOTAL_QTY dikurangi nilai ini. */
+    qtyRev: 'INT_TOTAL_QTY_REV',
+    ngTotalRev: 'INT_TOTAL_NG_REV',
   },
 } as const;
 
@@ -304,19 +344,258 @@ export const PARTS_SLOC = {
 } as const;
 
 /**
- * Nilai flag.
+ * Nilai flag — TERBUKTI dari kode penjemput AII, dibaca 26 Oktober 2026.
  *
- * BELUM DIKONFIRMASI. Kolomnya sudah pasti ada (CHR_STATUS, CHR_UPLOAD,
- * CHR_ERROR_FLAG_R3), tetapi huruf apa yang berarti berhasil dan apa yang
- * berarti gagal harus ditanyakan ke tim SAP — atau dibaca dari baris yang sudah
- * pernah diproses. Salah menebaknya membuat dokumen yang sebenarnya sudah
- * selesai terlihat menggantung selamanya, dan tidak ada yang akan menyadarinya.
+ * Sumbernya empat program VB.NET yang menjemput tabel-tabel ini
+ * (`VB for Prod Result`, `VB for Move PP`, `VB for Move SD`, `VB for GR`),
+ * ditambah DEFAULT pada DDL staging AII. Jadi ini bukan lagi tafsir dari data
+ * contoh: nilainya terbaca langsung dari `WHERE` yang menyaring baris kita.
+ *
+ * ── CHR_VALIDATE = 'X' adalah gerbangnya ───────────────────────────────────
+ *
+ * Ketiga program goods movement dan program hasil produksi SEMUANYA memuat
+ * `CHR_VALIDATE = 'X'` di dalam `WHERE`-nya, sedangkan DDL-nya ber-DEFAULT
+ * blank (goods movement) atau NULL (hasil produksi). Baris yang dibiarkan pada
+ * nilai bawaannya karena itu tidak pernah terjemput, dan tidak ada galat apa
+ * pun yang muncul.
+ *
+ * ── CHR_STATUS memuat MESSAGE TYPE ABAP, bukan dua nilai ───────────────────
+ *
+ * Program hasil produksi menulis `CHR_STATUS = M_TYPE` dengan M_TYPE diambil
+ * dari export parameter `CHR_TYPE` milik function module-nya — yaitu message
+ * type ABAP. Jadi nilainya lebih dari dua: S berhasil, E galat, W peringatan,
+ * A abort, I informasi. Ditambah dua nilai milik middleware: '5' ditulis
+ * SEBELUM Invoke sebagai penanda sedang-terbang, dan 'R' menandai baris yang
+ * direvisi dan akan didorong ulang sebesar nettonya.
+ *
+ * Karena itu satu-satunya uji yang benar adalah `= 'S'` untuk berhasil —
+ * lihat tafsirStatus(). Menguji `= 'E'` untuk gagal akan membaca peringatan,
+ * abort, DAN baris yang masih terbang sebagai berhasil.
  */
 export const FLAG = {
-  baru: env('STAGING_FLAG_NEW', 'N'),
+  /**
+   * CHR_VALIDATE — satu-satunya gerbang penjemput.
+   *
+   * Dipakai di seluruh tabel. Tanpa ini barisnya tidak pernah dibaca SAP.
+   */
+  validasi: env('STAGING_FLAG_VALIDATE', 'X'),
+
+  /** CHR_STATUS berhasil. Satu-satunya nilai yang berarti selesai. */
   berhasil: env('STAGING_FLAG_OK', 'S'),
+
+  /**
+   * CHR_STATUS galat.
+   *
+   * Dipertahankan untuk pesan dan laporan, TETAPI bukan dasar keputusan:
+   * keputusannya diambil tafsirStatus(), yang memperlakukan apa pun selain
+   * `berhasil` dan nilai-nilai `sedangJalan` sebagai gagal. Message type ABAP
+   * lain (W, A) karena itu tidak lolos sebagai berhasil.
+   */
   gagal: env('STAGING_FLAG_ERROR', 'E'),
+
+  /**
+   * Nilai CHR_STATUS yang berarti "belum selesai, jangan simpulkan apa pun".
+   *
+   *   '-'  nilai awal TT_PRODUCTION_RESULT (DEFAULT di DDL)
+   *   'N'  nilai awal TT_GOODS_MOVEMENT_L (DEFAULT di DDL), dan disyaratkan
+   *        `WHERE` jalur STNG
+   *   '0'  nilai awal CHR_STATUS_NG. Tanpa ini, jalur NG yang belum disentuh
+   *        SAP akan terbaca GAGAL begitu kolomnya mulai kita baca — kolomnya
+   *        sudah kita TULIS '0', jadi perangkapnya sudah terpasang sekarang.
+   *   '5'  ditulis middleware sebelum memanggil RFC — dokumennya sedang terbang
+   *   'R'  baris direvisi; middleware akan mendorongnya ulang
+   */
+  sedangJalan: ['-', 'N', '0', '5', 'R'] as readonly string[],
+
+  /** Nilai awal CHR_STATUS lama. Dipertahankan untuk membaca data lama. */
+  baru: env('STAGING_FLAG_NEW', 'N'),
+  belum: env('STAGING_FLAG_PENDING', '-'),
 } as const;
+
+/**
+ * Keadaan AWAL yang harus kita tulis, per tabel.
+ *
+ * Nilainya berbeda antar tabel, dan itu bukan kebetulan — DDL staging
+ * menyimpannya sebagai DEFAULT masing-masing, dan `WHERE` penjemputnya
+ * mensyaratkan nilai itu:
+ *
+ *   TT_PRODUCTION_RESULT    CHR_STATUS DEFAULT '-'   CHR_UPLOAD DEFAULT NULL
+ *   TT_GOODS_MOVEMENT_L     CHR_STATUS DEFAULT 'N'   CHR_UPLOAD DEFAULT '0'
+ *   TT_PURCHASE_RECEIPT_H   —                        CHR_UPLOAD DEFAULT '0'
+ *
+ * `CHR_UPLOAD = '0'` disyaratkan KETIGA program goods movement sekaligus
+ * program penerimaan barang. Menulis '-' ke sana — yang pernah kita lakukan —
+ * membuat seluruh dokumen perpindahan tersaring habis tanpa jejak.
+ *
+ * Nilainya ditulis TERSURAT, tidak diserahkan kepada DEFAULT: kolomnya ikut
+ * dalam daftar INSERT kita, dan kolom yang disebut dalam INSERT tidak lagi
+ * mengambil nilai bawaannya.
+ */
+export const AWAL = {
+  produksi: {
+    status: env('STAGING_INIT_STATUS_PRODUCTION', '-'),
+    /** Jalur NG punya statusnya sendiri; nilai awalnya '0', bukan '-'. */
+    statusNg: env('STAGING_INIT_STATUS_NG', '0'),
+    /** Dibiarkan NULL, seperti DEFAULT-nya. Tidak ikut disaring penjemput. */
+    upload: null as string | null,
+  },
+  perpindahan: {
+    status: env('STAGING_INIT_STATUS_MOVEMENT', 'N'),
+    upload: env('STAGING_INIT_UPLOAD_MOVEMENT', '0'),
+  },
+  penerimaan: {
+    upload: env('STAGING_INIT_UPLOAD_RECEIPT', '0'),
+  },
+} as const;
+
+/**
+ * Lebar kolom `char(n)` di staging, menurut DDL-nya.
+ *
+ * ── Kenapa dikumpulkan, bukan ditulis ulang di tiap pemanggilan ────────────
+ *
+ * Angka-angka ini sebelumnya tersebar sebagai literal di dalam potong() dan
+ * wajibMuat(). Salah satu di antaranya cukup untuk membuat INSERT ditolak
+ * ("String or binary data would be truncated") atau — lebih buruk — nilai yang
+ * terpotong diam-diam. Dengan dikumpulkan, kolom yang lebarnya belum dicatat
+ * menjadi GALAT COMPILER di tempat pemakaiannya, bukan kejutan saat berjalan.
+ *
+ * Perhatikan CHR_PLANT: char(3) di TT_GOODS_MOVEMENT_H tetapi char(4) di
+ * TT_PRODUCTION_RESULT. Karena itu petanya per tabel, bukan per nama kolom.
+ */
+export const LEBAR = {
+  produksi: {
+    CHR_WO_NUMBER: 30,
+    /** char(10), tetapi isinya YYYYMMDD — lihat catatan formatnya di pendorong. */
+    CHR_DATE: 10,
+    CHR_PV: 4,
+    CHR_PLANT: 4,
+    CHR_WORK_CENTER: 10,
+    CHR_PART_NO: 18,
+    CHR_BACK_NO: 4,
+    CHR_PART_NAME: 40,
+    CHR_UOM: 3,
+    CHR_USER: 50,
+    CHR_DATE_ENTRY: 8,
+    CHR_TIME_ENTRY: 6,
+    CHR_VALIDATE: 1,
+    CHR_STATUS: 1,
+    CHR_STATUS_NG: 1,
+    CHR_UPLOAD: 1,
+    CHR_MESSAGE: 220,
+    CHR_MESSAGE_NG: 520,
+    CHR_MATDOC: 10,
+    CHR_MATDOC_NG: 10,
+  },
+  gmKepala: {
+    CHR_PLANT: 3,
+    CHR_DATE: 8,
+    CHR_TYPE_TRANS: 4,
+    CHR_REMARKS: 25,
+    CHR_DOCUMENT_DATE: 8,
+    CHR_MVMT_TYPE: 3,
+    CHR_VENDOR_NAME: 10,
+    CHR_IP: 20,
+    CHR_USER: 12,
+    CHR_NPK: 6,
+    CHR_VALIDATE: 1,
+    CHR_DATE_ENTRY: 8,
+    CHR_TIME_ENTRY: 6,
+  },
+  gmBaris: {
+    CHR_PART_NO: 18,
+    CHR_PART_NAME: 40,
+    CHR_SLOC_FROM: 4,
+    CHR_SLOC_TO: 4,
+    CHR_UOM: 3,
+    CHR_BACK_NO: 4,
+    CHR_SER_NO: 20,
+    CHR_MVMT_TYPE_L: 3,
+    CHR_TYPE_TRANS_L: 4,
+    CHR_STATUS: 1,
+    CHR_UPLOAD: 1,
+    CHR_MESSAGE: 220,
+    CHR_MATDOC: 10,
+    CHR_MATDOC_YEAR: 4,
+    CHR_DATE_ENTRY: 8,
+    CHR_TIME_ENTRY: 6,
+  },
+} as const;
+
+/** Kesimpulan atas CHR_STATUS sebuah baris staging. */
+export type TafsirStatus = 'MENUNGGU' | 'BERHASIL' | 'GAGAL';
+
+/**
+ * Menafsirkan CHR_STATUS.
+ *
+ * Hanya `FLAG.berhasil` yang berarti selesai. Nilai kosong dan seluruh
+ * `FLAG.sedangJalan` berarti belum ada kesimpulan. SISANYA gagal — termasuk
+ * message type ABAP yang tidak kita duga, sebab menganggapnya berhasil berarti
+ * dokumen ditutup tanpa nomor dokumen material, dan itu kehilangan yang tidak
+ * terlihat.
+ */
+export function tafsirStatus(raw: unknown): TafsirStatus {
+  const nilai = bersih(raw);
+  if (!nilai) return 'MENUNGGU';
+  const atas = nilai.toUpperCase();
+  if (atas === FLAG.berhasil.toUpperCase()) return 'BERHASIL';
+  if (FLAG.sedangJalan.some((s) => s.toUpperCase() === atas)) return 'MENUNGGU';
+  return 'GAGAL';
+}
+
+/**
+ * CHR_TYPE_TRANS — kunci yang memilih function module di sisi SAP.
+ *
+ * ── Kenapa ini bukan sekadar label ─────────────────────────────────────────
+ *
+ * Program penjemput memakainya DUA KALI. Pertama di `WHERE`, untuk memutuskan
+ * baris mana yang menjadi tanggung jawabnya; lalu di rantai `If/ElseIf`, untuk
+ * memilih function module yang dipanggil:
+ *
+ *   SUBC RTRN STLT VCLM CKIP        ZZBAPI_GOODSMVT_CREATE  (ZTAB, ZCODE 04)
+ *   FGDL DLFG                       ZZBAPI_AIIECC_SD00001
+ *   NOFG NODL                       ZZBAPI_AIIECC_SD00004
+ *   selain itu                      ZZBAPI_AIIECC_PP00010
+ *
+ * Kosakata lengkapnya terbagi di antara tiga build yang masing-masing menjemput
+ * sebagiannya: STRM RERM STNG (PP) · FGDL DLFG NOFG NODL DLGD DLRP DLCL GDDL
+ * RPDL CLDL (SD) · SUBC RTRN STLT VCLM CKIP (GR).
+ *
+ * Bentuknya pasangan arah empat huruf — DLGD dan GDDL, DLRP dan RPDL — jadi
+ * dua huruf pertama asal dan dua huruf terakhir tujuan.
+ *
+ * ── Kenapa yang tidak terpeta DITAHAN, bukan dikirim apa adanya ────────────
+ *
+ * Nilai yang tidak dikenal TIDAK ditolak SAP; ia tersaring di `WHERE` dan
+ * barisnya duduk diam di staging. Di layar pemantauan itu terbaca SENT
+ * selamanya, sebab SENT memang berarti "sudah di staging, menunggu SAP".
+ * Menahan dokumennya dengan sebab yang tertulis adalah satu-satunya kegagalan
+ * yang bisa dilihat orang.
+ */
+export const TYPE_TRANS: Record<string, string | null> = {
+  /*
+   * Perpindahan antar SLOC produksi. STRM terbaca sebagai stock movement untuk
+   * Repetitive Manufacturing — sejalan dengan REM Profile Z001 di blueprint.
+   *
+   * STNG dipakai AII untuk menarik barang jadi ke SLOC staging sebelum truk
+   * (PP04). AIIA belum punya padanan PP04, dan dokumen FG→ST kita memang masih
+   * dilewati; kalau SLOC itu nanti ada, nilainya STNG, bukan STRM.
+   */
+  TRANSFER: env('STAGING_TYPE_TRANS_TRANSFER', 'STRM'),
+
+  /*
+   * Hasil produksi tidak lewat TT_GOODS_MOVEMENT — tabelnya
+   * TT_PRODUCTION_RESULT, yang tidak punya kolom ini.
+   */
+  PRODUCTION: null,
+};
+
+/**
+ * Nilai CHR_TYPE_TRANS sebuah jenis dokumen, atau `undefined` bila belum
+ * diputuskan. `null` berarti jenis dokumen itu memang tidak memakai kolom ini.
+ */
+export function typeTransUntuk(docType: string): string | null | undefined {
+  return docType in TYPE_TRANS ? TYPE_TRANS[docType] : undefined;
+}
 
 /**
  * Tabel master yang DITARIK dari staging.

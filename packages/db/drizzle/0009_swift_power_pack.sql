@@ -1,0 +1,1 @@
+ALTER TABLE "production"."TM_STOP_REASON" ADD COLUMN "CHR_COLOR" varchar(9);

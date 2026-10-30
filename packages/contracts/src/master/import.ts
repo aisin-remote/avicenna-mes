@@ -49,6 +49,8 @@ export const KUNCI_ALAMI: Record<MasterEntity, KunciAlami> = {
   machines: { kolom: 'code', perPabrik: true },
   toolings: { kolom: 'code', perPabrik: true },
   'ng-masters': { kolom: 'code', perPabrik: true },
+  // Kosakata seluruh sistem, bukan milik satu pabrik.
+  'process-types': { kolom: 'code', perPabrik: false },
   'program-numbers': { kolom: 'code', perPabrik: true },
   // Satu baris per proses per pabrik — prosesnya sendiri yang jadi kunci.
   'route-processes': { kolom: 'processType', perPabrik: true },

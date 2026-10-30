@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import {
+  bacaKatalogProses,
   getDb,
   closeDb,
   deliveries,
@@ -243,7 +244,10 @@ async function main() {
       const history = await service.history(a.id);
       assert(history.scans.some((e) => (e.meta as any)?.action === 'DRIVER_SCAN'));
       assert(history.movements.some((e) => e.type === 'DELIVERY_OUT'));
-      const sim = new SapOutboxService(scoped);
+      const sim = new SapOutboxService(scoped, {
+        katalog: () => bacaKatalogProses(scoped, { termasukNonaktif: true }),
+        segarkan: () => undefined,
+      } as never);
       await assert.rejects(
         sim.simulateDelivery(flow.steps[0]!.id, 'PENDING'),
         /tidak dapat di-reset/,

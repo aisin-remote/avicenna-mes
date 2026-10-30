@@ -5,7 +5,9 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, AlertCircle, Check } from 'lucide-react';
+import { nadaTombol } from '@avicenna/contracts';
 import type { EntityDef, FieldDef, MasterEntity } from '@avicenna/contracts';
+
 import { saveMasterAction, type FormState } from '@/app/(app)/master/actions';
 import { useToast } from '../ui/toast';
 import { useHasilAksi } from '../ui/use-hasil-aksi';
@@ -15,6 +17,18 @@ import { cn } from '../ui/cn';
 
 export type RefOption = { value: number; label: string; short?: string; plantId?: number | null };
 export type RefOptions = Record<string, RefOption[]>;
+
+/**
+ * Pilihan untuk kolom yang daftarnya HIDUP di master lain sambil menyimpan
+ * KODE, bukan id — sejauh ini hanya jenis proses.
+ *
+ * Terpisah dari RefOptions karena `RefOption.value` bertipe angka: kolom
+ * seperti ini menyimpan teks, dan memaksanya masuk ke bentuk yang sama akan
+ * membuat id dan kode tertukar tanpa ada yang menolak.
+ *
+ * Kuncinya nama entitas sumbernya, sama seperti `optionsFrom` di registry.
+ */
+export type PilihanDariMaster = Record<string, Array<{ value: string; label: string }>>;
 
 const initial: FormState = {};
 
@@ -41,6 +55,7 @@ export function MasterForm({
   entity,
   row,
   options,
+  pilihanDariMaster,
   open,
   onClose,
 }: {
@@ -48,6 +63,7 @@ export function MasterForm({
   entity: MasterEntity;
   row?: (Record<string, unknown> & { id: number }) | null;
   options: RefOptions;
+  pilihanDariMaster?: PilihanDariMaster;
   open: boolean;
   onClose: () => void;
 }) {
@@ -61,9 +77,7 @@ export function MasterForm({
    * menolak referensi lintas pabrik — saringan ini supaya orang tidak sampai
    * ke penolakan itu.
    */
-  const [plantId, setPlantId] = useState<string>(
-    row?.plantId == null ? '' : String(row.plantId),
-  );
+  const [plantId, setPlantId] = useState<string>(row?.plantId == null ? '' : String(row.plantId));
   const toast = useToast();
   const router = useRouter();
   const titleId = useId();
@@ -177,13 +191,15 @@ export function MasterForm({
               <input type="hidden" name="__id" value={row?.id ?? ''} />
 
               <div className="scroll-slim flex-1 space-y-5 overflow-y-auto px-6 py-6">
-
                 {def.fields.map((field) => (
                   <Field
                     key={field.name}
                     field={field}
                     value={row?.[field.name]}
                     options={saringPerPabrik(options[field.refEntity ?? ''] ?? [], plantId)}
+                    dariMaster={
+                      field.optionsFrom ? pilihanDariMaster?.[field.optionsFrom] : undefined
+                    }
                     error={state.fieldErrors?.[field.name]}
                     tergantungPabrik={
                       field.kind === 'reference' &&
@@ -235,6 +251,67 @@ const inputClass =
   'h-11 w-full rounded-2xl border border-line bg-surface px-4 text-[15px] outline-none transition-colors duration-200 focus:border-line-strong focus:bg-card';
 
 /**
+ * Pemilih warna: kotak color picker + kolom hex yang bisa diketik.
+ *
+ * ── Kenapa dua-duanya, bukan picker saja ────────────────────────────────────
+ *
+ * Picker bawaan browser bagus untuk MEMILIH, tetapi tidak bisa ditempel. Warna
+ * pabrik biasanya sudah ada kodenya di standar visual perusahaan, dan orang
+ * yang memegang kode itu akan menempelnya — bukan mencari-cari nuansa yang
+ * sama di roda warna. Keduanya menulis ke satu nilai, jadi mengubah salah satu
+ * langsung terlihat di yang lain.
+ *
+ * Nilai yang dikirim ke server datang dari kolom teks (yang tersembunyi dari
+ * sisi picker), karena di situlah bentuk `#RRGGBB` dijaga — picker selalu
+ * mengirim bentuk itu, ketikan orang belum tentu.
+ */
+function PilihWarna({ id, name, awal }: { id: string; name: string; awal: string }) {
+  const [warna, setWarna] = useState(awal);
+  const sah = /^#[0-9a-fA-F]{6}$/.test(warna);
+
+  return (
+    <div className="flex items-center gap-3">
+      <input
+        id={id}
+        type="color"
+        aria-label="Pilih warna"
+        value={sah ? warna : '#DC2626'}
+        onChange={(e) => setWarna(e.target.value.toUpperCase())}
+        className="size-11 shrink-0 cursor-pointer rounded-2xl border border-line bg-surface p-1"
+      />
+      <input
+        type="text"
+        name={name}
+        value={warna}
+        onChange={(e) => setWarna(e.target.value.toUpperCase())}
+        placeholder="#DC2626"
+        spellCheck={false}
+        className={cn(inputClass, 'tabular flex-1 uppercase')}
+      />
+      {/* Contoh tombolnya, bukan sekadar kotak warna: yang ingin dilihat orang
+          adalah apakah TULISANNYA terbaca, dan itu hanya terlihat kalau
+          contohnya berbentuk tombol yang sebenarnya. */}
+      <ContohTombol warna={sah ? warna : null} />
+    </div>
+  );
+}
+
+function ContohTombol({ warna }: { warna: string | null }) {
+  const nada = nadaTombol(warna);
+  return (
+    <span
+      aria-hidden
+      className="inline-flex h-11 shrink-0 items-center rounded-2xl border px-4 text-[13px] font-bold uppercase tracking-wide"
+      style={
+        nada ? { backgroundColor: nada.bg, borderColor: nada.border, color: nada.teks } : undefined
+      }
+    >
+      Contoh
+    </span>
+  );
+}
+
+/**
  * Pilihan yang boleh ditawarkan untuk pabrik yang sedang dipilih.
  *
  * Pilihan tanpa pabrik (customer, supplier) selalu lolos. Kalau pabrik belum
@@ -251,6 +328,7 @@ function Field({
   field,
   value,
   options,
+  dariMaster,
   error,
   tergantungPabrik = false,
   onChange,
@@ -258,6 +336,8 @@ function Field({
   field: FieldDef;
   value: unknown;
   options: RefOption[];
+  /** Pilihan untuk kolom `optionsFrom`; kosong berarti kolomnya bukan jenis itu. */
+  dariMaster?: Array<{ value: string; label: string }>;
   error?: string;
   /** Pilihannya per pabrik tetapi pabrik belum dipilih — kunci dulu. */
   tergantungPabrik?: boolean;
@@ -331,12 +411,28 @@ function Field({
           className={inputClass}
         >
           <option value="">— pilih —</option>
-          {(field.options ?? []).map((o) => (
-            <option key={o} value={o}>
-              {field.optionLabels?.[o] ?? o}
+          {/* Kolom `optionsFrom` tidak punya daftar tetap di registry: daftarnya
+              diambil dari master sumbernya dan diteruskan ke sini. Tanpa ini
+              dropdown-nya hanya berisi "— pilih —". */}
+          {(
+            dariMaster ??
+            (field.options ?? []).map((o) => ({ value: o, label: field.optionLabels?.[o] ?? o }))
+          ).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>
+      ) : field.kind === 'color' ? (
+        <PilihWarna
+          id={id}
+          name={field.name}
+          awal={
+            value === undefined || value === null || value === ''
+              ? ((field.defaultValue as string | undefined) ?? '#DC2626')
+              : String(value)
+          }
+        />
       ) : field.kind === 'reference' ? (
         <select
           id={id}

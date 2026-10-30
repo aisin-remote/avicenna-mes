@@ -9,7 +9,7 @@
     "staging:compare": "tsx src/staging/compare.ts",
     "staging:introspect": "tsx src/staging/introspect.ts",
     "start": "node dist/main.js",
-    "test": "tsx src/staging/staging-normalization.test.ts && tsx src/loading/loading-sync-status.test.ts && tsx src/loading/delivery-order.test.ts && tsx src/receiving/receiving-list.test.ts && tsx src/auth/auth-landing.test.ts",
+    "test": "tsx src/staging/staging-normalization.test.ts && tsx src/staging/staging-flags.test.ts && tsx src/loading/loading-sync-status.test.ts && tsx src/loading/delivery-order.test.ts && tsx src/receiving/receiving-list.test.ts && tsx src/auth/auth-landing.test.ts && tsx src/master/master-filter.test.ts && tsx src/setting/setting.test.ts && tsx src/master/warna.test.ts",
     "test:delivery-trial": "tsx src/loading/loading.integration-check.ts",
     "test:delivery-documents": "tsx src/loading/delivery-documents.integration-check.ts",
     "test:driver-attendance": "tsx src/loading/driver-attendance.integration-check.ts",
@@ -17,6 +17,7 @@
     "test:delivery-order": "tsx src/loading/delivery-order.test.ts && tsx src/loading/delivery-order.integration-check.ts",
     "test:receiving-trial": "tsx src/receiving/receiving.integration-check.ts",
     "test:preparation": "tsx src/preparation/preparation.integration-check.ts",
+    "test:staging-trial": "tsx src/staging/staging.integration-check.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

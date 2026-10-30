@@ -6,6 +6,7 @@ import { QUEUES, JOBS } from '../queue/queue.constants';
 import { SapOutboxService } from './sap-outbox.service';
 import { StagingPushService } from '../staging/staging-push.service';
 import { StagingPullService } from '../staging/staging-pull.service';
+import { SettingService } from '../setting/setting.service';
 
 /** Sesering apa perpindahan barang dikumpulkan, didorong, dan dicek balasannya. */
 const POLA_TRANSAKSI = '* * * * *';
@@ -53,6 +54,7 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
     private readonly outbox: SapOutboxService,
     private readonly push: StagingPushService,
     private readonly pull: StagingPullService,
+    private readonly setting: SettingService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -71,11 +73,34 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
             return this.push.dorong();
           case JOBS.ACK_SAP_STAGING:
             return this.push.ambilBalasan();
-          case JOBS.PULL_SAP_MASTER:
-            // Sungguhan, bukan uji coba — saklarnya sendiri yang menjaga.
+          case JOBS.PULL_SAP_MASTER: {
+            /*
+             * Dua gerbang, dan keduanya diperiksa SAAT JOB JALAN — bukan saat
+             * menjadwalkannya.
+             *
+             * Saklarnya bisa digeser dari layar Pengaturan kapan saja. Kalau
+             * yang memutuskan adalah keadaan pada saat boot, menyalakan tarik
+             * dari layar tidak akan berpengaruh sampai API di-restart, dan
+             * layar akan menunjukkan saklar menyala sementara tidak ada yang
+             * tertarik.
+             *
+             * Keluar diam-diam, tanpa mencatat apa pun: job ini berjalan 96
+             * kali sehari, dan 96 baris log "dilewati" per hari mengubur
+             * kejadian yang benar-benar perlu dibaca.
+             */
+            if (!this.pull.aktif) return { dilewati: 'tarik master belum dinyalakan' };
+            if (!this.setting.aktifSekarang('STAGING_PULL_SCHEDULED')) {
+              return { dilewati: 'tarik master berkala dimatikan — tinggal tombol manual' };
+            }
             return this.pull.tarikSemua(false);
-          case JOBS.PULL_SAP_DELIVERIES:
+          }
+          case JOBS.PULL_SAP_DELIVERIES: {
+            /* Delivery TIDAK ikut gerbang berkala: rencana pengiriman berubah
+               selama hari berjalan, dan menariknya manual berarti ada yang
+               harus mengingat untuk menekan tombol tiap beberapa jam. */
+            if (!this.pull.aktif) return { dilewati: 'tarik belum dinyalakan' };
             return this.pull.tarikPengiriman(new Date(), false);
+          }
           default:
             return undefined;
         }
@@ -89,34 +114,31 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
 
     // upsertJobScheduler bersifat idempoten: restart tidak menghasilkan
     // jadwal kedua yang berjalan paralel.
-    for (const name of [
-      JOBS.COLLECT_SAP_OUTBOX,
-      JOBS.FLUSH_SAP_OUTBOX,
-      JOBS.ACK_SAP_STAGING,
-    ]) {
+    for (const name of [JOBS.COLLECT_SAP_OUTBOX, JOBS.FLUSH_SAP_OUTBOX, JOBS.ACK_SAP_STAGING]) {
       await this.queue.addRepeating(QUEUES.SYNC, name, {}, POLA_TRANSAKSI);
     }
     /*
-     * Tarik master hanya dijadwalkan bila memang aktif.
+     * Dijadwalkan TANPA SYARAT, gerbangnya ada di dalam handler.
      *
-     * Menjadwalkannya saat mati berarti job yang tidak mengerjakan apa pun
-     * berjalan 96 kali sehari, dan catatannya memenuhi log dengan keadaan yang
-     * tidak bisa diperbaiki siapa pun sampai konfigurasinya masuk. Menyalakan
-     * saklarnya perlu restart — sama seperti perubahan .env lainnya.
+     * Dulu penjadwalannya bergantung pada saklar saat boot, supaya job yang
+     * mati tidak berjalan sia-sia. Itu benar selama saklarnya hanya bisa
+     * diubah di .env. Sejak bisa digeser dari layar Pengaturan, syarat di sini
+     * berarti menyalakan tarik tidak berpengaruh sampai API di-restart — dan
+     * saklar yang tampak menyala padahal belum berlaku adalah cara tercepat
+     * membuat orang tidak percaya pada layar itu.
+     *
+     * Biaya job yang keluar lebih awal hampir nol: satu pemeriksaan boolean di
+     * memori, tanpa menyentuh database maupun SQL Server.
      */
-    if (this.pull.aktif) {
-      await this.queue.addRepeating(QUEUES.SYNC, JOBS.PULL_SAP_MASTER, {}, POLA_MASTER);
-      await this.queue.addRepeating(
-        QUEUES.SYNC,
-        JOBS.PULL_SAP_DELIVERIES,
-        {},
-        POLA_PENGIRIMAN,
-      );
-    }
+    await this.queue.addRepeating(QUEUES.SYNC, JOBS.PULL_SAP_MASTER, {}, POLA_MASTER);
+    await this.queue.addRepeating(QUEUES.SYNC, JOBS.PULL_SAP_DELIVERIES, {}, POLA_PENGIRIMAN);
 
     const bagian: string[] = ['pengumpul outbox SAP berjalan tiap menit'];
     if (!this.push.aktif) bagian.push('dorong ke staging belum dinyalakan');
     if (!this.pull.aktif) bagian.push('tarik master/pengiriman belum dinyalakan');
+    else if (!this.setting.aktifSekarang('STAGING_PULL_SCHEDULED')) {
+      bagian.push('tarik master hanya manual, pengiriman tiap 5 menit');
+    }
     this.logger.log(bagian.join(' — '));
   }
 

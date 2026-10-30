@@ -8,11 +8,15 @@ import { scanInputSchema, scanBatchSchema,
 } from '@avicenna/contracts';
 import type { ScanInput, ScanBatchInput } from '@avicenna/contracts';
 import { ScanService } from './scan.service';
+import { PapanService } from './papan.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 
 @Controller('scan')
 export class ScanController {
-  constructor(private readonly scan: ScanService) {}
+  constructor(
+    private readonly scan: ScanService,
+    private readonly papanService: PapanService,
+  ) {}
 
   /** Lini pada sebuah grup proses — isi modal pemilih lini. */
   @Get('proses/:grup/lines')
@@ -103,6 +107,17 @@ export class ScanController {
   }
 
   /** Identitas line, hitungan hari ini, dan scan terakhir — untuk memuat layar. */
+  /**
+   * Papan perintah kerja lini FG — antrean rencana, bukan riwayat scan.
+   *
+   * Terpisah dari `summary` karena pembacanya berbeda: `summary` mengisi kotak
+   * scan operator, papan ini dibaca dari jauh dan menjawab "apa berikutnya".
+   */
+  @Get('papan')
+  async papan(@Query('line') line: string, @Query('limit') limit?: string) {
+    return this.papanService.papan(line, limit ? Number(limit) : 10);
+  }
+
   @Get('summary')
   async summary(@Query('line') line: string, @Query('limit') limit?: string) {
     return this.scan.summary(line, limit ? Number(limit) : 10);

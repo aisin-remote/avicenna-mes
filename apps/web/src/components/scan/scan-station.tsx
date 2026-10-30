@@ -15,6 +15,7 @@ import {
   RefreshCw,
   PackageCheck,
   X,
+  CircleDot,
 } from 'lucide-react';
 import type {
   BerhentiLini,
@@ -24,12 +25,7 @@ import type {
   StationSummary,
   ProcessType,
 } from '@avicenna/contracts';
-import {
-  grupProses,
-  sepertiKanban,
-  sepertiKartuLogin,
-  sepertiNomorPartPolos,
-} from '@avicenna/domain';
+import { sepertiKanban, sepertiKartuLogin, sepertiNomorPartPolos } from '@avicenna/domain';
 import { periksaSampleAction, periksaScanAction, submitScanAction } from '@/app/(app)/scan/actions';
 import { PanelBerhenti } from './panel-berhenti';
 import { PanelFotoPart } from './panel-foto-part';
@@ -176,8 +172,14 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
     setSoundOn(prefs.scanSound);
   }, [prefs.scanSound]);
 
-  /** Grup proses lini ini — dipakai layar NG dan serah terima operator. */
-  const grup = grupProses(summary.line.processType as ProcessType);
+  /*
+   * Grup proses lini ini — dipakai layar NG dan serah terima operator.
+   *
+   * Datang JADI dari server. Dulu disimpulkan di sini lewat grupProses(), dan
+   * itu tidak mungkin lagi: daftar jenis proses hidup di master, bukan di kode
+   * yang ikut terkirim ke browser.
+   */
+  const grup = summary.line.processGroup ?? '';
 
   /*
    * Foto part yang sedang dikerjakan.
@@ -600,6 +602,47 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
             ? 'dup'
             : 'bad';
 
+  /*
+   * Cangkang layar stasiun: kolom berhenti di kiri, sisanya di kanan.
+   *
+   * Dipakai mode OK maupun NG. Kolom berhenti TIDAK boleh ikut hilang saat
+   * operator pindah ke Input NG — mesin bisa rusak kapan saja, termasuk saat
+   * ia sedang mencatat barang reject.
+   */
+  const cangkang = (isi: React.ReactNode) => (
+    <div className="flex h-full min-h-0 flex-col gap-4 lg:flex-row">
+      {/*
+        Di layar sempit kolomnya TURUN ke bawah isi layar, tidak disembunyikan.
+        Terminal di lantai kadang dipasang memanjang ke atas; tombol berhenti
+        yang hilang di lebar tertentu berarti berhenti tidak tercatat pada
+        terminal itu, dan tidak ada yang akan menyadarinya sampai laporan loss
+        time-nya kosong.
+      */}
+      <aside className="order-last shrink-0 lg:order-first lg:w-[250px]">
+        <PanelBerhenti
+          lineCode={summary.line.code}
+          alasan={summary.alasanBerhenti ?? []}
+          berhenti={berhenti}
+          onBerubah={setBerhenti}
+        />
+      </aside>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+          {tab}
+          {/* Penanda bahwa scan yang masuk memang terpantau — bukan hiasan:
+              inilah yang membuat operator percaya angka di laporan datang dari
+              apa yang ia scan. */}
+          <span className="flex items-center gap-1.5 text-[12.5px] text-ink-muted">
+            <CircleDot className="size-3.5" strokeWidth={1.8} aria-hidden />
+            Monitoring scanning produksi
+          </span>
+        </div>
+        {isi}
+      </div>
+    </div>
+  );
+
   const tab = (
     <div className="flex gap-1.5" role="tablist" aria-label="Mode scan">
       <TabMode
@@ -619,14 +662,11 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
   );
 
   if (mode === 'NG') {
-    return (
-      <div className="flex h-full min-h-0 flex-col gap-3">
-        <div className="shrink-0">{tab}</div>
-        {/* Isinya sendiri yang menggulir bila perlu — halamannya tidak. */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <NgInline lineCode={summary.line.code} lineName={summary.line.name} grup={grup} />
-        </div>
-      </div>
+    return cangkang(
+      /* Isinya sendiri yang menggulir bila perlu — halamannya tidak. */
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <NgInline lineCode={summary.line.code} lineName={summary.line.name} grup={grup} />
+      </div>,
     );
   }
 
@@ -639,22 +679,8 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
    * tempat tetap, sisanya diserahkan ke satu area yang memuai — dan HANYA
    * area itu yang boleh menggulir di dalam dirinya sendiri.
    */
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="shrink-0">{tab}</div>
-
-      {/* Tombol berhenti ditaruh DI ATAS kotak scan: saat lini bermasalah,
-          itulah yang dicari operator, dan menaruhnya di bawah daftar riwayat
-          membuat orang menggulir sambil lini diam. */}
-      <div className="shrink-0">
-        <PanelBerhenti
-          lineCode={summary.line.code}
-          alasan={summary.alasanBerhenti ?? []}
-          berhenti={berhenti}
-          onBerubah={setBerhenti}
-        />
-      </div>
-
+  return cangkang(
+    <>
       <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,260px)]">
         {/* ── Input ─────────────────────────────────────────────────────── */}
         {/*
@@ -901,6 +927,13 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
                         ? 'SCAN PART'
                         : 'MENUNGGU SCAN'}
                   </div>
+                  {/* Menyebut APA yang ditunggu. Label besar saja terbaca
+                      sebagai judul panel, bukan sebagai perintah. */}
+                  <p className="text-[14px] text-ink-muted">
+                    {perKanban && !sample
+                      ? 'Scan kartu master sample dulu…'
+                      : 'Menunggu barcode part…'}
+                  </p>
                 </>
               ) : result.status === 'ACCEPTED' ? (
                 <>
@@ -1180,7 +1213,7 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
           )}
         </section>
       </div>
-    </div>
+    </>,
   );
 }
 

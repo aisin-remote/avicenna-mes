@@ -5,17 +5,25 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { and, or, like, eq, asc, desc, count, inArray, sql, type Database } from '@avicenna/db';
-import { getMasterTable, locations } from '@avicenna/db';
+import { getMasterTable, locations, parts } from '@avicenna/db';
 import { sebabGalatDb } from '@avicenna/db';
 import {
   getEntityDef,
   buildCreateSchema,
   buildUpdateSchema,
+  filterFields,
+  tafsirNilaiFilter,
   type MasterEntity,
   type ProcessType,
 } from '@avicenna/contracts';
-import { kelasHasilSap, periksaHasilProduksi, periksaTransferSloc } from '@avicenna/domain';
+import {
+  kelasHasilSap,
+  periksaHasilProduksi,
+  periksaTransferSloc,
+  productionVersionKartu,
+} from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
+import { ProcessTypeService } from './process-type.service';
 import { validationError } from '../common/validation-error';
 
 export interface ListParams {
@@ -24,6 +32,13 @@ export interface ListParams {
   q?: string;
   sort?: string;
   dir?: 'asc' | 'desc';
+  /**
+   * Penyaring per kolom, kunci = nama kolom di definisi master.
+   *
+   * Nilainya apa adanya dari URL; yang menafsirkan dan menolak nama kolom
+   * asing adalah service, bukan pemanggilnya.
+   */
+  filters?: Record<string, string>;
 }
 
 /**
@@ -36,7 +51,10 @@ export interface ListParams {
  */
 @Injectable()
 export class MasterService {
-  constructor(@InjectDb() private readonly db: Database) {}
+  constructor(
+    @InjectDb() private readonly db: Database,
+    private readonly processTypes: ProcessTypeService,
+  ) {}
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private table(entity: MasterEntity): any {
@@ -64,9 +82,45 @@ export class MasterService {
     return parts.length > 0 ? or(...parts) : undefined;
   }
 
+  /**
+   * Syarat penyaring per kolom.
+   *
+   * Hanya kolom yang `filterFields` akui — sama disiplinnya dengan
+   * `sortColumn`: nama kolom dari URL tidak boleh langsung menyentuh query.
+   * Nilai yang tidak masuk akal dibuang, bukan dijadikan syarat yang pasti
+   * tidak cocok, supaya URL karangan tidak menghasilkan tabel kosong yang
+   * tampak seperti datanya hilang.
+   */
+  private filterConditions(entity: MasterEntity, filters?: Record<string, string>) {
+    if (!filters) return [];
+    const def = getEntityDef(entity);
+    const table = this.table(entity);
+    const boleh = new Map(filterFields(def).map((f) => [f.name, f]));
+
+    const syarat = [];
+    for (const [nama, mentah] of Object.entries(filters)) {
+      const field = boleh.get(nama);
+      if (!field) continue;
+      const kolom = table[nama];
+      if (!kolom) continue;
+      const nilai = tafsirNilaiFilter(field, mentah);
+      if (nilai === undefined) continue;
+      syarat.push(eq(kolom, nilai));
+    }
+    return syarat;
+  }
+
   async list(entity: MasterEntity, params: ListParams) {
     const table = this.table(entity);
-    const where = this.searchCondition(entity, params.q);
+    /*
+     * Pencarian dan penyaring digabung dengan AND: mengetik di kotak cari
+     * MENYEMPITKAN hasil yang sudah disaring, bukan menggantinya. Dipakai juga
+     * untuk menghitung total supaya nomor halaman cocok dengan isinya.
+     */
+    const where = and(
+      this.searchCondition(entity, params.q),
+      ...this.filterConditions(entity, params.filters),
+    );
     const order = params.dir === 'desc' ? desc : asc;
     const offset = (params.page - 1) * params.perPage;
 
@@ -283,6 +337,7 @@ export class MasterService {
 
     const proses = nilai<ProcessType>('processType');
     if (!proses) return;
+    const jenis = (await this.processTypes.katalog()).cari(proses);
 
     const menyentuhKeluar = values.outputLocationId !== undefined || barisLama === undefined;
     const menyentuhSap =
@@ -315,7 +370,7 @@ export class MasterService {
      */
     if (keluar && menyentuhKeluar) {
       const keputusan = periksaHasilProduksi({
-        proses,
+        jenis,
         slocKind: keluar.kind,
         slocCode: keluar.code,
       });
@@ -329,8 +384,8 @@ export class MasterService {
       const pushTransfer = Boolean(nilai<boolean>('sapTransferEnabled'));
 
       // Proses tanpa padanan material di SAP tidak bisa punya izin push.
-      if (pushProduksi && kelasHasilSap(proses) === null) {
-        const keputusan = periksaHasilProduksi({ proses, slocKind: keluar?.kind ?? null });
+      if (pushProduksi && kelasHasilSap(jenis?.sapClass ?? 'NONE') === null) {
+        const keputusan = periksaHasilProduksi({ jenis, slocKind: keluar?.kind ?? null });
         details.push({
           field: 'sapProductionEnabled',
           message: `Push hasil produksi tidak bisa diaktifkan: ${keputusan.alasan ?? ''}`.trim(),
@@ -369,6 +424,72 @@ export class MasterService {
     }
   }
 
+  /**
+   * Production Version kartu kanban — diwarisi dari part, dan WAJIB.
+   *
+   * Blueprint PP AIIA (PP-MD-05) menjadikannya syarat pembuatan kanban:
+   * versinya dipastikan tersedia dan valid lebih dulu, baru kartunya dibuat.
+   * Lihat productionVersionKartu() di @avicenna/domain untuk aturannya.
+   *
+   * Diisi di SINI, bukan dibiarkan kosong lalu diperiksa belakangan: kartu yang
+   * terlanjur lahir tanpa versi tidak akan pernah bisa dinyatakan dibuat
+   * terhadap versi yang mana, dan satu-satunya jalan keluarnya menebak.
+   */
+  private async pastikanProductionVersion(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ) {
+    if (entity !== 'kanbans') return;
+
+    const nilai = <T>(nama: string): T | null | undefined =>
+      (values[nama] !== undefined ? values[nama] : barisLama?.[nama]) as T | null | undefined;
+
+    const partId = nilai<number>('partId');
+    const owner = (nilai<string>('owner') ?? 'INTERNAL') as 'INTERNAL' | 'CUSTOMER';
+    if (!partId) return;
+
+    const [part] = await this.db
+      .select({ versi: parts.productionVersion, partNumber: parts.partNumber })
+      .from(parts)
+      .where(eq(parts.id, Number(partId)))
+      .limit(1);
+
+    const hasil = productionVersionKartu({
+      owner,
+      versiKartu: nilai<string>('productionVersion'),
+      versiPart: part?.versi,
+    });
+
+    if (hasil.masalah) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'ValidationError',
+        message: 'Data yang dikirim tidak valid',
+        details: [
+          {
+            field: 'productionVersion',
+            message: `${hasil.masalah} (part ${part?.partNumber ?? partId})`,
+          },
+        ],
+      });
+    }
+    // Warisannya ditulis ke baris, bukan dihitung ulang tiap dibaca.
+    values.productionVersion = hasil.versi;
+  }
+
+  /*
+   * Katalog di memori dikosongkan begitu masternya berubah.
+   *
+   * Dipanggil dari SETIAP jalur tulis, bukan hanya dari create: menonaktifkan
+   * sebuah jenis proses lewat setActive juga mengubah daftar yang dilihat
+   * formulir dan matriks. Yang lupa dipanggil akan membuat perubahan terlihat
+   * "nanti saja", dan orang akan menyuntingnya dua kali.
+   */
+  private segarkanKatalog(entity: MasterEntity): void {
+    if (entity === 'process-types') this.processTypes.segarkan();
+  }
+
   async create(entity: MasterEntity, body: unknown) {
     const parsed = buildCreateSchema(entity).safeParse(body);
     if (!parsed.success) throw validationError(parsed.error);
@@ -376,11 +497,13 @@ export class MasterService {
     await this.pastikanSatuPabrik(entity, parsed.data as Record<string, unknown>);
     await this.pastikanRuteProsesWajar(entity, parsed.data as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, parsed.data as Record<string, unknown>);
+    await this.pastikanProductionVersion(entity, parsed.data as Record<string, unknown>);
 
     const table = this.table(entity);
     try {
       const result = await this.db.insert(table).values(parsed.data).returning({ id: table.id });
       const insertId = Number(result[0]?.id);
+      this.segarkanKatalog(entity);
       return this.findOne(entity, insertId);
     } catch (err) {
       throw translateDbError(err, entity);
@@ -403,9 +526,11 @@ export class MasterService {
     await this.pastikanSatuPabrik(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanRuteProsesWajar(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, values, barisLama as Record<string, unknown>);
+    await this.pastikanProductionVersion(entity, values, barisLama as Record<string, unknown>);
 
     try {
       await this.db.update(table).set(values).where(eq(table.id, id));
+      this.segarkanKatalog(entity);
       return this.findOne(entity, id);
     } catch (err) {
       throw translateDbError(err, entity);
@@ -418,6 +543,7 @@ export class MasterService {
 
     try {
       await this.db.delete(table).where(eq(table.id, id));
+      this.segarkanKatalog(entity);
       return { deleted: true, id };
     } catch (err) {
       throw translateDbError(err, entity);
@@ -433,6 +559,7 @@ export class MasterService {
     const table = this.table(entity);
     await this.findOne(entity, id);
     await this.db.update(table).set({ isActive }).where(eq(table.id, id));
+    this.segarkanKatalog(entity);
     return this.findOne(entity, id);
   }
 }

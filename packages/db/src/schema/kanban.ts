@@ -4,8 +4,30 @@ import { daftarNilai, enumCol, fk, kanbanSchema, pk, timestamps } from './_share
 import { parts, customers, lines } from './master';
 import { plants, users, devices } from './org';
 
+/**
+ * Keadaan kartu dalam satu putaran.
+ *
+ *   AVAILABLE kosong, siap ditempeli barang di lini
+ *   PRODUCED  sudah berisi barang jadi
+ *   STORED    barangnya masuk gudang barang jadi
+ *   PULLED    diambil untuk sebuah pengiriman, menunggu truk
+ *   LOADED    sudah naik truk
+ *   DELIVERED kartunya ikut ke customer dan tidak kembali
+ *   CANCELLED kartunya sendiri ditarik dari peredaran
+ *
+ * AVAILABLE sebelumnya bernama CREATED. Namanya diganti ketika pelepasan kartu
+ * dibangun: kartu yang kembali dari truk masuk ke keadaan yang SAMA dengan
+ * kartu yang baru dicetak, dan menamainya "created" membuat kartu yang sudah
+ * empat puluh kali berputar terbaca seolah baru dibuat. Blueprint SAP memakai
+ * kata yang sama — "container dikembalikan ke status full/available".
+ *
+ * Menambah nilai baru dan membiarkan CREATED hidup berdampingan sempat
+ * dipertimbangkan, lalu ditolak: dua nama untuk satu keadaan berarti setiap
+ * pemeriksaan "kartu ini boleh dipakai?" harus menyebut keduanya, dan yang
+ * ketiga pasti lupa.
+ */
 export const KANBAN_STATUSES = [
-  'CREATED',
+  'AVAILABLE',
   'PRODUCED',
   'STORED',
   'PULLED',
@@ -74,12 +96,39 @@ export const kanbans = kanbanSchema.table(
      */
     unitPerKanban: integer('INT_UNIT_PER_KANBAN').notNull().default(1),
     /** LH / RH untuk part yang berpasangan kiri-kanan. */
+    /**
+     * PRODUCTION VERSION yang dipakai saat kartu ini dibuat.
+     *
+     * Disalin dari part pada saat pembuatan, bukan dibaca ulang dari sana tiap
+     * kali: begitu versi material diganti, kartu yang sudah beredar tetap
+     * menyatakan versi yang BENAR-BENAR dipakai membuatnya. Membacanya ulang
+     * akan membuat seluruh riwayat ikut berubah nama secara surut.
+     *
+     * Blueprint PP AIIA PP-MD-05 menjadikannya syarat pembuatan kanban. Kartu
+     * CUSTOMER yang didaftarkan otomatis dari label DN tidak punya versi, dan
+     * itu benar: label itu milik customer, bukan master kanban kita.
+     */
+    productionVersion: varchar('CHR_PRODUCTION_VERSION', { length: 8 }),
     side: varchar('CHR_SIDE', { length: 8 }),
     boxType: varchar('CHR_BOX_TYPE', { length: 8 }),
     customerId: fk('INT_CUSTOMER_ID').references(() => customers.id),
-    status: enumCol('CHR_STATUS', KANBAN_STATUSES).notNull().default('CREATED'),
+    status: enumCol('CHR_STATUS', KANBAN_STATUSES).notNull().default('AVAILABLE'),
     producedAt: timestamp('DTM_PRODUCED_AT', { withTimezone: true, mode: 'date' }),
     deliveredAt: timestamp('DTM_DELIVERED_AT', { withTimezone: true, mode: 'date' }),
+    /**
+     * Berapa kali kartu ini sudah menyelesaikan satu putaran penuh.
+     *
+     * Bertambah saat kartu DILEPAS, bukan saat ditempel: yang satu putaran
+     * adalah pergi-dan-kembali, dan menghitungnya di awal membuat kartu yang
+     * masih di jalan sudah terhitung pulang.
+     *
+     * Dipakai menjawab pertanyaan yang selama ini hanya bisa dihitung manual:
+     * berapa kartu yang benar-benar beredar, dan kartu mana yang sudah terlalu
+     * sering dipakai sehingga cetakannya pudar.
+     */
+    cycleCount: integer('INT_CYCLE_COUNT').notNull().default(0),
+    /** Kapan kartu ini terakhir dilepas dan kembali ke peredaran. */
+    releasedAt: timestamp('DTM_RELEASED_AT', { withTimezone: true, mode: 'date' }),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
@@ -146,6 +195,14 @@ export const KANBAN_EVENT_TYPES = [
   'STORED',
   'LOADED',
   'DELIVERED',
+  /**
+   * Kartu dilepas dari barang dan kembali ke peredaran.
+   *
+   * Terjadi saat truk dinyatakan berangkat, bukan saat kartunya discan: scan
+   * masih bisa dibatalkan, keberangkatan tidak. Hanya kartu INTERNAL yang
+   * dilepas — kartu customer ikut barangnya dan tidak pernah kembali.
+   */
+  'RELEASED',
   'CANCELLED',
   'ADJUSTED',
   /**
