@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AVICENNA — Delivery RFID",
-    "description": "Panduan: docs/delivery-rfid-api.md (30 Oktober 2026). Isi variables secara lokal. Pilih login perangkat ATAU operator, lookup dokumen lalu tentukan deliveryId sendiri. Batch menulis progres pulling; gunakan dokumen trial. Dua request batch memakai payload sama untuk uji replay. Tidak menyertakan Finish Pulling atau undo. Hapus token/password sebelum membagikan export. HTTP200 batch tetap perlu pemeriksaan results[].status.",
+    "description": "Panduan: docs/delivery-rfid-api.md (30 Oktober 2026). Isi variables secara lokal. Pilih login perangkat ATAU operator, lookup dokumen lalu tentukan deliveryId sendiri. Batch menulis progres pulling; gunakan dokumen trial. Dua request batch memakai payload sama untuk uji replay. Tidak menyertakan Finish Pulling atau undo. Hapus token/password sebelum membagikan export. HTTP200 batch tetap perlu pemeriksaan results[].status. Tiap request punya contoh respons sukses & gagal (tab Examples); contoh bertanda \"dari kode\" disusun dari pesan di kode sumber karena kasusnya tidak bisa direkam di DB lokal.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -142,6 +142,72 @@
                 ]
               }
             }
+          ],
+          "response": [
+            {
+              "name": "Sukses (201, dari kode)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/auth/device",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deviceCode\": \"RFID-GATE-01\",\n  \"token\": \"<token perangkat>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"accessToken\": \"<jwt>\"\n}"
+            },
+            {
+              "name": "Gagal — device/token salah (401)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/auth/device",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deviceCode\": \"RFID-TIDAK-ADA\",\n  \"token\": \"salah\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"statusCode\": 401,\n  \"error\": \"Unauthorized\",\n  \"message\": \"Device tidak dikenal atau token salah\"\n}"
+            }
           ]
         },
         {
@@ -200,6 +266,72 @@
                 ]
               }
             }
+          ],
+          "response": [
+            {
+              "name": "Sukses (201)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/auth/login",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"npk\": \"ADMIN\",\n  \"password\": \"<password>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"accessToken\": \"<jwt>\",\n  \"user\": {\n    \"id\": 1,\n    \"npk\": \"ADMIN\",\n    \"name\": \"Administrator\",\n    \"role\": \"admin\",\n    \"roleKind\": \"ADMIN\",\n    \"roleProcessGroup\": null,\n    \"landing\": \"/dashboard\",\n    \"plantId\": 1\n  }\n}"
+            },
+            {
+              "name": "Gagal — NPK/password salah (401)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/auth/login",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"npk\": \"ADMIN\",\n  \"password\": \"salah\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"statusCode\": 401,\n  \"error\": \"Unauthorized\",\n  \"message\": \"NPK atau password salah\"\n}"
+            }
           ]
         },
         {
@@ -232,8 +364,62 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
               }
+            }
+          ],
+          "response": [
+            {
+              "name": "Sukses (200)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/auth/me"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"kind\": \"user\",\n  \"sub\": 1,\n  \"npk\": \"ADMIN\",\n  \"name\": \"Administrator\",\n  \"role\": \"admin\",\n  \"roleKind\": \"ADMIN\",\n  \"roleProcessGroup\": null,\n  \"plantId\": 1,\n  \"iat\": 1793348941,\n  \"exp\": 1793377741\n}"
+            },
+            {
+              "name": "Gagal — tanpa token (401)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/auth/me"
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"message\": \"Token tidak ditemukan\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
             }
           ]
         }
@@ -272,8 +458,66 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
               }
+            }
+          ],
+          "response": [
+            {
+              "name": "Sukses (200)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/resolve?code=LL-PMRF-F479B633"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"code\": \"LL-PMRF-F479B633\",\n  \"matches\": [\n    {\n      \"id\": 133,\n      \"documentNumber\": \"LL-PMRF-F479B633\",\n      \"manifestNumber\": \"MNF-PMRF-F479B633\",\n      \"customerName\": \"Postman customer RFID QA F479B633\",\n      \"deliveryDate\": \"2026-10-30\",\n      \"cycle\": 1,\n      \"status\": \"PICKING\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "Gagal — kode tidak ditemukan (404)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/resolve?code=TIDAK-ADA-123"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"message\": \"Manifest atau loading list \\\"TIDAK-ADA-123\\\" tidak ditemukan\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
             }
           ]
         },
@@ -307,8 +551,66 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
               }
+            }
+          ],
+          "response": [
+            {
+              "name": "Sukses (200)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/133"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": 133,\n  \"documentNumber\": \"LL-PMRF-F479B633\",\n  \"manifestNumber\": \"MNF-PMRF-F479B633\",\n  \"pdsNumber\": \"PDS-PMRF-F479B633\",\n  \"deliveryOrderNumber\": null,\n  \"purchaseOrderNumber\": null,\n  \"salesOrganization\": null,\n  \"distributionChannel\": null,\n  \"division\": null,\n  \"deliveryType\": null,\n  \"sapGiStatus\": null,\n  \"invoiceNumber\": null,\n  \"qcStatus\": null,\n  \"sapActualDeliveryDate\": null,\n  \"sapHeaderMovementStatus\": null,\n  \"sapLineMovementStatus\": null,\n  \"sapReceiveStatus\": null,\n  \"sapReceiveDate\": null,\n  \"sapReceiveTime\": null,\n  \"plantId\": 24,\n  \"customerId\": 44,\n  \"customerName\": \"Postman customer RFID QA F479B633\",\n  \"customerCode\": \"PMRF-F479B633\",\n  \"partNumberFormat\": \"NONE\",\n  \"deliveryDate\": \"2026-10-30\",\n  \"cycle\": 1,\n  \"dock\": null,\n  \"planTime\": null,\n  \"locationId\": null,\n  \"locationName\": null,\n  \"locationCode\": null,\n  \"stagingLocationId\": null,\n  \"stagingLocationName\": null,\n  \"stagingLocationCode\": null,\n  \"status\": \"PICKING\",\n  \"truckStatus\": \"PENDING\",\n  \"truckNumber\": null,\n  \"driverName\": null,\n  \"departedAt\": null,\n  \"arrivedAt\": null,\n  \"sapStatus\": null,\n  \"sapIsSimulation\": null,\n  \"sapDocNumber\": null,\n  \"sapError\": null,\n  \"loadingMode\": \"TIGA_ARAH\",\n  \"lines\": [\n    {\n      \"id\": 141,\n      \"partId\": 45,\n      \"partNumber\": \"PMRF-PART-F479B633\",\n      \"partName\": \"Part Postman RFID QA F479B633\",\n      \"uom\": \"pcs\",\n      \"customerPartNumber\": \"PMRF-PART-F479B633\",\n      \"sapItemNumber\": \"10\",\n      \"customerPartId\": 19,\n      \"sapDeliveryQty\": 0,\n      \"itemType\": null,\n      \"plannedKanban\": 2,\n      \"pickedKanban\": 2,\n      \"actualKanban\": 0,\n      \"qtyPerKanban\": 20,\n      \"plannedQty\": 40,\n      \"pickedQty\": 40,\n      \"actualQty\": 0\n    }\n  ]\n}"
+            },
+            {
+              "name": "Gagal — loading list tidak ada (404)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/999999"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"message\": \"Loading list 999999 tidak ditemukan\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
             }
           ]
         }
@@ -375,6 +677,328 @@
                 ]
               }
             }
+          ],
+          "response": [
+            {
+              "name": "Sukses — semua tag ACCEPTED (200)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/rfid/batch",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deliveryId\": 133,\n  \"tags\": [\n    {\n      \"tagId\": \"SIM-f98ef296-c79\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    },\n    {\n      \"tagId\": \"SIM-7a94fd92-98c\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"deliveryId\": 133,\n  \"phase\": \"PULLING\",\n  \"results\": [\n    {\n      \"index\": 0,\n      \"tagId\": \"SIM-f98ef296-c79\",\n      \"status\": \"ACCEPTED\",\n      \"message\": \"PMRF-PART-F479B633 — 1/2 kanban\",\n      \"lineId\": 141,\n      \"partNumber\": \"PMRF-PART-F479B633\"\n    },\n    {\n      \"index\": 1,\n      \"tagId\": \"SIM-7a94fd92-98c\",\n      \"status\": \"ACCEPTED\",\n      \"message\": \"PMRF-PART-F479B633 — 2/2 kanban\",\n      \"lineId\": 141,\n      \"partNumber\": \"PMRF-PART-F479B633\"\n    }\n  ],\n  \"summary\": {\n    \"total\": 2,\n    \"accepted\": 2,\n    \"duplicate\": 0,\n    \"rejected\": 0\n  },\n  \"totals\": {\n    \"plannedKanban\": 2,\n    \"pickedKanban\": 2,\n    \"actualKanban\": 0\n  }\n}"
+            },
+            {
+              "name": "Sukses sebagian — DUPLICATE + REJECTED (200)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/rfid/batch",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deliveryId\": 133,\n  \"tags\": [\n    {\n      \"tagId\": \"SIM-f98ef296-c79\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    },\n    {\n      \"tagId\": \"EPC-CONTOH-PART-SALAH\",\n      \"customerPart\": \"PART-TIDAK-ADA-999\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"deliveryId\": 133,\n  \"phase\": \"PULLING\",\n  \"results\": [\n    {\n      \"index\": 0,\n      \"tagId\": \"SIM-f98ef296-c79\",\n      \"status\": \"DUPLICATE\",\n      \"message\": \"Sudah tercatat sebelumnya — tetap 2 dari 2 kanban.\",\n      \"lineId\": 141,\n      \"partNumber\": \"PMRF-PART-F479B633\"\n    },\n    {\n      \"index\": 1,\n      \"tagId\": \"EPC-CONTOH-PART-SALAH\",\n      \"status\": \"REJECTED\",\n      \"message\": \"Part \\\"PART-TIDAK-ADA-999\\\" tidak ada dalam loading list ini. Periksa barcode atau dokumennya.\",\n      \"lineId\": null,\n      \"partNumber\": null\n    }\n  ],\n  \"summary\": {\n    \"total\": 2,\n    \"accepted\": 0,\n    \"duplicate\": 1,\n    \"rejected\": 1\n  },\n  \"totals\": {\n    \"plannedKanban\": 2,\n    \"pickedKanban\": 2,\n    \"actualKanban\": 0\n  }\n}"
+            },
+            {
+              "name": "Gagal per tag — semua REJECTED (200)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/rfid/batch",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deliveryId\": 133,\n  \"tags\": [\n    {\n      \"tagId\": \"EPC-CONTOH-LEBIH-001\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    },\n    {\n      \"tagId\": \"EPC-CONTOH-PART-SALAH\",\n      \"customerPart\": \"PART-TIDAK-ADA-999\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"deliveryId\": 133,\n  \"phase\": \"PULLING\",\n  \"results\": [\n    {\n      \"index\": 0,\n      \"tagId\": \"EPC-CONTOH-LEBIH-001\",\n      \"status\": \"REJECTED\",\n      \"message\": \"Jumlah RFID melebihi rencana kanban atau qty loading list.\",\n      \"lineId\": null,\n      \"partNumber\": null\n    },\n    {\n      \"index\": 1,\n      \"tagId\": \"EPC-CONTOH-PART-SALAH\",\n      \"status\": \"REJECTED\",\n      \"message\": \"Part \\\"PART-TIDAK-ADA-999\\\" tidak ada dalam loading list ini. Periksa barcode atau dokumennya.\",\n      \"lineId\": null,\n      \"partNumber\": null\n    }\n  ],\n  \"summary\": {\n    \"total\": 2,\n    \"accepted\": 0,\n    \"duplicate\": 0,\n    \"rejected\": 2\n  },\n  \"totals\": {\n    \"plannedKanban\": 2,\n    \"pickedKanban\": 2,\n    \"actualKanban\": 0\n  }\n}"
+            },
+            {
+              "name": "Gagal — tags kosong (400)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/rfid/batch",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deliveryId\": 133,\n  \"tags\": []\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"statusCode\": 400,\n  \"error\": \"ValidationError\",\n  \"message\": \"Data yang dikirim tidak valid\",\n  \"details\": [\n    {\n      \"field\": \"tags\",\n      \"message\": \"Array must contain at least 1 element(s)\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "Gagal — field tidak valid (400)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/rfid/batch",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deliveryId\": \"133\",\n  \"tags\": [\n    {\n      \"tagId\": \"\",\n      \"customerPart\": \"X\",\n      \"extra\": 1\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"statusCode\": 400,\n  \"error\": \"ValidationError\",\n  \"message\": \"Data yang dikirim tidak valid\",\n  \"details\": [\n    {\n      \"field\": \"deliveryId\",\n      \"message\": \"Expected number, received string\"\n    },\n    {\n      \"field\": \"tags.0.tagId\",\n      \"message\": \"String must contain at least 1 character(s)\"\n    },\n    {\n      \"field\": \"tags.0\",\n      \"message\": \"Unrecognized key(s) in object: 'extra'\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "Gagal — pulling sudah ditutup (400, dari kode)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/rfid/batch",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deliveryId\": 133,\n  \"tags\": [\n    {\n      \"tagId\": \"SIM-f98ef296-c79\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    },\n    {\n      \"tagId\": \"SIM-7a94fd92-98c\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"message\": \"Pulling sudah ditutup atau loading list dibatalkan.\",\n  \"error\": \"Bad Request\",\n  \"statusCode\": 400\n}"
+            },
+            {
+              "name": "Gagal — tanpa token (401)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/rfid/batch",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deliveryId\": 133,\n  \"tags\": [\n    {\n      \"tagId\": \"X\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"message\": \"Token tidak ditemukan\",\n  \"error\": \"Unauthorized\",\n  \"statusCode\": 401\n}"
+            },
+            {
+              "name": "Gagal — perangkat tidak sesuai (403, dari kode)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/rfid/batch",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deliveryId\": 133,\n  \"tags\": [\n    {\n      \"tagId\": \"SIM-f98ef296-c79\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    },\n    {\n      \"tagId\": \"SIM-7a94fd92-98c\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Forbidden",
+              "code": 403,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"message\": \"Gunakan perangkat scan aktif yang sesuai dari pabrik loading list ini.\",\n  \"error\": \"Forbidden\",\n  \"statusCode\": 403\n}"
+            },
+            {
+              "name": "Gagal — loading list tidak ada (404)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/rfid/batch",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deliveryId\": 999999,\n  \"tags\": [\n    {\n      \"tagId\": \"EPC-X\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"message\": \"Loading list tidak ditemukan\",\n  \"error\": \"Not Found\",\n  \"statusCode\": 404\n}"
+            }
           ]
         },
         {
@@ -435,6 +1059,44 @@
                 ]
               }
             }
+          ],
+          "response": [
+            {
+              "name": "Sukses — semua DUPLICATE (200)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{accessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/loading/rfid/batch",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"deliveryId\": 133,\n  \"tags\": [\n    {\n      \"tagId\": \"SIM-f98ef296-c79\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    },\n    {\n      \"tagId\": \"SIM-7a94fd92-98c\",\n      \"customerPart\": \"PMRF-PART-F479B633\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"deliveryId\": 133,\n  \"phase\": \"PULLING\",\n  \"results\": [\n    {\n      \"index\": 0,\n      \"tagId\": \"SIM-f98ef296-c79\",\n      \"status\": \"DUPLICATE\",\n      \"message\": \"Sudah tercatat sebelumnya — tetap 2 dari 2 kanban.\",\n      \"lineId\": 141,\n      \"partNumber\": \"PMRF-PART-F479B633\"\n    },\n    {\n      \"index\": 1,\n      \"tagId\": \"SIM-7a94fd92-98c\",\n      \"status\": \"DUPLICATE\",\n      \"message\": \"Sudah tercatat sebelumnya — tetap 2 dari 2 kanban.\",\n      \"lineId\": 141,\n      \"partNumber\": \"PMRF-PART-F479B633\"\n    }\n  ],\n  \"summary\": {\n    \"total\": 2,\n    \"accepted\": 0,\n    \"duplicate\": 2,\n    \"rejected\": 0\n  },\n  \"totals\": {\n    \"plannedKanban\": 2,\n    \"pickedKanban\": 2,\n    \"actualKanban\": 0\n  }\n}"
+            }
           ]
         },
         {
@@ -467,7 +1129,9 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
               }
             }
           ]
@@ -507,7 +1171,9 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
               }
             }
           ]
@@ -542,7 +1208,9 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
               }
             }
           ]
@@ -577,7 +1245,9 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
               }
             }
           ]
