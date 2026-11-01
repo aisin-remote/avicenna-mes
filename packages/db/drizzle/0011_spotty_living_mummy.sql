@@ -1,0 +1,1 @@
+CREATE INDEX "TT_HISTORY_SCAN_DELIVERY_PHASE_IDX" ON "production"."TT_HISTORY_SCAN" USING btree (("CHR_META"->>'deliveryId'),("CHR_META"->>'phase'),"INT_ID") WHERE "production"."TT_HISTORY_SCAN"."CHR_KIND" = 'DELIVERY';

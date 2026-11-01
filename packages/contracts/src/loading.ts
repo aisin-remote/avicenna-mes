@@ -18,7 +18,7 @@ export type LoadingPhase = z.infer<typeof loadingPhaseSchema>;
 /** Satu kanban discan, entah saat pulling atau saat muat. */
 export const loadingScanSchema = z.object({
   deliveryId: z.coerce.number().int().positive(),
-  phase: loadingPhaseSchema.default('LOADING'),
+  phase: loadingPhaseSchema.default('PULLING'),
   /** Nomor part pada barcode kanban — format customer. */
   customerPart: z.string().trim().min(1, 'Barcode kosong').max(255),
   /** Nomor part internal, bila barcode memuatnya. */
@@ -40,6 +40,41 @@ export const loadingScanSchema = z.object({
   clientRef: z.string().trim().max(64).optional(),
 });
 export type LoadingScanInput = z.infer<typeof loadingScanSchema>;
+
+/** Satu tag RFID mewakili satu box; qty selalu mengikuti item loading list. */
+export const loadingRfidBatchSchema = z
+  .object({
+    deliveryId: z.number().int().positive(),
+    tags: z
+      .array(
+        z
+          .object({
+            tagId: z.string().trim().min(1).max(128),
+            customerPart: z.string().trim().min(1).max(255),
+            serialNumber: z.string().trim().min(1).max(64).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(200),
+  })
+  .strict();
+export type LoadingRfidBatchInput = z.infer<typeof loadingRfidBatchSchema>;
+
+export interface LoadingRfidBatchResult {
+  deliveryId: number;
+  phase: 'PULLING';
+  summary: { total: number; accepted: number; duplicate: number; rejected: number };
+  results: Array<{
+    index: number;
+    tagId: string;
+    status: 'ACCEPTED' | 'DUPLICATE' | 'REJECTED';
+    message: string;
+    lineId: number | null;
+    partNumber: string | null;
+  }>;
+  totals: { plannedKanban: number; pickedKanban: number; actualKanban: number };
+}
 
 export interface LoadingScanResult {
   status: 'ACCEPTED' | 'OVER' | 'REJECTED';

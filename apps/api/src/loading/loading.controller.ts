@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseIntPipe,
   Patch,
@@ -12,7 +13,13 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { z } from 'zod';
-import { loadingScanSchema, type LoadingScanInput } from '@avicenna/contracts';
+import {
+  loadingScanSchema,
+  loadingRfidBatchSchema,
+  type LoadingScanInput,
+  type LoadingRfidBatchInput,
+  type LoadingRfidBatchResult,
+} from '@avicenna/contracts';
 import { LoadingService } from './loading.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 
@@ -86,24 +93,62 @@ export class LoadingController {
     return this.loading.history(id);
   }
 
-  /** Scan satu kanban saat muat barang. */
+  @Get(':id/internal-kanbans')
+  internalKanbans(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('q') query: string | undefined,
+    @Req() req: Request,
+  ) {
+    if (query !== undefined && typeof query !== 'string')
+      throw new BadRequestException('q harus berupa teks pencarian.');
+    return this.loading.internalKanbans(id, query, req.principal);
+  }
+
+  @Get(':id/delivery-order')
+  deliveryOrder(@Param('id', ParseIntPipe) id: number) {
+    return this.loading.deliveryOrder(id);
+  }
+
+  @Get(':id/intercompany')
+  intercompany(@Param('id', ParseIntPipe) id: number) {
+    return this.loading.intercompanyFlow(id);
+  }
+
+  @Get('driver-status/:id')
+  driverStatus(@Param('id', ParseIntPipe) id: number) {
+    return this.loading.driverStatus(id);
+  }
+
+  /** Batch tag kanban customer dari aplikasi RFID eksternal. */
+  @Post('rfid/batch')
+  @HttpCode(200)
+  rfidBatch(
+    @Body(new ZodValidationPipe(loadingRfidBatchSchema)) body: LoadingRfidBatchInput,
+    @Req() req: Request,
+  ): Promise<LoadingRfidBatchResult> {
+    return this.loading.scanRfidBatch(body, req.principal);
+  }
+
+  /** Scan satu pasangan kanban melalui alur barcode biasa. */
   @Post('scan')
-  scan(
+  async scan(
     @Body(new ZodValidationPipe(loadingScanSchema)) body: LoadingScanInput,
     @Req() req: Request,
   ) {
+    await this.loading.authorizeScan(body.deliveryId, req.principal);
     return this.loading.scan(body, req.principal);
   }
 
   /** Batalkan satu kanban terakhir pada sebuah baris, pada tahap yang disebut. */
   @Post(':id/lines/:lineId/undo')
-  undo(
+  async undo(
     @Param('id', ParseIntPipe) id: number,
     @Param('lineId', ParseIntPipe) lineId: number,
     @Req() req: Request,
     @Body(new ZodValidationPipe(undoSchema)) body: z.infer<typeof undoSchema>,
     @Query('phase') phase?: string,
   ) {
+    await this.loading.authorizeScan(id, req.principal);
     return this.loading.undoScan(
       id,
       lineId,
@@ -115,22 +160,25 @@ export class LoadingController {
 
   /** Tutup pulling: barang berpindah dari gudang finish good ke staging. */
   @Post(':id/pick')
-  pick(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+  async pick(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+    await this.loading.authorizeScan(id, req.principal);
     return this.loading.completePicking(id, req.principal);
   }
 
   /** Tutup dokumen: barang berangkat, stok berkurang. */
   @Post(':id/ship')
-  ship(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+  async ship(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+    await this.loading.authorizeScan(id, req.principal);
     return this.loading.ship(id, req.principal);
   }
 
   @Patch(':id/truck')
-  truck(
+  async truck(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(truckStatusSchema)) body: TruckStatusInput,
     @Req() req: Request,
   ) {
+    await this.loading.authorizeScan(id, req.principal);
     return this.loading.setTruckStatus(id, body.truckStatus, req.principal);
   }
 }

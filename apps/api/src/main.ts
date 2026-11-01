@@ -2,7 +2,11 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { json, urlencoded } from 'express';
-import { MAKS_UKURAN_FOTO, MAKS_UKURAN_IMPOR } from '@avicenna/contracts';
+import {
+  MAKS_UKURAN_FOTO,
+  MAKS_UKURAN_IMPOR,
+  MAX_DELIVERY_DOCUMENT_BYTES,
+} from '@avicenna/contracts';
 import { periksaMigrasi, cariFolderMigrasi, pesanPeriksaMigrasi } from '@avicenna/db';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
@@ -21,13 +25,17 @@ import { AllExceptionsFilter } from './common/all-exceptions.filter';
  */
 async function pastikanMigrasiCocok(logger: Logger): Promise<void> {
   if (process.env.SKIP_MIGRATION_CHECK === 'true') {
-    logger.warn('SKIP_MIGRATION_CHECK aktif — skema database TIDAK diperiksa. Jangan biarkan ini di produksi.');
+    logger.warn(
+      'SKIP_MIGRATION_CHECK aktif — skema database TIDAK diperiksa. Jangan biarkan ini di produksi.',
+    );
     return;
   }
 
   const folder = cariFolderMigrasi();
   if (!folder) {
-    logger.warn('Folder migrasi tidak ditemukan — pemeriksaan skema dilewati. Set MIGRATIONS_DIR bila ini bukan lingkungan pengembangan.');
+    logger.warn(
+      'Folder migrasi tidak ditemukan — pemeriksaan skema dilewati. Set MIGRATIONS_DIR bila ini bukan lingkungan pengembangan.',
+    );
     return;
   }
 
@@ -58,7 +66,11 @@ async function bootstrap(): Promise<void> {
    * kolom lain dalam JSON yang sama. Dengan begitu batas di layar dan batas di
    * server tidak bisa menyimpang diam-diam.
    */
-  const batasBody = Math.ceil((Math.max(MAKS_UKURAN_IMPOR, MAKS_UKURAN_FOTO) * 4) / 3) + 1024 * 1024;
+  const batasBody =
+    Math.ceil(
+      (Math.max(MAKS_UKURAN_IMPOR, MAKS_UKURAN_FOTO, MAX_DELIVERY_DOCUMENT_BYTES) * 4) / 3,
+    ) +
+    1024 * 1024;
   app.use(json({ limit: batasBody }));
   app.use(urlencoded({ limit: batasBody, extended: true }));
 

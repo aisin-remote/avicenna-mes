@@ -133,6 +133,8 @@ curl -N "localhost:3001/realtime/line:DC-01?token=$TOKEN"
 
 ## Struktur
 
+Dokumentasi integrasi Logistik: [API delivery RFID](docs/delivery-rfid-api.md) · [koleksi Postman](docs/postman/avicenna-delivery-rfid.postman_collection.json). Panduan ini mencakup autentikasi, batch tag customer, retry, koreksi, dan hubungan dengan Finish Pulling/SAP.
+
 ```
 packages/contracts   Schema Zod dipakai web & api — aturan validasi ditulis sekali
 packages/domain      Aturan bisnis murni, tanpa DB. Ada test-nya.

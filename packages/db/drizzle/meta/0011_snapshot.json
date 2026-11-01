@@ -1,6 +1,6 @@
 {
-  "id": "25d5c3b3-38a8-4523-9733-59375d4d9e78",
-  "prevId": "05b61562-90bf-48c4-bd14-a7d55e907d16",
+  "id": "1f17eaa1-d1bc-4b89-8577-24eeeab97e63",
+  "prevId": "e74322d9-cf9a-42bc-ba42-b1bb8ca6d88b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -594,84 +594,6 @@
       },
       "isRLSEnabled": false
     },
-    "org.TM_SETTING": {
-      "name": "TM_SETTING",
-      "schema": "org",
-      "columns": {
-        "INT_ID": {
-          "name": "INT_ID",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "byDefault",
-            "name": "TM_SETTING_INT_ID_seq",
-            "schema": "org",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "CHR_KEY": {
-          "name": "CHR_KEY",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "CHR_VALUE": {
-          "name": "CHR_VALUE",
-          "type": "varchar(191)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "CHR_UPDATED_BY": {
-          "name": "CHR_UPDATED_BY",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "DTM_CREATED_AT": {
-          "name": "DTM_CREATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "DTM_UPDATED_AT": {
-          "name": "DTM_UPDATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "TM_SETTING_KEY_UNIQUE": {
-          "name": "TM_SETTING_KEY_UNIQUE",
-          "columns": [
-            {
-              "expression": "CHR_KEY",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "org.TM_USER": {
       "name": "TM_USER",
       "schema": "org",
@@ -1222,26 +1144,16 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "TM_LINE_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk": {
-          "name": "TM_LINE_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk",
-          "tableFrom": "TM_LINE",
-          "tableTo": "TM_PROCESS_TYPE",
-          "schemaTo": "master",
-          "columnsFrom": [
-            "CHR_PROCESS_TYPE"
-          ],
-          "columnsTo": [
-            "CHR_CODE"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "TM_LINE_CHR_PROCESS_TYPE_CHK": {
+          "name": "TM_LINE_CHR_PROCESS_TYPE_CHK",
+          "value": "\"master\".\"TM_LINE\".\"CHR_PROCESS_TYPE\" IN ('MELTING', 'CASTING_WIP', 'CASTING_FG', 'MACHINING_WIP', 'MACHINING_FG', 'ASSEMBLING_UNIT_FG', 'INJECTION_WIP', 'INJECTION_FG', 'PAINTING_WIP', 'PAINTING_FG', 'ASSEMBLING_BODY_FG', 'MOUNTING', 'INSPECTION_WIP', 'INSPECTION_FG', 'VACUUM_WIP', 'VACUUM_FG', 'ANTENNA', 'DELIVERY')"
+        },
         "TM_LINE_CHR_SCAN_MODE_CHK": {
           "name": "TM_LINE_CHR_SCAN_MODE_CHK",
           "value": "\"master\".\"TM_LINE\".\"CHR_SCAN_MODE\" IN ('PART_SAJA', 'PART_KANBAN', 'KANBAN_BOX', 'PART_TANPA_KANBAN', 'PART_PINDAH_KARTU', 'KANBAN_MOLD', 'KANBAN_BOX_DANDORI', 'PER_PIECE', 'PER_KANBAN')"
@@ -1563,20 +1475,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "TM_PROCESS_PARTS_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk": {
-          "name": "TM_PROCESS_PARTS_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk",
-          "tableFrom": "TM_PROCESS_PARTS",
-          "tableTo": "TM_PROCESS_TYPE",
-          "schemaTo": "master",
-          "columnsFrom": [
-            "CHR_PROCESS_TYPE"
-          ],
-          "columnsTo": [
-            "CHR_CODE"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "TM_PROCESS_PARTS_INT_LINE_ID_TM_LINE_INT_ID_fk": {
           "name": "TM_PROCESS_PARTS_INT_LINE_ID_TM_LINE_INT_ID_fk",
           "tableFrom": "TM_PROCESS_PARTS",
@@ -1595,7 +1493,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "TM_PROCESS_PARTS_CHR_PROCESS_TYPE_CHK": {
+          "name": "TM_PROCESS_PARTS_CHR_PROCESS_TYPE_CHK",
+          "value": "\"master\".\"TM_PROCESS_PARTS\".\"CHR_PROCESS_TYPE\" IN ('MELTING', 'CASTING_WIP', 'CASTING_FG', 'MACHINING_WIP', 'MACHINING_FG', 'ASSEMBLING_UNIT_FG', 'INJECTION_WIP', 'INJECTION_FG', 'PAINTING_WIP', 'PAINTING_FG', 'ASSEMBLING_BODY_FG', 'MOUNTING', 'INSPECTION_WIP', 'INSPECTION_FG', 'VACUUM_WIP', 'VACUUM_FG', 'ANTENNA', 'DELIVERY')"
+        }
+      },
       "isRLSEnabled": false
     },
     "master.TM_PARTS": {
@@ -1688,12 +1591,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'pcs'"
-        },
-        "CHR_PRODUCTION_VERSION": {
-          "name": "CHR_PRODUCTION_VERSION",
-          "type": "varchar(8)",
-          "primaryKey": false,
-          "notNull": false
         },
         "INT_QTY_PER_BOX": {
           "name": "INT_QTY_PER_BOX",
@@ -1817,26 +1714,16 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "TM_PARTS_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk": {
-          "name": "TM_PARTS_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk",
-          "tableFrom": "TM_PARTS",
-          "tableTo": "TM_PROCESS_TYPE",
-          "schemaTo": "master",
-          "columnsFrom": [
-            "CHR_PROCESS_TYPE"
-          ],
-          "columnsTo": [
-            "CHR_CODE"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "TM_PARTS_CHR_PROCESS_TYPE_CHK": {
+          "name": "TM_PARTS_CHR_PROCESS_TYPE_CHK",
+          "value": "\"master\".\"TM_PARTS\".\"CHR_PROCESS_TYPE\" IN ('MELTING', 'CASTING_WIP', 'CASTING_FG', 'MACHINING_WIP', 'MACHINING_FG', 'ASSEMBLING_UNIT_FG', 'INJECTION_WIP', 'INJECTION_FG', 'PAINTING_WIP', 'PAINTING_FG', 'ASSEMBLING_BODY_FG', 'MOUNTING', 'INSPECTION_WIP', 'INSPECTION_FG', 'VACUUM_WIP', 'VACUUM_FG', 'ANTENNA', 'DELIVERY')"
+        },
         "TM_PARTS_CHR_PART_TYPE_CHK": {
           "name": "TM_PARTS_CHR_PART_TYPE_CHK",
           "value": "\"master\".\"TM_PARTS\".\"CHR_PART_TYPE\" IN ('RAW_MATERIAL', 'COMPONENT', 'WIP', 'FINISHED_GOOD')"
@@ -1848,138 +1735,6 @@
         "TM_PARTS_CHR_TRACKING_MODE_CHK": {
           "name": "TM_PARTS_CHR_TRACKING_MODE_CHK",
           "value": "\"master\".\"TM_PARTS\".\"CHR_TRACKING_MODE\" IN ('SERIAL', 'LOT', 'QUANTITY')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "master.TM_PROCESS_TYPE": {
-      "name": "TM_PROCESS_TYPE",
-      "schema": "master",
-      "columns": {
-        "INT_ID": {
-          "name": "INT_ID",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "byDefault",
-            "name": "TM_PROCESS_TYPE_INT_ID_seq",
-            "schema": "master",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "CHR_CODE": {
-          "name": "CHR_CODE",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "CHR_LABEL": {
-          "name": "CHR_LABEL",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "CHR_PROCESS_GROUP": {
-          "name": "CHR_PROCESS_GROUP",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "CHR_SAP_CLASS": {
-          "name": "CHR_SAP_CLASS",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "CHR_SCAN_MODE": {
-          "name": "CHR_SCAN_MODE",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "INT_SORT_ORDER": {
-          "name": "INT_SORT_ORDER",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "FLG_IS_ACTIVE": {
-          "name": "FLG_IS_ACTIVE",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "DTM_CREATED_AT": {
-          "name": "DTM_CREATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "DTM_UPDATED_AT": {
-          "name": "DTM_UPDATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "TM_PROCESS_TYPE_CODE_UNIQUE": {
-          "name": "TM_PROCESS_TYPE_CODE_UNIQUE",
-          "columns": [
-            {
-              "expression": "CHR_CODE",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "TM_PROCESS_TYPE_ORDER_IDX": {
-          "name": "TM_PROCESS_TYPE_ORDER_IDX",
-          "columns": [
-            {
-              "expression": "INT_SORT_ORDER",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "TM_PROCESS_TYPE_CHR_PROCESS_GROUP_CHK": {
-          "name": "TM_PROCESS_TYPE_CHR_PROCESS_GROUP_CHK",
-          "value": "\"master\".\"TM_PROCESS_TYPE\".\"CHR_PROCESS_GROUP\" IN ('MELTING', 'CASTING', 'MACHINING', 'ASSEMBLING', 'INJECTION', 'PAINTING', 'MOUNTING', 'INSPECTION', 'VACUUM', 'ANTENNA', 'DELIVERY')"
-        },
-        "TM_PROCESS_TYPE_CHR_SAP_CLASS_CHK": {
-          "name": "TM_PROCESS_TYPE_CHR_SAP_CLASS_CHK",
-          "value": "\"master\".\"TM_PROCESS_TYPE\".\"CHR_SAP_CLASS\" IN ('SFG', 'FG', 'NONE')"
-        },
-        "TM_PROCESS_TYPE_CHR_SCAN_MODE_CHK": {
-          "name": "TM_PROCESS_TYPE_CHR_SCAN_MODE_CHK",
-          "value": "\"master\".\"TM_PROCESS_TYPE\".\"CHR_SCAN_MODE\" IN ('PART_SAJA', 'PART_KANBAN', 'KANBAN_BOX', 'PART_TANPA_KANBAN', 'PART_PINDAH_KARTU', 'KANBAN_MOLD', 'KANBAN_BOX_DANDORI', 'PER_PIECE', 'PER_KANBAN')"
         }
       },
       "isRLSEnabled": false
@@ -2192,13 +1947,6 @@
           "notNull": true,
           "default": "'PART_SAJA'"
         },
-        "FLG_REQUIRE_PAIRING": {
-          "name": "FLG_REQUIRE_PAIRING",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "INT_INPUT_LOCATION_ID": {
           "name": "INT_INPUT_LOCATION_ID",
           "type": "bigint",
@@ -2296,26 +2044,16 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "TM_ROUTE_PROCESS_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk": {
-          "name": "TM_ROUTE_PROCESS_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk",
-          "tableFrom": "TM_ROUTE_PROCESS",
-          "tableTo": "TM_PROCESS_TYPE",
-          "schemaTo": "master",
-          "columnsFrom": [
-            "CHR_PROCESS_TYPE"
-          ],
-          "columnsTo": [
-            "CHR_CODE"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "TM_ROUTE_PROCESS_CHR_PROCESS_TYPE_CHK": {
+          "name": "TM_ROUTE_PROCESS_CHR_PROCESS_TYPE_CHK",
+          "value": "\"master\".\"TM_ROUTE_PROCESS\".\"CHR_PROCESS_TYPE\" IN ('MELTING', 'CASTING_WIP', 'CASTING_FG', 'MACHINING_WIP', 'MACHINING_FG', 'ASSEMBLING_UNIT_FG', 'INJECTION_WIP', 'INJECTION_FG', 'PAINTING_WIP', 'PAINTING_FG', 'ASSEMBLING_BODY_FG', 'MOUNTING', 'INSPECTION_WIP', 'INSPECTION_FG', 'VACUUM_WIP', 'VACUUM_FG', 'ANTENNA', 'DELIVERY')"
+        },
         "TM_ROUTE_PROCESS_CHR_SCAN_MODE_CHK": {
           "name": "TM_ROUTE_PROCESS_CHR_SCAN_MODE_CHK",
           "value": "\"master\".\"TM_ROUTE_PROCESS\".\"CHR_SCAN_MODE\" IN ('PART_SAJA', 'PART_KANBAN', 'KANBAN_BOX', 'PART_TANPA_KANBAN', 'PART_PINDAH_KARTU', 'KANBAN_MOLD', 'KANBAN_BOX_DANDORI', 'PER_PIECE', 'PER_KANBAN')"
@@ -2824,7 +2562,7 @@
       "checkConstraints": {
         "TT_KANBAN_EVENT_CHR_TYPE_CHK": {
           "name": "TT_KANBAN_EVENT_CHR_TYPE_CHK",
-          "value": "\"kanban\".\"TT_KANBAN_EVENT\".\"CHR_TYPE\" IN ('PRODUCED', 'PULLED', 'PAIRED', 'STORED', 'LOADED', 'DELIVERED', 'RELEASED', 'CANCELLED', 'ADJUSTED', 'VOIDED')"
+          "value": "\"kanban\".\"TT_KANBAN_EVENT\".\"CHR_TYPE\" IN ('PRODUCED', 'PULLED', 'PAIRED', 'STORED', 'LOADED', 'DELIVERED', 'CANCELLED', 'ADJUSTED', 'VOIDED')"
         }
       },
       "isRLSEnabled": false
@@ -2957,153 +2695,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "kanban.TT_KANBAN_PAIRING": {
-      "name": "TT_KANBAN_PAIRING",
-      "schema": "kanban",
-      "columns": {
-        "INT_ID": {
-          "name": "INT_ID",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "byDefault",
-            "name": "TT_KANBAN_PAIRING_INT_ID_seq",
-            "schema": "kanban",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "INT_FG_KANBAN_ID": {
-          "name": "INT_FG_KANBAN_ID",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "INT_WIP_KANBAN_ID": {
-          "name": "INT_WIP_KANBAN_ID",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "INT_QTY": {
-          "name": "INT_QTY",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "CHR_NPK": {
-          "name": "CHR_NPK",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "INT_USER_ID": {
-          "name": "INT_USER_ID",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "DTM_PAIRED_AT": {
-          "name": "DTM_PAIRED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "DTM_CREATED_AT": {
-          "name": "DTM_CREATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "TT_KANBAN_PAIRING_WIP_UNIQUE": {
-          "name": "TT_KANBAN_PAIRING_WIP_UNIQUE",
-          "columns": [
-            {
-              "expression": "INT_WIP_KANBAN_ID",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "TT_KANBAN_PAIRING_FG_IDX": {
-          "name": "TT_KANBAN_PAIRING_FG_IDX",
-          "columns": [
-            {
-              "expression": "INT_FG_KANBAN_ID",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "TT_KANBAN_PAIRING_INT_FG_KANBAN_ID_TM_KANBAN_INT_ID_fk": {
-          "name": "TT_KANBAN_PAIRING_INT_FG_KANBAN_ID_TM_KANBAN_INT_ID_fk",
-          "tableFrom": "TT_KANBAN_PAIRING",
-          "tableTo": "TM_KANBAN",
-          "schemaTo": "kanban",
-          "columnsFrom": [
-            "INT_FG_KANBAN_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "TT_KANBAN_PAIRING_INT_WIP_KANBAN_ID_TM_KANBAN_INT_ID_fk": {
-          "name": "TT_KANBAN_PAIRING_INT_WIP_KANBAN_ID_TM_KANBAN_INT_ID_fk",
-          "tableFrom": "TT_KANBAN_PAIRING",
-          "tableTo": "TM_KANBAN",
-          "schemaTo": "kanban",
-          "columnsFrom": [
-            "INT_WIP_KANBAN_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "TT_KANBAN_PAIRING_INT_USER_ID_TM_USER_INT_ID_fk": {
-          "name": "TT_KANBAN_PAIRING_INT_USER_ID_TM_USER_INT_ID_fk",
-          "tableFrom": "TT_KANBAN_PAIRING",
-          "tableTo": "TM_USER",
-          "schemaTo": "org",
-          "columnsFrom": [
-            "INT_USER_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "kanban.TM_KANBAN": {
       "name": "TM_KANBAN",
       "schema": "kanban",
@@ -3177,12 +2768,6 @@
           "notNull": true,
           "default": 1
         },
-        "CHR_PRODUCTION_VERSION": {
-          "name": "CHR_PRODUCTION_VERSION",
-          "type": "varchar(8)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "CHR_SIDE": {
           "name": "CHR_SIDE",
           "type": "varchar(8)",
@@ -3206,7 +2791,7 @@
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'AVAILABLE'"
+          "default": "'CREATED'"
         },
         "DTM_PRODUCED_AT": {
           "name": "DTM_PRODUCED_AT",
@@ -3216,19 +2801,6 @@
         },
         "DTM_DELIVERED_AT": {
           "name": "DTM_DELIVERED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "INT_CYCLE_COUNT": {
-          "name": "INT_CYCLE_COUNT",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "DTM_RELEASED_AT": {
-          "name": "DTM_RELEASED_AT",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -3378,7 +2950,7 @@
         },
         "TM_KANBAN_CHR_STATUS_CHK": {
           "name": "TM_KANBAN_CHR_STATUS_CHK",
-          "value": "\"kanban\".\"TM_KANBAN\".\"CHR_STATUS\" IN ('AVAILABLE', 'PAIRED', 'PRODUCED', 'STORED', 'PULLED', 'LOADED', 'DELIVERED', 'CANCELLED')"
+          "value": "\"kanban\".\"TM_KANBAN\".\"CHR_STATUS\" IN ('CREATED', 'PRODUCED', 'STORED', 'PULLED', 'LOADED', 'DELIVERED', 'CANCELLED')"
         }
       },
       "isRLSEnabled": false
@@ -4073,6 +3645,34 @@
           "method": "btree",
           "with": {}
         },
+        "TT_HISTORY_SCAN_DELIVERY_PHASE_IDX": {
+          "name": "TT_HISTORY_SCAN_DELIVERY_PHASE_IDX",
+          "columns": [
+            {
+              "expression": "(\"CHR_META\"->>'deliveryId')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "(\"CHR_META\"->>'phase')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "INT_ID",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"production\".\"TT_HISTORY_SCAN\".\"CHR_KIND\" = 'DELIVERY'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "TT_HISTORY_SCAN_RAW_PROCESS_IDX": {
           "name": "TT_HISTORY_SCAN_RAW_PROCESS_IDX",
           "columns": [
@@ -4112,20 +3712,6 @@
           ],
           "columnsTo": [
             "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "TT_HISTORY_SCAN_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk": {
-          "name": "TT_HISTORY_SCAN_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk",
-          "tableFrom": "TT_HISTORY_SCAN",
-          "tableTo": "TM_PROCESS_TYPE",
-          "schemaTo": "master",
-          "columnsFrom": [
-            "CHR_PROCESS_TYPE"
-          ],
-          "columnsTo": [
-            "CHR_CODE"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -4221,7 +3807,11 @@
       "checkConstraints": {
         "TT_HISTORY_SCAN_CHR_KIND_CHK": {
           "name": "TT_HISTORY_SCAN_CHR_KIND_CHK",
-          "value": "\"production\".\"TT_HISTORY_SCAN\".\"CHR_KIND\" IN ('PRODUCTION', 'PULLING', 'DELIVERY', 'RECEIVING', 'INSPECTION', 'STOCK_TAKE', 'COMPONENT')"
+          "value": "\"production\".\"TT_HISTORY_SCAN\".\"CHR_KIND\" IN ('PRODUCTION', 'PULLING', 'DELIVERY', 'RECEIVING', 'INSPECTION', 'STOCK_TAKE')"
+        },
+        "TT_HISTORY_SCAN_CHR_PROCESS_TYPE_CHK": {
+          "name": "TT_HISTORY_SCAN_CHR_PROCESS_TYPE_CHK",
+          "value": "\"production\".\"TT_HISTORY_SCAN\".\"CHR_PROCESS_TYPE\" IN ('MELTING', 'CASTING_WIP', 'CASTING_FG', 'MACHINING_WIP', 'MACHINING_FG', 'ASSEMBLING_UNIT_FG', 'INJECTION_WIP', 'INJECTION_FG', 'PAINTING_WIP', 'PAINTING_FG', 'ASSEMBLING_BODY_FG', 'MOUNTING', 'INSPECTION_WIP', 'INSPECTION_FG', 'VACUUM_WIP', 'VACUUM_FG', 'ANTENNA', 'DELIVERY')"
         }
       },
       "isRLSEnabled": false
@@ -5358,20 +4948,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "TT_NG_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk": {
-          "name": "TT_NG_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk",
-          "tableFrom": "TT_NG",
-          "tableTo": "TM_PROCESS_TYPE",
-          "schemaTo": "master",
-          "columnsFrom": [
-            "CHR_PROCESS_TYPE"
-          ],
-          "columnsTo": [
-            "CHR_CODE"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "TT_NG_INT_NG_MASTER_ID_TM_NG_INT_ID_fk": {
           "name": "TT_NG_INT_NG_MASTER_ID_TM_NG_INT_ID_fk",
           "tableFrom": "TT_NG",
@@ -5447,6 +5023,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "TT_NG_CHR_PROCESS_TYPE_CHK": {
+          "name": "TT_NG_CHR_PROCESS_TYPE_CHK",
+          "value": "\"quality\".\"TT_NG\".\"CHR_PROCESS_TYPE\" IN ('MELTING', 'CASTING_WIP', 'CASTING_FG', 'MACHINING_WIP', 'MACHINING_FG', 'ASSEMBLING_UNIT_FG', 'INJECTION_WIP', 'INJECTION_FG', 'PAINTING_WIP', 'PAINTING_FG', 'ASSEMBLING_BODY_FG', 'MOUNTING', 'INSPECTION_WIP', 'INSPECTION_FG', 'VACUUM_WIP', 'VACUUM_FG', 'ANTENNA', 'DELIVERY')"
+        },
         "TT_NG_CHR_ORIGIN_CHK": {
           "name": "TT_NG_CHR_ORIGIN_CHK",
           "value": "\"quality\".\"TT_NG\".\"CHR_ORIGIN\" IN ('INLINE', 'OUTLINE')"
@@ -5670,20 +5250,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "TT_INSPECTION_H_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk": {
-          "name": "TT_INSPECTION_H_CHR_PROCESS_TYPE_TM_PROCESS_TYPE_CHR_CODE_fk",
-          "tableFrom": "TT_INSPECTION_H",
-          "tableTo": "TM_PROCESS_TYPE",
-          "schemaTo": "master",
-          "columnsFrom": [
-            "CHR_PROCESS_TYPE"
-          ],
-          "columnsTo": [
-            "CHR_CODE"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "TT_INSPECTION_H_INT_INSPECTOR_ID_TM_USER_INT_ID_fk": {
           "name": "TT_INSPECTION_H_INT_INSPECTOR_ID_TM_USER_INT_ID_fk",
           "tableFrom": "TT_INSPECTION_H",
@@ -5703,6 +5269,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "TT_INSPECTION_H_CHR_PROCESS_TYPE_CHK": {
+          "name": "TT_INSPECTION_H_CHR_PROCESS_TYPE_CHK",
+          "value": "\"quality\".\"TT_INSPECTION_H\".\"CHR_PROCESS_TYPE\" IN ('MELTING', 'CASTING_WIP', 'CASTING_FG', 'MACHINING_WIP', 'MACHINING_FG', 'ASSEMBLING_UNIT_FG', 'INJECTION_WIP', 'INJECTION_FG', 'PAINTING_WIP', 'PAINTING_FG', 'ASSEMBLING_BODY_FG', 'MOUNTING', 'INSPECTION_WIP', 'INSPECTION_FG', 'VACUUM_WIP', 'VACUUM_FG', 'ANTENNA', 'DELIVERY')"
+        },
         "TT_INSPECTION_H_CHR_SHIFT_CHK": {
           "name": "TT_INSPECTION_H_CHR_SHIFT_CHK",
           "value": "\"quality\".\"TT_INSPECTION_H\".\"CHR_SHIFT\" IN ('1', '2', '3')"
@@ -6099,173 +5669,6 @@
       },
       "isRLSEnabled": false
     },
-    "logistics.TT_DELIVERY_KANBAN": {
-      "name": "TT_DELIVERY_KANBAN",
-      "schema": "logistics",
-      "columns": {
-        "INT_ID": {
-          "name": "INT_ID",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "byDefault",
-            "name": "TT_DELIVERY_KANBAN_INT_ID_seq",
-            "schema": "logistics",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "INT_DELIVERY_ID": {
-          "name": "INT_DELIVERY_ID",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "INT_DEL_ITEM_ID": {
-          "name": "INT_DEL_ITEM_ID",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "INT_KANBAN_ID": {
-          "name": "INT_KANBAN_ID",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "CHR_OWNER": {
-          "name": "CHR_OWNER",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "INT_QTY": {
-          "name": "INT_QTY",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "DTM_RELEASED_AT": {
-          "name": "DTM_RELEASED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "DTM_CREATED_AT": {
-          "name": "DTM_CREATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "DTM_UPDATED_AT": {
-          "name": "DTM_UPDATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "TT_DELIVERY_KANBAN_UNIQUE": {
-          "name": "TT_DELIVERY_KANBAN_UNIQUE",
-          "columns": [
-            {
-              "expression": "INT_DELIVERY_ID",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "INT_KANBAN_ID",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "TT_DELIVERY_KANBAN_KANBAN_IDX": {
-          "name": "TT_DELIVERY_KANBAN_KANBAN_IDX",
-          "columns": [
-            {
-              "expression": "INT_KANBAN_ID",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "DTM_CREATED_AT",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "TT_DELIVERY_KANBAN_INT_DELIVERY_ID_TT_DELIVERY_INT_ID_fk": {
-          "name": "TT_DELIVERY_KANBAN_INT_DELIVERY_ID_TT_DELIVERY_INT_ID_fk",
-          "tableFrom": "TT_DELIVERY_KANBAN",
-          "tableTo": "TT_DELIVERY",
-          "schemaTo": "logistics",
-          "columnsFrom": [
-            "INT_DELIVERY_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "TT_DELIVERY_KANBAN_INT_DEL_ITEM_ID_TT_DELIVERY_ITEM_INT_ID_fk": {
-          "name": "TT_DELIVERY_KANBAN_INT_DEL_ITEM_ID_TT_DELIVERY_ITEM_INT_ID_fk",
-          "tableFrom": "TT_DELIVERY_KANBAN",
-          "tableTo": "TT_DELIVERY_ITEM",
-          "schemaTo": "logistics",
-          "columnsFrom": [
-            "INT_DEL_ITEM_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "TT_DELIVERY_KANBAN_INT_KANBAN_ID_TM_KANBAN_INT_ID_fk": {
-          "name": "TT_DELIVERY_KANBAN_INT_KANBAN_ID_TM_KANBAN_INT_ID_fk",
-          "tableFrom": "TT_DELIVERY_KANBAN",
-          "tableTo": "TM_KANBAN",
-          "schemaTo": "kanban",
-          "columnsFrom": [
-            "INT_KANBAN_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "logistics.TT_DELIVERY_ITEM": {
       "name": "TT_DELIVERY_ITEM",
       "schema": "logistics",
@@ -6547,6 +5950,181 @@
         }
       },
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "logistics.TM_PREPARATION_CYCLE": {
+      "name": "TM_PREPARATION_CYCLE",
+      "schema": "logistics",
+      "columns": {
+        "INT_ID": {
+          "name": "INT_ID",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "TM_PREPARATION_CYCLE_INT_ID_seq",
+            "schema": "logistics",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "INT_CUSTOMER_ID": {
+          "name": "INT_CUSTOMER_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "CHR_DEST_NO": {
+          "name": "CHR_DEST_NO",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "CHR_GATE_NO": {
+          "name": "CHR_GATE_NO",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "INT_CYCLE": {
+          "name": "INT_CYCLE",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "DTM_PREP_START": {
+          "name": "DTM_PREP_START",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "DTM_PREP_END": {
+          "name": "DTM_PREP_END",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "INT_DAY_OFFSET": {
+          "name": "INT_DAY_OFFSET",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "DTM_TRUCK_TIME": {
+          "name": "DTM_TRUCK_TIME",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "DTM_SAP_PICK_TIME": {
+          "name": "DTM_SAP_PICK_TIME",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "DTM_SAP_LOADING_TIME": {
+          "name": "DTM_SAP_LOADING_TIME",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "DTM_SAP_DELIVERY_TIME": {
+          "name": "DTM_SAP_DELIVERY_TIME",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "DTM_SYNCED_AT": {
+          "name": "DTM_SYNCED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "FLG_IS_ACTIVE": {
+          "name": "FLG_IS_ACTIVE",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "DTM_CREATED_AT": {
+          "name": "DTM_CREATED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "DTM_UPDATED_AT": {
+          "name": "DTM_UPDATED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "TM_PREPARATION_CYCLE_KEY": {
+          "name": "TM_PREPARATION_CYCLE_KEY",
+          "columns": [
+            {
+              "expression": "INT_CUSTOMER_ID",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "CHR_DEST_NO",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "CHR_GATE_NO",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "INT_CYCLE",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "TM_PREPARATION_CYCLE_INT_CUSTOMER_ID_TM_CUST_INT_ID_fk": {
+          "name": "TM_PREPARATION_CYCLE_INT_CUSTOMER_ID_TM_CUST_INT_ID_fk",
+          "tableFrom": "TM_PREPARATION_CYCLE",
+          "tableTo": "TM_CUST",
+          "schemaTo": "master",
+          "columnsFrom": [
+            "INT_CUSTOMER_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -7041,12 +6619,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'PROBLEM'"
-        },
-        "CHR_COLOR": {
-          "name": "CHR_COLOR",
-          "type": "varchar(9)",
-          "primaryKey": false,
-          "notNull": false
         },
         "FLG_IS_PLANNED": {
           "name": "FLG_IS_PLANNED",

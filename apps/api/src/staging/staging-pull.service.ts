@@ -10,8 +10,9 @@ import {
   deliveries,
   deliveryLines,
   deliverySyncs,
+  preparationSchedules,
 } from '@avicenna/db';
-import { DELIVERY_DAY_START_HOUR, productionDayWindow } from '@avicenna/domain';
+import { DELIVERY_DAY_START_HOUR, productionDayWindow, normalizeDeliveryCycle, preparationClock } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 import { StagingDbService } from './staging-db.service';
 import {
@@ -115,6 +116,39 @@ export class StagingPullService {
     private readonly staging: StagingDbService,
   ) {}
 
+  /** SELECT-only: jam SAP disimpan sebagai referensi, tidak menimpa jadwal PPIC. */
+  async tarikJadwalPreparation(): Promise<HasilTarik> {
+    const hasil: HasilTarik = { entitas: 'PREPARATION_CYCLE', dibaca: 0, baru: 0, diperbarui: 0, dinonaktifkan: 0, dilewati: 0, catatan: [] };
+    const rows = await this.staging.query<Record<string, unknown>>(`SELECT
+      CHR_CUST_NO AS customerCode, CHR_DEST_NO AS destination, CHR_GATE_NO AS gate,
+      CHR_CYCLE AS cycle, CHR_PICK_TIME AS pickTime, CHR_LOADING_TIME AS loadingTime,
+      CHR_DEL_TIME AS deliveryTime FROM dbo.TM_DELIV_TIME`);
+    hasil.dibaca = rows.length;
+    const local = await this.db.select({ id: customers.id, code: customers.code }).from(customers);
+    const normalized = rows.map(r => ({ customerId: local.find(c => c.code === bersih(r.customerCode))?.id,
+      destination: bersih(r.destination) ?? '', gate: bersih(r.gate) ?? '', cycle: normalizeDeliveryCycle(r.cycle),
+      sapPickTime: preparationClock(r.pickTime), sapLoadingTime: preparationClock(r.loadingTime), sapDeliveryTime: preparationClock(r.deliveryTime) }));
+    const keys = normalized.map(r => JSON.stringify([r.customerId, r.destination, r.gate, r.cycle]));
+    const counts = new Map<string, number>();
+    for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);
+    for (const [i, row] of normalized.entries()) {
+      if (!row.customerId || !row.cycle || counts.get(keys[i]!) !== 1) {
+        hasil.dilewati++;
+        if (hasil.catatan.length < 20) hasil.catatan.push(`Baris ${i + 1}: customer belum terpetakan, cycle tidak valid, atau kunci normalisasi ambigu.`);
+        continue;
+      }
+      const key = { customerId: row.customerId, cycle: row.cycle, destination: row.destination, gate: row.gate };
+      const existing = await this.db.select({ id: preparationSchedules.id }).from(preparationSchedules).where(and(
+        eq(preparationSchedules.customerId, key.customerId), eq(preparationSchedules.cycle, key.cycle),
+        eq(preparationSchedules.destination, key.destination), eq(preparationSchedules.gate, key.gate))).limit(1);
+      const raw = { sapPickTime: row.sapPickTime, sapLoadingTime: row.sapLoadingTime, sapDeliveryTime: row.sapDeliveryTime, syncedAt: new Date() };
+      await this.db.insert(preparationSchedules).values({ ...key, ...raw }).onConflictDoUpdate({
+        target: [preparationSchedules.customerId, preparationSchedules.destination, preparationSchedules.gate, preparationSchedules.cycle], set: raw });
+      if (existing.length) hasil.diperbarui++; else hasil.baru++;
+    }
+    return hasil;
+  }
+
   get aktif(): boolean {
     return this.staging.tarikAktif;
   }
@@ -162,7 +196,7 @@ export class StagingPullService {
    * Kepala dan rencana item dimiliki SAP. Hitungan pulling/loading serta status
    * operasional tetap milik MES dan tidak ditimpa saat sinkronisasi berikutnya.
    */
-  async tarikPengiriman(at = new Date(), uji = false): Promise<HasilTarik> {
+  async tarikPengiriman(at = new Date(), uji = false, manual = false): Promise<HasilTarik> {
     const hasil: HasilTarik = {
       entitas: 'DELIVERY',
       dibaca: 0,
@@ -172,7 +206,7 @@ export class StagingPullService {
       dilewati: 0,
       catatan: [],
     };
-    if (!this.aktif && !uji) {
+    if (!this.aktif && !uji && !manual) {
       hasil.catatan.push(
         this.staging.terkonfigurasi
           ? 'STAGING_PULL_ENABLED masih false'
@@ -263,6 +297,12 @@ export class StagingPullService {
       }
 
       const customerCode = bersih(header.customerCode);
+      const cycle = normalizeDeliveryCycle(header.cycle);
+      if (cycle === null) {
+        hasil.dilewati++;
+        catat(`${documentNumber}: cycle SAP tidak valid`);
+        continue;
+      }
       const sourceLines = documentRows.filter(
         (row) => bersih(row.partNumber) && !ditandaiHapus(row.lineDeleted),
       );
@@ -401,7 +441,7 @@ export class StagingPullService {
           sapReceiveDate: tanggalIsoAtauNull(header.sapReceiveDate),
           sapReceiveTime: jamIsoAtauNull(header.sapReceiveTime),
           deliveryDate: tanggalIso(header.deliveryDate, operationalDate),
-          cycle: Math.max(1, angkaBulat(header.cycle)),
+          cycle,
           dock: bersih(header.destination),
           ...(sourceLocationId ? { locationId: sourceLocationId } : {}),
           ...(stagingLocationId ? { stagingLocationId } : {}),

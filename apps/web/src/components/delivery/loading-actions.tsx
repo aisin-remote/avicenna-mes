@@ -1,40 +1,18 @@
 'use client';
-
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'motion/react';
-import { Truck, AlertTriangle, PackageOpen } from 'lucide-react';
 import {
-  shipLoadingAction,
-  setTruckStatusAction,
   completePickingAction,
+  setTruckStatusAction,
   type ShipResult,
 } from '@/app/(app)/delivery/actions';
-import { durations, easeSoft } from '../motion/transitions';
-import { cn } from '../ui/cn';
-import { useToast } from '../ui/toast';
-
-const TRUCK_STEPS = [
-  { value: 'PENDING', label: 'Belum datang' },
-  { value: 'ARRIVED', label: 'Sudah datang' },
-  { value: 'LOADING', label: 'Sedang dimuat' },
-  { value: 'DEPARTED', label: 'Sudah berangkat' },
-] as const;
-
-/**
- * Tombol-tombol keputusan pada satu loading list.
- *
- * Menutup dokumen adalah tindakan yang mengurangi stok dan tidak bisa
- * dibatalkan, jadi dimintakan konfirmasi lebih dulu — beserta angka yang akan
- * dipakai, karena yang tercatat adalah jumlah AKTUAL hasil scan, bukan rencana.
- */
 export function LoadingActions({
   id,
   status,
   truckStatus,
-  totalPlanned,
   totalPicked,
-  totalActual,
+  flowStarted = false,
 }: {
   id: number;
   status: string;
@@ -42,183 +20,134 @@ export function LoadingActions({
   totalPlanned: number;
   totalPicked: number;
   totalActual: number;
+  flowStarted?: boolean;
 }) {
-  const [confirming, setConfirming] = useState<'pick' | 'ship' | null>(null);
-  const toast = useToast();
-  const [shortages, setShortages] = useState<ShipResult['shortages']>([]);
-  const [pending, startTransition] = useTransition();
   const router = useRouter();
-
-  const closed = status === 'SHIPPED' || status === 'RECEIVED' || status === 'CANCELLED';
-  // Satu tahap, satu tombol. Menawarkan "tutup pulling" dan "nyatakan berangkat"
-  // berdampingan hanya membuat orang menebak mana yang berlaku sekarang.
-  const tahapPulling = status === 'DRAFT' || status === 'PICKING';
-
-  async function pick() {
-    setConfirming(null);
-    const res = await completePickingAction(id);
-    if ('error' in res) return toast.galat(res.error);
-    setShortages(res.shortages);
-    toast.ok(`Pulling ${res.documentNumber} ditutup — ${res.pickedLines} baris pindah ke staging.`);
-    startTransition(() => router.refresh());
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [shortages, setShortages] = useState<ShipResult['shortages']>([]);
+  if (['SHIPPED', 'RECEIVED', 'CANCELLED'].includes(status)) return null;
+  const picking = ['DRAFT', 'PICKING'].includes(status);
+  async function finish() {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await completePickingAction(id);
+      if ('error' in result) {
+        setError(result.error);
+        return;
+      }
+      setShortages(result.shortages);
+      setConfirm(false);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
-
-  async function ship() {
-    setConfirming(null);
-    const res = await shipLoadingAction(id);
-    if ('error' in res) return toast.galat(res.error);
-    setShortages(res.shortages);
-    toast.ok(
-      `${res.documentNumber} selesai — ${res.shippedLines} baris keluar stok dan Good Issue 601 diantrikan.`,
-    );
-    startTransition(() => router.refresh());
+  async function truck(value: 'PENDING' | 'ARRIVED' | 'LOADING') {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await setTruckStatusAction(id, value);
+      if ('error' in result) setError(result.error);
+      else router.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
-
-  async function setTruck(value: (typeof TRUCK_STEPS)[number]['value']) {
-    const res = await setTruckStatusAction(id, value);
-    if ('error' in res) return toast.galat(res.error);
-    startTransition(() => router.refresh());
-  }
-
   return (
-    <div className="space-y-4">
-      {!closed ? (
-        <section className="rounded-card border border-line bg-card p-5">
-          <h2 className="text-[15px] font-bold">Status truk</h2>
-          <p className="mt-1 text-[13px] text-ink-muted">
-            Terpisah dari status dokumen — truk bisa datang sebelum barangnya dimuat.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {TRUCK_STEPS.map((s) => (
-              <button
-                key={s.value}
-                type="button"
-                onClick={() => void setTruck(s.value)}
-                disabled={pending}
-                className={cn(
-                  'h-10 rounded-full border px-4 text-[14px] font-semibold transition-colors disabled:opacity-50',
-                  truckStatus === s.value
-                    ? 'border-accent bg-accent text-white'
-                    : 'border-line text-ink-muted hover:border-ink hover:text-ink',
-                )}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {shortages.length > 0 ? (
-        <section className="rounded-card border border-warn/40 bg-warn/10 p-5">
-          <p className="flex items-center gap-2 text-[15px] font-bold text-warn">
-            <AlertTriangle className="size-[18px] shrink-0" strokeWidth={2} aria-hidden />
-            Stok tercatat tidak cukup
-          </p>
-          <p className="mt-1 text-[14px] text-warn">
-            Pengiriman tetap dicatat — barangnya sudah naik truk. Selisih ini perlu ditelusuri:
-            kemungkinan ada produksi atau penerimaan yang belum tercatat.
-          </p>
-          <ul className="tabular mt-3 space-y-1 text-[14px] text-warn">
-            {shortages.map((s) => (
-              <li key={s.partId}>
-                <span className="font-semibold">{s.partNumber}</span> — kirim{' '}
-                {s.needed.toLocaleString('id-ID')}, tercatat {s.available.toLocaleString('id-ID')}{' '}
-                (kurang {s.short.toLocaleString('id-ID')})
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {!closed ? (
-        <div className="flex flex-wrap items-center gap-3">
-          {tahapPulling ? (
+    <section className="space-y-4 rounded-card border border-line bg-card p-5">
+      <div>
+        <h2 className="font-bold">Status truk</h2>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(
+            [
+              { value: 'PENDING', label: 'Belum datang' },
+              { value: 'ARRIVED', label: 'Sudah datang' },
+              { value: 'LOADING', label: 'Sedang dimuat' },
+            ] as const
+          ).map((s) => (
             <button
-              type="button"
-              onClick={() => setConfirming('pick')}
-              disabled={pending || totalPicked === 0}
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-accent px-7 text-[15px] font-semibold text-white transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+              key={s.value}
+              disabled={busy}
+              onClick={() => void truck(s.value)}
+              className={`min-h-11 rounded-full border px-4 text-sm ${truckStatus === s.value ? 'border-accent bg-accent text-white' : 'border-line'}`}
             >
-              <PackageOpen className="size-[18px]" strokeWidth={2.2} aria-hidden />
-              Tutup pulling
+              {s.label}
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming('ship')}
-              disabled={pending || totalActual === 0}
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-accent px-7 text-[15px] font-semibold text-white transition-colors hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Truck className="size-[18px]" strokeWidth={2.2} aria-hidden />
-              Selesaikan &amp; trigger GI
-            </button>
-          )}
-          {tahapPulling && totalPicked === 0 ? (
-            <span className="text-[13px] text-ink-muted">
-              Belum ada kanban yang diambil — scan barangnya di layar pulling dulu.
-            </span>
-          ) : !tahapPulling && totalActual === 0 ? (
-            <span className="text-[13px] text-ink-muted">
-              Belum ada kanban yang dimuat — scan barangnya di layar muat dulu.
-            </span>
+          ))}
+        </div>
+      </div>
+      {picking ? (
+        <>
+          <button
+            disabled={busy || totalPicked === 0}
+            onClick={() => setConfirm(true)}
+            className="min-h-12 rounded-full bg-accent px-6 font-bold text-white disabled:opacity-40"
+          >
+            Finish Pulling
+          </button>
+          {confirm ? (
+            <div className="rounded-xl border border-warn/40 bg-warn/5 p-4">
+              <p className="font-semibold">Selesaikan pulling {totalPicked} kanban?</p>
+              <p className="mt-1 text-sm text-ink-muted">
+                Qty aktual dipindahkan ke staging. GI AIIA diproses setelah seluruh loading list PDS
+                selesai. Surat jalan menunggu GI AIIA dan GR AII berhasil.
+              </p>
+              <div className="mt-4 flex gap-3">
+                <button
+                  disabled={busy}
+                  onClick={() => void finish()}
+                  className="min-h-11 rounded-full bg-accent px-5 font-bold text-white"
+                >
+                  {busy ? 'Memproses…' : 'Ya, Finish Pulling'}
+                </button>
+                <button disabled={busy} onClick={() => setConfirm(false)} className="min-h-11 px-4">
+                  Kembali
+                </button>
+              </div>
+            </div>
           ) : null}
+        </>
+      ) : (
+        <div>
+          <p className="text-sm text-ink-muted">
+            Keberangkatan dicatat melalui scan driver, setelah GI AIIA dan GR AII berhasil.
+          </p>
+          {!flowStarted ? (
+            <button
+              disabled={busy}
+              onClick={() => void finish()}
+              className="mt-3 min-h-11 rounded-full border border-line px-5"
+            >
+              Mulai alur SAP AIIA → AII
+            </button>
+          ) : null}
+          <Link
+            href="/delivery-return"
+            className="mt-3 inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-semibold"
+          >
+            Buka Absensi Driver
+          </Link>
+        </div>
+      )}
+      {error ? (
+        <p role="alert" className="text-sm text-ng">
+          {error}
+        </p>
+      ) : null}
+      {shortages.length ? (
+        <div role="alert" className="rounded-xl border border-warn/40 bg-warn/10 p-4">
+          <p className="font-semibold text-warn">Saldo gudang kurang saat pulling:</p>
+          {shortages.map((s) => (
+            <p key={s.partId} className="text-sm">
+              {s.partNumber}: perlu {s.needed}, tersedia {s.available}, kurang {s.short}.
+            </p>
+          ))}
         </div>
       ) : null}
-
-      <AnimatePresence>
-        {confirming ? (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: durations.base, ease: easeSoft }}
-            className="rounded-card border border-line bg-card p-5"
-          >
-            {confirming === 'pick' ? (
-              <>
-                <p className="text-[15px] font-bold">Tutup pulling?</p>
-                <p className="mt-1 text-[14px] text-ink-soft">
-                  <span className="tabular font-semibold text-ink">{totalPicked} kanban</span> dari
-                  rencana {totalPlanned} akan berpindah dari gudang barang jadi ke staging. Setelah
-                  ini barangnya siap dimuat, dan pulling tidak bisa dilanjutkan lagi.
-                </p>
-              </>
-            ) : confirming === 'ship' ? (
-              <>
-                <p className="text-[15px] font-bold">
-                  Selesaikan loading &amp; trigger Good Issue?
-                </p>
-                {/* Angka aktual ditegaskan di sini: yang keluar stok adalah yang
-                    benar-benar discan, bukan rencananya. */}
-                <p className="mt-1 text-[14px] text-ink-soft">
-                  Stok staging akan berkurang sesuai jumlah yang benar-benar dimuat —{' '}
-                  <span className="tabular font-semibold text-ink">{totalActual} kanban</span> dari{' '}
-                  {totalPicked} yang diambil. Movement 601 akan masuk antrean integrasi SAP. Setelah
-                  ini dokumen tidak bisa diubah lagi; koreksi harus dicatat sebagai penyesuaian
-                  stok.
-                </p>
-              </>
-            ) : null}
-            <div className="mt-4 flex gap-3">
-              <button
-                type="button"
-                onClick={() => void (confirming === 'pick' ? pick() : ship())}
-                className="inline-flex h-11 items-center rounded-full bg-accent px-6 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
-              >
-                Ya, lanjutkan
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(null)}
-                className="inline-flex h-11 items-center rounded-full border border-line px-6 text-[14px] font-semibold transition-colors hover:border-ink"
-              >
-                Kembali
-              </button>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
+    </section>
   );
 }

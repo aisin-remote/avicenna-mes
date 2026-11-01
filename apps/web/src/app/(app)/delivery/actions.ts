@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import type { LoadingPhase, LoadingScanResult } from '@avicenna/contracts';
+import type { DeliveryFlow } from '@avicenna/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 
 function toMessage(err: unknown): string {
@@ -11,6 +12,16 @@ function toMessage(err: unknown): string {
     return err.message;
   }
   return 'Tidak bisa menghubungi server.';
+}
+
+export async function refreshDriverFlowAction(
+  orderId: number,
+): Promise<{ data: DeliveryFlow | null } | { error: string }> {
+  try {
+    return await apiFetch(`/loading/driver-status/${orderId}`);
+  } catch (err) {
+    return { error: toMessage(err) };
+  }
 }
 
 export interface DeliveryDocumentMatch {
@@ -111,6 +122,7 @@ export interface PickResult {
   id: number;
   documentNumber: string;
   pickedLines: number;
+  deliveryOrderNumber: string | null;
   shortages: ShipResult['shortages'];
 }
 
@@ -120,6 +132,8 @@ export async function completePickingAction(id: number): Promise<PickResult | { 
     const res = await apiFetch<PickResult>(`/loading/${id}/pick`, { method: 'POST' });
     revalidatePath('/delivery');
     revalidatePath(`/delivery/${id}`);
+    revalidatePath(`/delivery/${id}/delivery-order`);
+    revalidatePath('/preparation-monitoring');
     return res;
   } catch (err) {
     return { error: toMessage(err) };

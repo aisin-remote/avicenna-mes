@@ -1,9 +1,11 @@
-import { and, eq } from 'drizzle-orm';
+import assert from 'node:assert/strict';
+import { eq, sql } from 'drizzle-orm';
 import { closeDb, getDb } from './client';
 import {
   customerParts,
   customers,
   deliveries,
+  driverDestinations,
   deliveryLines,
   kanbanItems,
   kanbans,
@@ -12,9 +14,6 @@ import {
   parts,
   plants,
 } from './schema/index';
-
-const CUSTOMER_CODE = 'TRIAL3W';
-const CUSTOMER_PART = 'TRIAL-CUST-001';
 
 function operationalDate(): string {
   const fields = Object.fromEntries(
@@ -27,226 +26,217 @@ function operationalDate(): string {
       hourCycle: 'h23',
     })
       .formatToParts(new Date())
-      .map((part) => [part.type, part.value]),
+      .map((p) => [p.type, p.value]),
   );
-  const at = Date.UTC(Number(fields.year), Number(fields.month) - 1, Number(fields.day));
-  return new Date(Number(fields.hour) < 6 ? at - 86_400_000 : at).toISOString().slice(0, 10);
+  const day = Date.UTC(Number(fields.year), Number(fields.month) - 1, Number(fields.day));
+  return new Date(Number(fields.hour) < 6 ? day - 86_400_000 : day).toISOString().slice(0, 10);
 }
 
 async function main() {
+  if (process.env.NODE_ENV === 'production')
+    throw Error('Dummy delivery hanya untuk lingkungan lokal/UAT.');
+  if ((process.env.STAGING_PUSH_ENABLED ?? '').trim().toLowerCase() === 'true')
+    throw Error('Matikan push staging nyata sebelum membuat dummy.');
+  const runNumber = Number(process.env.DELIVERY_TRIAL_RUN ?? 1);
+  assert(
+    Number.isInteger(runNumber) && runNumber >= 1 && runNumber <= 99,
+    'DELIVERY_TRIAL_RUN harus 1–99.',
+  );
+  const date = operationalDate(),
+    dateKey = date.replaceAll('-', ''),
+    run = String(runNumber).padStart(2, '0');
+  const documentNumber = `LL-TRIAL-FULL-${dateKey}-${run}`,
+    manifestNumber = `MNF-TRIAL-FULL-${dateKey}-${run}`,
+    pdsNumber = `PDS-TRIAL-FULL-${dateKey}-${run}`;
+  const customerCode = 'TRIAL-FULL',
+    customerPartNumber = `TR-CUST-${dateKey}-${run}`,
+    partNumber = `TR-FULL-${dateKey}-${run}`,
+    backNumber = 'TF01';
+  const serials = [1, 2].map((i) => `TRIAL-${dateKey}-${run}-${String(i).padStart(2, '0')}`);
   const db = getDb();
-  const date = operationalDate();
-  const dateKey = date.replaceAll('-', '');
-  const documentNumber = `LL-TRIAL-${dateKey}-01`;
-  const manifestNumber = `MNF-TRIAL-${dateKey}`;
-  const cardSerials = [`TRIAL-${dateKey}-01`, `TRIAL-${dateKey}-02`];
-
-  const [plant] = await db.select().from(plants).orderBy(plants.id).limit(1);
-  if (!plant) throw new Error('Belum ada plant. Jalankan pnpm db:seed lebih dulu.');
-
-  const [part] = await db
-    .select()
-    .from(parts)
-    .where(and(eq(parts.plantId, plant.id), eq(parts.partNumber, 'AV-12345-001')))
-    .limit(1);
-  if (!part) throw new Error('Part AV-12345-001 belum ada. Jalankan pnpm db:seed lebih dulu.');
-
-  const plantLocations = await db.select().from(locations).where(eq(locations.plantId, plant.id));
-  // Lewat jenis: kode SLOC berbeda tiap pabrik (FG70/FG80/FG90).
-  const source = plantLocations.find((location) => location.kind === 'FINISH_GOOD');
-  const staging = plantLocations.find((location) => location.kind === 'STAGING');
-  if (!source || !staging) {
-    throw new Error('SLOC berjenis FINISH_GOOD/STAGING belum ada. Jalankan pnpm db:seed.');
-  }
-
-  let [customer] = await db
-    .select()
-    .from(customers)
-    .where(eq(customers.code, CUSTOMER_CODE))
-    .limit(1);
-  if (!customer) {
-    await db.insert(customers).values({
-      code: CUSTOMER_CODE,
-      name: 'Customer Trial 3-Way Matching',
-      dock: 'TRIAL',
-      partNumberFormat: 'NONE',
-      directKanban: false,
-    });
-    [customer] = await db
-      .select()
-      .from(customers)
-      .where(eq(customers.code, CUSTOMER_CODE))
-      .limit(1);
-  }
-  if (!customer) throw new Error('Customer trial gagal dibuat.');
-
-  let [customerPart] = await db
-    .select()
-    .from(customerParts)
-    .where(
-      and(
-        eq(customerParts.customerId, customer.id),
-        eq(customerParts.customerPartNumber, CUSTOMER_PART),
-      ),
-    )
-    .limit(1);
-  if (!customerPart) {
-    await db.insert(customerParts).values({
-      partId: part.id,
-      customerId: customer.id,
-      customerPartNumber: CUSTOMER_PART,
-      customerBackNumber: 'TRIAL-BACK',
-      qtyPerKanban: 20,
-    });
-    [customerPart] = await db
-      .select()
-      .from(customerParts)
-      .where(
-        and(
-          eq(customerParts.customerId, customer.id),
-          eq(customerParts.customerPartNumber, CUSTOMER_PART),
-        ),
-      )
-      .limit(1);
-  }
-  if (!customerPart) throw new Error('Mapping part customer trial gagal dibuat.');
-
-  for (const serialNumber of cardSerials) {
-    let [card] = await db
-      .select()
-      .from(kanbans)
-      .where(and(eq(kanbans.partId, part.id), eq(kanbans.serialNumber, serialNumber)))
-      .limit(1);
-    if (!card) {
-      await db.insert(kanbans).values({
-        plantId: plant.id,
-        partId: part.id,
-        serialNumber,
-        qtyPerBox: 20,
-        unitPerKanban: 1,
-        owner: 'INTERNAL',
-        status: 'PRODUCED',
-        producedAt: new Date(),
-      });
-      [card] = await db
-        .select()
-        .from(kanbans)
-        .where(and(eq(kanbans.partId, part.id), eq(kanbans.serialNumber, serialNumber)))
-        .limit(1);
-    }
-    if (!card) throw new Error(`Kanban ${serialNumber} gagal dibuat.`);
-
-    const itemSerial = `UNIT-${serialNumber}`;
-    const [item] = await db
-      .select({ id: kanbanItems.id })
-      .from(kanbanItems)
-      .where(eq(kanbanItems.serialNumber, itemSerial))
-      .limit(1);
-    if (!item) {
-      await db.insert(kanbanItems).values({
-        kanbanId: card.id,
-        serialNumber: itemSerial,
-        attachedAt: new Date(),
-      });
-    }
-  }
-
-  let [delivery] = await db
-    .select()
-    .from(deliveries)
-    .where(and(eq(deliveries.plantId, plant.id), eq(deliveries.documentNumber, documentNumber)))
-    .limit(1);
-  if (!delivery) {
-    await db.insert(deliveries).values({
-      plantId: plant.id,
-      customerId: customer.id,
-      documentNumber,
-      manifestNumber,
-      pdsNumber: `PDS-TRIAL-${dateKey}`,
-      purchaseOrderNumber: `PO-TRIAL-${dateKey}`,
-      salesOrganization: 'J901',
-      distributionChannel: 'C1',
-      division: '01',
-      deliveryType: 'ZMAK',
-      sapGiStatus: 'A',
-      qcStatus: '0',
-      deliveryDate: date,
-      cycle: 1,
-      dock: 'TRIAL',
-      locationId: source.id,
-      stagingLocationId: staging.id,
-      status: 'PICKED',
-      truckStatus: 'ARRIVED',
-      truckNumber: 'B 1234 TRL',
-      driverName: 'Driver Trial',
-    });
-    [delivery] = await db
+  const doc = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${documentNumber},0))`);
+    const [existing] = await tx
       .select()
       .from(deliveries)
-      .where(and(eq(deliveries.plantId, plant.id), eq(deliveries.documentNumber, documentNumber)))
+      .where(eq(deliveries.documentNumber, documentNumber))
       .limit(1);
-  }
-  if (!delivery) throw new Error('Loading list trial gagal dibuat.');
-  if (delivery.status === 'SHIPPED' || delivery.status === 'RECEIVED') {
-    throw new Error(`${documentNumber} sudah selesai; ubah suffix dokumen untuk trial baru.`);
-  }
-
-  const [line] = await db
-    .select()
-    .from(deliveryLines)
-    .where(and(eq(deliveryLines.deliveryId, delivery.id), eq(deliveryLines.partId, part.id)))
-    .limit(1);
-  const lineValues = {
-    customerPartId: customerPart.id,
-    sapItemNumber: '000010',
-    sapDeliveryQty: 40,
-    itemType: 'ZMAK',
-    plannedKanban: 2,
-    plannedQty: 40,
-    qtyPerKanban: 20,
-    pickedKanban: 2,
-    pickedQty: 40,
-    actualKanban: 0,
-    actualQty: 0,
-  };
-  if (!line) {
-    await db.insert(deliveryLines).values({
-      deliveryId: delivery.id,
+    if (existing) return existing;
+    const allPlants = await tx.select().from(plants).orderBy(plants.id);
+    const plant = allPlants.find((p) => p.code.toUpperCase() === 'BODY') ?? allPlants[0];
+    assert(plant, 'Jalankan seed master plant lebih dulu.');
+    const slocs = await tx.select().from(locations).where(eq(locations.plantId, plant.id));
+    const fg = slocs.find((l) => l.kind === 'FINISH_GOOD'),
+      staging = slocs.find((l) => l.kind === 'STAGING');
+    assert(fg && staging, 'SLOC FG dan staging belum tersedia.');
+    let [customer] = await tx.select().from(customers).where(eq(customers.code, customerCode));
+    if (!customer)
+      [customer] = await tx
+        .insert(customers)
+        .values({
+          code: customerCode,
+          name: 'CUSTOMER DUMMY FULL DELIVERY',
+          dock: 'DOCK TRIAL',
+          partNumberFormat: 'NONE',
+          directKanban: false,
+        })
+        .returning();
+    assert(
+      customer?.isActive && customer.partNumberFormat === 'NONE' && !customer.directKanban,
+      'Konfigurasi customer dummy tidak sesuai.',
+    );
+    const [part] = await tx
+      .insert(parts)
+      .values({
+        plantId: plant.id,
+        partNumber,
+        name: 'PART DUMMY FULL DELIVERY',
+        backNumber,
+        processType:
+          plant.code.toUpperCase() === 'BODY' ? 'ASSEMBLING_BODY_FG' : 'ASSEMBLING_UNIT_FG',
+        partType: 'FINISHED_GOOD',
+        trackingMode: 'QUANTITY',
+        uom: 'PC',
+        qtyPerKanban: 20,
+      })
+      .returning();
+    assert(part);
+    const [mapping] = await tx
+      .insert(customerParts)
+      .values({
+        customerId: customer.id,
+        partId: part.id,
+        customerPartNumber,
+        customerBackNumber: backNumber,
+        qtyPerKanban: 20,
+      })
+      .returning();
+    assert(mapping);
+    for (const serialNumber of serials) {
+      const [card] = await tx
+        .insert(kanbans)
+        .values({
+          plantId: plant.id,
+          partId: part.id,
+          serialNumber,
+          qtyPerBox: 20,
+          unitPerKanban: 20,
+          owner: 'INTERNAL',
+          status: 'PRODUCED',
+          producedAt: new Date(),
+        })
+        .returning();
+      assert(card);
+      await tx.insert(kanbanItems).values(
+        Array.from({ length: 20 }, (_, i) => ({
+          kanbanId: card.id,
+          serialNumber: `UNIT-${serialNumber}-${String(i + 1).padStart(2, '0')}`,
+          attachedAt: new Date(),
+        })),
+      );
+    }
+    const [created] = await tx
+      .insert(deliveries)
+      .values({
+        plantId: plant.id,
+        customerId: customer.id,
+        documentNumber,
+        manifestNumber,
+        pdsNumber,
+        purchaseOrderNumber: `PO-TRIAL-${dateKey}-${run}`,
+        deliveryDate: date,
+        cycle: 1,
+        dock: 'DOCK TRIAL',
+        planTime: '13:00:00',
+        locationId: fg.id,
+        stagingLocationId: staging.id,
+        status: 'DRAFT',
+        truckStatus: 'ARRIVED',
+        truckNumber: 'B 1234 TRL',
+        driverName: 'DRIVER DUMMY',
+      })
+      .returning();
+    assert(created);
+    await tx.insert(deliveryLines).values({
+      deliveryId: created.id,
       partId: part.id,
-      ...lineValues,
+      customerPartId: mapping.id,
+      customerPartNumberSource: customerPartNumber,
+      sapItemNumber: '000010',
+      sapDeliveryQty: 40,
+      plannedKanban: 2,
+      plannedQty: 40,
+      qtyPerKanban: 20,
+      pickedKanban: 0,
+      pickedQty: 0,
+      actualKanban: 0,
+      actualQty: 0,
     });
-  }
-
-  const stockNote = `Dummy stok staging untuk ${documentNumber}`;
-  const [stock] = await db
-    .select({ id: mutations.id })
-    .from(mutations)
-    .where(eq(mutations.note, stockNote))
-    .limit(1);
-  if (!stock) {
-    await db.insert(mutations).values({
+    await tx.insert(mutations).values({
       plantId: plant.id,
       partId: part.id,
-      locationId: staging.id,
+      locationId: fg.id,
       type: 'ADJUSTMENT',
       qty: '40',
       occurredAt: new Date(),
-      note: stockNote,
+      note: `Dummy stok FG untuk ${documentNumber}`,
     });
-  }
-
-  console.log(`[trial] manifest/loading list: ${manifestNumber} / ${documentNumber}`);
-  cardSerials.forEach((serial, index) => {
-    console.log(
-      `[trial] box ${index + 1}: customer=${CUSTOMER_CODE}~${CUSTOMER_PART}~${documentNumber}~${index + 1}`,
-    );
-    console.log(`[trial] box ${index + 1}: internal=TRIAL-BACK|${serial}`);
+    return created;
   });
+  await db
+    .insert(driverDestinations)
+    .values({
+      plantId: doc.plantId,
+      customerId: doc.customerId,
+      code: 'TRIAL-FULL',
+      name: 'CUSTOMER DUMMY FULL DELIVERY',
+      dock: 'DOCK TRIAL',
+      logistic: 'LOGISTIK DUMMY',
+    })
+    .onConflictDoNothing();
+  const lines = await db.select().from(deliveryLines).where(eq(deliveryLines.deliveryId, doc.id));
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0]!.plannedKanban, 2);
+  assert.equal(lines[0]!.plannedQty, 40);
+  assert.equal(lines[0]!.qtyPerKanban, 20);
+  const cards = await db.select().from(kanbans).where(eq(kanbans.partId, lines[0]!.partId));
+  assert.equal(cards.length, 2);
+  for (const serial of serials) {
+    const card = cards.find((c) => c.serialNumber === serial);
+    assert(card);
+    const contents = await db.select().from(kanbanItems).where(eq(kanbanItems.kanbanId, card.id));
+    assert.equal(contents.length, 20);
+  }
+  console.log(
+    JSON.stringify({
+      id: doc.id,
+      date,
+      run,
+      status: doc.status,
+      documentNumber,
+      manifestNumber,
+      pdsNumber,
+      partNumber,
+      customerPartNumber,
+      pickedKanban: lines[0]!.pickedKanban,
+      plannedKanban: 2,
+      qtyPerKanban: 20,
+      totalQty: 40,
+      boxes: serials.map((serial, i) => ({
+        box: i + 1,
+        customer: `${customerCode}~${customerPartNumber}~${documentNumber}~${i + 1}`,
+        internal: `${backNumber}|${serial}`,
+      })),
+    }),
+  );
+  if (doc.status !== 'DRAFT')
+    console.log(
+      '[trial] Progres lama dipertahankan. Gunakan DELIVERY_TRIAL_RUN berikutnya untuk trial baru.',
+    );
 }
-
-main()
-  .catch((error) => {
-    console.error(`[trial] gagal: ${error instanceof Error ? error.message : String(error)}`);
+void main()
+  .catch((err) => {
+    console.error(err);
     process.exitCode = 1;
   })
   .finally(() => closeDb());

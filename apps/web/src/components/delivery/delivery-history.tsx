@@ -9,13 +9,17 @@ export function DeliveryHistory({ history }: { history: LoadingHistory }) {
       at: event.at,
       user: event.user,
       title:
-        event.meta?.action === 'RECEIVE_RETURN'
-          ? 'Surat jalan kembali · customer menerima barang'
-          : event.meta?.action === 'UNDO'
-            ? `Koreksi scan ${event.meta.phase}`
-            : event.meta?.action === 'REJECTED'
-              ? `Scan ditolak · ${event.meta.phase}`
-              : `Scan ${event.meta?.phase ?? ''}`,
+        event.meta?.action === 'DRIVER_PICKUP_FINISH'
+          ? 'Selesai Pickup · permintaan GI AII'
+          : event.meta?.action === 'DRIVER_SCAN'
+            ? 'Driver scan surat jalan · permintaan GI AII'
+            : event.meta?.action === 'RECEIVE_RETURN'
+              ? 'Surat jalan kembali · customer menerima barang'
+              : event.meta?.action === 'UNDO'
+                ? `Koreksi scan ${event.meta.phase}`
+                : event.meta?.action === 'REJECTED'
+                  ? `Scan ditolak · ${event.meta.phase}`
+                  : `Scan ${event.meta?.phase ?? ''}`,
       detail: [event.serialNumber ?? event.rawCode, event.meta?.reason, `${event.qty} pcs`]
         .filter(Boolean)
         .join(' · '),

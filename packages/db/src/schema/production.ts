@@ -9,7 +9,7 @@ import {
   uniqueIndex,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   daftarNilai,
   enumCol,
@@ -168,6 +168,9 @@ export const scanEvents = productionSchema.table(
     index('TT_HISTORY_SCAN_LINE_KIND_TIME_IDX').on(t.lineId, t.kind, t.scannedAt),
     index('TT_HISTORY_SCAN_PART_TIME_IDX').on(t.partId, t.scannedAt),
     index('TT_HISTORY_SCAN_SERIAL_IDX').on(t.serialNumber),
+    index('TT_HISTORY_SCAN_DELIVERY_PHASE_IDX')
+      .on(sql`(${t.meta}->>'deliveryId')`, sql`(${t.meta}->>'phase')`, t.id)
+      .where(sql`${t.kind} = 'DELIVERY'`),
     /*
      * Barcode + proses.
      *

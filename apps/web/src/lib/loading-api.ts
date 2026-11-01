@@ -1,6 +1,8 @@
 import 'server-only';
 import { apiFetch } from './api';
 import type { LoadingSummary } from '@avicenna/contracts';
+import type { DeliveryOrderResult } from '@avicenna/contracts';
+import type { DeliveryFlow } from '@avicenna/contracts';
 
 export interface LoadingListResult {
   data: LoadingSummary[];
@@ -65,6 +67,7 @@ export interface LoadingDetail {
   documentNumber: string;
   manifestNumber: string | null;
   pdsNumber: string | null;
+  deliveryOrderNumber: string | null;
   purchaseOrderNumber: string | null;
   salesOrganization: string | null;
   distributionChannel: string | null;
@@ -88,6 +91,7 @@ export interface LoadingDetail {
   deliveryDate: string;
   cycle: number;
   dock: string | null;
+  planTime: string | null;
   locationId: number | null;
   locationName: string | null;
   locationCode: string | null;
@@ -109,6 +113,37 @@ export interface LoadingDetail {
 
 export function getLoading(id: number): Promise<LoadingDetail> {
   return apiFetch<LoadingDetail>(`/loading/${id}`);
+}
+
+export interface InternalKanbanLabel {
+  id: number;
+  serialNumber: string;
+  partId: number;
+  partNumber: string;
+  partName: string;
+  backNumber: string | null;
+  qtyPerBox: number;
+  uom: string;
+  plantCode: string;
+  boxType: string | null;
+  side: string | null;
+  status: string;
+  barcode: string | null;
+}
+
+export function getInternalKanbans(
+  id: number,
+  query = '',
+): Promise<{ data: InternalKanbanLabel[]; truncated: boolean }> {
+  return apiFetch(`/loading/${id}/internal-kanbans?${new URLSearchParams({ q: query })}`);
+}
+
+export function getDeliveryOrder(id: number): Promise<DeliveryOrderResult> {
+  return apiFetch(`/loading/${id}/delivery-order`);
+}
+
+export function getDeliveryFlow(id: number): Promise<{ data: DeliveryFlow | null }> {
+  return apiFetch(`/loading/${id}/intercompany`);
 }
 
 export interface DeliverySyncStatus {

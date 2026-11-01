@@ -1,0 +1,588 @@
+{
+  "info": {
+    "name": "AVICENNA — Delivery RFID",
+    "description": "Panduan: docs/delivery-rfid-api.md (30 Oktober 2026). Isi variables secara lokal. Pilih login perangkat ATAU operator, lookup dokumen lalu tentukan deliveryId sendiri. Batch menulis progres pulling; gunakan dokumen trial. Dua request batch memakai payload sama untuk uji replay. Tidak menyertakan Finish Pulling atau undo. Hapus token/password sebelum membagikan export. HTTP200 batch tetap perlu pemeriksaan results[].status.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3004",
+      "description": "API server, tanpa trailing slash. Ganti hostname untuk perangkat lain.",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "description": "Diisi otomatis setelah salah satu login berhasil.",
+      "type": "string"
+    },
+    {
+      "key": "deviceCode",
+      "value": "",
+      "description": "Kode master perangkat RFID aktif.",
+      "type": "string"
+    },
+    {
+      "key": "deviceToken",
+      "value": "",
+      "description": "Rahasia perangkat; isi lokal, jangan bagikan export yang sudah terisi.",
+      "type": "string"
+    },
+    {
+      "key": "npk",
+      "value": "",
+      "description": "Alternatif login operator.",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "",
+      "description": "Password operator; isi lokal.",
+      "type": "string"
+    },
+    {
+      "key": "documentCode",
+      "value": "",
+      "description": "Nomor loading list, manifest, atau PDS untuk lookup.",
+      "type": "string"
+    },
+    {
+      "key": "deliveryId",
+      "value": "",
+      "description": "ID angka hasil lookup; pilih kandidat secara eksplisit.",
+      "type": "string"
+    },
+    {
+      "key": "customerPart",
+      "value": "",
+      "description": "Part customer/barcode sesuai item dokumen trial.",
+      "type": "string"
+    },
+    {
+      "key": "tagId1",
+      "value": "EPC-TRIAL-BOX-001",
+      "description": "Identitas tag pertama; pertahankan pada retry.",
+      "type": "string"
+    },
+    {
+      "key": "tagId2",
+      "value": "EPC-TRIAL-BOX-002",
+      "description": "Identitas tag kedua, berbeda untuk box berbeda.",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Autentikasi — pilih satu login",
+      "item": [
+        {
+          "name": "Login perangkat RFID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/device",
+            "description": "HTTP201. Device wajib aktif, kind RFID, dan pabrik sesuai dokumen.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceCode\": \"{{deviceCode}}\",\n  \"token\": \"{{deviceToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"deviceCode\",\"deviceToken\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login berhasil (201)', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('accessToken tersedia', () => pm.expect(body.accessToken).to.be.a('string').and.not.empty);",
+                  "  if (body.accessToken) pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "} else { pm.collectionVariables.unset('accessToken'); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login operator (alternatif)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "description": "HTTP201. Role ADMIN atau SCANNING; non-admin dibatasi pabrik.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"npk\": \"{{npk}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"npk\",\"password\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login berhasil (201)', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('accessToken tersedia', () => pm.expect(body.accessToken).to.be.a('string').and.not.empty);",
+                  "  if (body.accessToken) pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "} else { pm.collectionVariables.unset('accessToken'); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cek identitas token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/me",
+            "description": "Principal langsung, bukan envelope data."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"accessToken\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Pilih loading list",
+      "item": [
+        {
+          "name": "Lookup manifest / loading list / PDS",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/loading/resolve?code={{documentCode}}",
+            "description": "Respons {code,matches}. Encode karakter khusus pada query. Pilih kandidat dan isi deliveryId; koleksi tidak mengambil kandidat pertama otomatis."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"accessToken\",\"documentCode\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detail dan item pesanan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/loading/{{deliveryId}}",
+            "description": "Respons objek detail langsung dengan lines[]. Gunakan pickedKanban/pickedQty untuk progres pulling."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"accessToken\",\"deliveryId\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Scan RFID — menulis progres pulling",
+      "item": [
+        {
+          "name": "Kirim dua tag contoh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/loading/rfid/batch",
+            "description": "Ganti tagId/part sesuai fixture trial. Maksimal 200 tag per request. HTTP 200 dapat memuat REJECTED; lihat hasil per tag. Edit tags untuk part berbeda atau serialNumber.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deliveryId\": {{deliveryId}},\n  \"tags\": [\n    { \"tagId\": \"{{tagId1}}\", \"customerPart\": \"{{customerPart}}\" },\n    { \"tagId\": \"{{tagId2}}\", \"customerPart\": \"{{customerPart}}\" }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"accessToken\",\"deliveryId\",\"customerPart\",\"tagId1\",\"tagId2\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('Ringkasan sesuai hasil setiap tag', () => {",
+                  "    pm.expect(body.summary.total).to.eql(body.results.length);",
+                  "    for (const [key, status] of [['accepted', 'ACCEPTED'], ['duplicate', 'DUPLICATE'], ['rejected', 'REJECTED']]) {",
+                  "      pm.expect(body.summary[key]).to.eql(body.results.filter(r => r.status === status).length);",
+                  "    }",
+                  "  });",
+                  "  pm.test('Hasil menunjuk urutan tag', () => body.results.forEach((r, i) => pm.expect(r.index).to.eql(i)));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Replay payload yang sama",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/loading/rfid/batch",
+            "description": "Jalankan setelah batch pertama. Body harus identik; salin perubahan bila request pertama diedit. Tag yang sebelumnya diterima semestinya DUPLICATE selama pulling terbuka dan belum dikoreksi; yang ditolak tetap perlu diperbaiki.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deliveryId\": {{deliveryId}},\n  \"tags\": [\n    { \"tagId\": \"{{tagId1}}\", \"customerPart\": \"{{customerPart}}\" },\n    { \"tagId\": \"{{tagId2}}\", \"customerPart\": \"{{customerPart}}\" }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"accessToken\",\"deliveryId\",\"customerPart\",\"tagId1\",\"tagId2\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('Ringkasan sesuai hasil setiap tag', () => {",
+                  "    pm.expect(body.summary.total).to.eql(body.results.length);",
+                  "    for (const [key, status] of [['accepted', 'ACCEPTED'], ['duplicate', 'DUPLICATE'], ['rejected', 'REJECTED']]) {",
+                  "      pm.expect(body.summary[key]).to.eql(body.results.filter(r => r.status === status).length);",
+                  "    }",
+                  "  });",
+                  "  pm.test('Hasil menunjuk urutan tag', () => body.results.forEach((r, i) => pm.expect(r.index).to.eql(i)));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Baca progres terbaru",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/loading/{{deliveryId}}",
+            "description": "Konfirmasi jumlah picked pada tiap item, jangan memakai actualKanban sebagai progres RFID."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"accessToken\",\"deliveryId\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Riwayat dan status lanjutan (baca)",
+      "item": [
+        {
+          "name": "Riwayat scan / koreksi",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/loading/{{deliveryId}}/history",
+            "description": "{scans,movements}, masing-masing maksimal 500 terbaru. Tag asli ada pada meta.rfidTagId."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"accessToken\",\"deliveryId\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status intercompany",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/loading/{{deliveryId}}/intercompany",
+            "description": "{data}; dapat null sebelum alur disiapkan. HELD/simulasi bukan posting SAP nyata."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"accessToken\",\"deliveryId\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status Delivery Order",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/loading/{{deliveryId}}/delivery-order",
+            "description": "{data,flow?,reason?}; data null sebelum DO tersedia. Koleksi tidak menjalankan Finish Pulling."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (const key of [\"baseUrl\",\"accessToken\",\"deliveryId\"]) {",
+                  "  const value = pm.variables.get(key);",
+                  "  if (value === undefined || String(value).trim() === '') throw new Error('Isi variabel koleksi: ' + key);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

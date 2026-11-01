@@ -14,7 +14,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { deliveryAttentionReason } from '@avicenna/domain';
-import { getLoading, getLoadingHistory } from '@/lib/loading-api';
+import { getLoading, getLoadingHistory, getDeliveryFlow } from '@/lib/loading-api';
+import { DeliveryFlowPanel } from '@/components/delivery/delivery-flow';
 import { DeliveryHistory } from '@/components/delivery/delivery-history';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -48,6 +49,7 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
   const totalPicked = doc.lines.reduce((s, l) => s + l.pickedKanban, 0);
   const totalActual = doc.lines.reduce((s, l) => s + l.actualKanban, 0);
   const history = await getLoadingHistory(numericId);
+  const { data: flow } = await getDeliveryFlow(numericId);
   const unmappedItems = doc.lines.filter((line) => !line.customerPartId).length;
   const invalidQtyPerBox = doc.lines.filter((line) => line.qtyPerKanban <= 0).length;
   const missingSloc = !doc.locationId || !doc.stagingLocationId;
@@ -78,7 +80,7 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
             <TruckChip status={doc.truckStatus} />
             {open ? (
               <Link
-                href={tahapPulling ? `/picking/${doc.id}` : '/delivery-scan'}
+                href={tahapPulling ? `/picking/${doc.id}` : '/delivery-return'}
                 className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-[14px] font-semibold text-white transition-colors hover:bg-accent-soft"
               >
                 {tahapPulling ? (
@@ -86,7 +88,7 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
                 ) : (
                   <ScanLine className="size-[18px]" strokeWidth={2.2} aria-hidden />
                 )}
-                {tahapPulling ? 'Mulai Pulling' : 'Mulai Muat'}
+                {tahapPulling ? 'Mulai Pulling' : 'Absensi Driver'}
               </Link>
             ) : null}
           </div>
@@ -94,6 +96,7 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
       />
 
       <div className="space-y-5">
+        {flow ? <DeliveryFlowPanel flow={flow} /> : null}
         {attentionReason ? (
           <Reveal>
             <section className="rounded-card border border-ng/35 bg-ng/8 p-5">
@@ -131,15 +134,27 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
             <CardHeader
               icon={Printer}
               title="Dokumen PPIC"
-              subtitle="Preview internal; buka terpisah agar setiap print job bisa memakai printer berbeda."
+              subtitle="Buka dokumen terpisah untuk memilih printer masing-masing. Surat jalan terbit setelah Finish Pulling."
             />
-            <div className="grid gap-3 border-t border-line px-6 py-5 md:grid-cols-3">
+            <div className="grid gap-3 border-t border-line px-6 py-5 md:grid-cols-2 xl:grid-cols-4">
               {[
+                ...(doc.deliveryOrderNumber &&
+                flow &&
+                ['READY', 'WAITING_GI_AII', 'SHIPPED'].includes(flow.stage)
+                  ? [
+                      {
+                        href: `/delivery/${doc.id}/delivery-order`,
+                        icon: FileText,
+                        title: 'Delivery Order',
+                        description: doc.deliveryOrderNumber,
+                      },
+                    ]
+                  : []),
                 {
-                  href: `/delivery/${doc.id}/manifest`,
+                  href: `/preparation-monitoring?from=${doc.deliveryDate}&to=${doc.deliveryDate}&document=${doc.id}`,
                   icon: FileText,
-                  title: 'Manifest',
-                  description: doc.manifestNumber ?? 'Nomor mengikuti data staging',
+                  title: 'Dokumen Customer',
+                  description: 'Kanban, manifest, dan skid label dari portal customer',
                 },
                 {
                   href: `/delivery/${doc.id}/picklist`,
@@ -150,8 +165,8 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
                 {
                   href: `/delivery/${doc.id}/label`,
                   icon: Tags,
-                  title: 'Kanban',
-                  description: `${totalPlanned} label per box`,
+                  title: 'Kanban Internal',
+                  description: 'Cetak kartu berdasarkan nomor seri terdaftar',
                 },
               ].map((item) => {
                 const Icon = item.icon;
@@ -336,6 +351,7 @@ export default async function LoadingDetailPage({ params }: { params: Promise<{ 
 
         <Reveal>
           <LoadingActions
+            flowStarted={!!flow}
             id={doc.id}
             status={doc.status}
             truckStatus={doc.truckStatus}
