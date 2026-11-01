@@ -37,7 +37,8 @@
     "db:import-aiia": "tsx src/import-aiia.ts",
     "db:impor-gentani": "tsx src/impor-gentani.ts",
     "db:check": "tsx src/check.ts",
-    "db:seed-papan-trial": "tsx src/seed-papan-trial.ts"
+    "db:seed-papan-trial": "tsx src/seed-papan-trial.ts",
+    "db:seed-rfid-trial": "tsx src/seed-rfid-trial.ts"
   },
   "dependencies": {
     "@avicenna/contracts": "workspace:*",
