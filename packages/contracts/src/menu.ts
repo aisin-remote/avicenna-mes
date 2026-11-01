@@ -137,6 +137,14 @@ const MENU_TETAP: MenuDef[] = [
     sortOrder: 50,
   },
   {
+    key: 'delivery.pis',
+    label: 'PIS',
+    href: '/pis',
+    icon: 'ClipboardCheck',
+    group: 'Logistik',
+    sortOrder: 55,
+  },
+  {
     key: 'delivery.preparation-monitoring',
     label: 'Preparation Monitoring',
     href: '/preparation-monitoring',

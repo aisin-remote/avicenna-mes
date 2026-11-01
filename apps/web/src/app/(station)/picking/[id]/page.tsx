@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, PackageOpen } from 'lucide-react';
-import { getLoading } from '@/lib/loading-api';
+import { getLoading, type LoadingDetail } from '@/lib/loading-api';
 import { getSessionUser } from '@/lib/session';
 import { LoadingScan } from '@/components/delivery/loading-scan';
 
@@ -17,53 +17,59 @@ export const dynamic = 'force-dynamic';
  */
 export default async function PickingStationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** ?ids=64,65 — pulling satu manifest berisi beberapa loading list. */
+  searchParams: Promise<{ ids?: string }>;
 }) {
   const { id } = await params;
   const numericId = Number(id);
   if (!Number.isInteger(numericId)) notFound();
+  const extra = ((await searchParams).ids ?? '')
+    .split(',')
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0 && n !== numericId)
+    .slice(0, 49);
 
   const user = await getSessionUser();
 
-  let doc;
+  let loaded: LoadingDetail[];
   try {
-    doc = await getLoading(numericId);
+    loaded = await Promise.all([numericId, ...extra].map((n) => getLoading(n)));
   } catch {
     notFound();
   }
+  const [doc, ...group] = loaded;
+  if (!doc) notFound();
+  // Loading list lain di manifest yang sudah ditutup tidak ikut di-pull lagi.
+  const manifestDocs = [
+    doc,
+    ...group.filter(
+      (d) =>
+        (d.status === 'DRAFT' || d.status === 'PICKING') &&
+        !!doc.manifestNumber &&
+        d.manifestNumber === doc.manifestNumber,
+    ),
+  ];
 
   const terbuka = doc.status === 'DRAFT' || doc.status === 'PICKING';
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-card px-6 py-4">
+      {/* Ringkas seperti stasiun pulling lama: dokumen, customer, dan SLOC ada di tile layar scan. */}
+      <header className="flex items-center gap-3 border-b border-line bg-card px-4 py-2.5">
         <Link
           href={`/delivery/${doc.id}`}
           aria-label="Kembali ke detail pengiriman"
-          className="grid size-11 place-items-center rounded-full border border-line text-ink-muted transition-colors hover:border-ink hover:text-ink"
+          className="grid size-9 place-items-center rounded-full border border-line text-ink-muted transition-colors hover:border-ink hover:text-ink"
         >
-          <ArrowLeft className="size-5" strokeWidth={1.9} aria-hidden />
+          <ArrowLeft className="size-4" strokeWidth={1.9} aria-hidden />
         </Link>
-
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 text-[19px] font-extrabold leading-tight">
-            <PackageOpen className="size-5 shrink-0 text-ink-muted" strokeWidth={1.9} aria-hidden />
-            <span className="tabular truncate">{doc.documentNumber}</span>
-          </p>
-          <p className="text-[14px] text-ink-muted">
-            Pulling · {doc.customerName ?? '—'} · rit {doc.cycle}
-          </p>
-        </div>
-
-        <div className="ml-auto flex flex-wrap items-center gap-x-6 gap-y-2 text-[14px]">
-          {/* Kode SLOC di depan, bukan hanya namanya: nama seperti "Finish Good"
-              berulang di tiap pabrik, sedangkan kode inilah yang dicocokkan
-              dengan SAP. */}
-          <Meta label="Dari">{sloc(doc.locationCode, doc.locationName)}</Meta>
-          <Meta label="Ke">{sloc(doc.stagingLocationCode, doc.stagingLocationName)}</Meta>
-          <Meta label="Petugas">{user?.name ?? '—'}</Meta>
-        </div>
+        <p className="flex min-w-0 items-center gap-2 text-[17px] font-extrabold">
+          <PackageOpen className="size-5 shrink-0 text-ink-muted" strokeWidth={1.9} aria-hidden />
+          Pulling · <span className="truncate font-semibold text-ink-soft">{user?.name ?? '—'}</span>
+        </p>
       </header>
 
       <main className="scroll-slim min-h-0 flex-1 overflow-y-auto p-4">
@@ -71,7 +77,7 @@ export default async function PickingStationPage({
           <p className="rounded-card border border-ok/40 bg-ok/10 px-5 py-4 text-[15px] font-semibold text-ok">
             Pulling untuk dokumen ini sudah ditutup. Lanjutkan ke layar muat.
           </p>
-        ) : !doc.locationId || !doc.stagingLocationId ? (
+        ) : manifestDocs.some((d) => !d.locationId || !d.stagingLocationId) ? (
           // Dicegah di sini, bukan saat menutup pulling: percuma men-scan
           // puluhan kanban lalu baru diberi tahu bahwa stoknya tidak bisa
           // dipindahkan ke mana pun.
@@ -80,24 +86,9 @@ export default async function PickingStationPage({
             pengiriman, karena tanpa keduanya stok tidak bisa dipindahkan.
           </p>
         ) : (
-          <LoadingScan doc={doc} phase="PULLING" />
+          <LoadingScan docs={manifestDocs} phase="PULLING" />
         )}
       </main>
-    </div>
-  );
-}
-
-/** "PP02 — Finish Good", atau penanda bila belum ditentukan. */
-function sloc(code: string | null, name: string | null): string {
-  if (!code) return 'belum ditentukan';
-  return name ? `${code} — ${name}` : code;
-}
-
-function Meta({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">{label}</p>
-      <p className="tabular font-semibold">{children}</p>
     </div>
   );
 }

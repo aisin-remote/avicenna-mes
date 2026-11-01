@@ -82,6 +82,7 @@ export async function scanKanbanAction(input: {
   internalKanban?: string;
   serialNumber?: string;
   clientRef?: string;
+  groupDeliveryIds?: number[];
 }): Promise<LoadingScanResult | { error: string; retryable: boolean }> {
   try {
     return await apiFetch<LoadingScanResult>('/loading/scan', {

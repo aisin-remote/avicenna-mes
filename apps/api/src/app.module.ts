@@ -17,6 +17,7 @@ import { ReceivingModule } from './receiving/receiving.module';
 import { TraceModule } from './trace/trace.module';
 import { TransferModule } from './transfer/transfer.module';
 import { LoadingModule } from './loading/loading.module';
+import { PisModule } from './pis/pis.module';
 import { KanbanCropModule } from './kanban-crop/kanban-crop.module';
 import { SapModule } from './sap/sap.module';
 import { StagingModule } from './staging/staging.module';
@@ -49,6 +50,7 @@ import { loadEnv } from './config/env';
     TraceModule,
     TransferModule,
     LoadingModule,
+    PisModule,
     KanbanCropModule,
     SapModule,
     StagingModule,

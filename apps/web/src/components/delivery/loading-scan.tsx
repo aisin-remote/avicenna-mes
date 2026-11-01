@@ -13,9 +13,10 @@ import {
   Volume2,
   VolumeX,
   Undo2,
+  Pause,
 } from 'lucide-react';
 import type { LoadingPhase, LoadingScanResult } from '@avicenna/contracts';
-import { bacaKanban, MODE_LOADING_INSTRUKSI } from '@avicenna/domain';
+import { bacaKanban } from '@avicenna/domain';
 import { scanKanbanAction, undoKanbanAction } from '@/app/(app)/delivery/actions';
 import type { LoadingDetail } from '@/lib/loading-api';
 import { useScanSound } from '../scan/use-scan-sound';
@@ -25,6 +26,8 @@ import { cn } from '../ui/cn';
 
 interface LineState {
   id: number;
+  /** Loading list pemilik item; pada pulling per manifest tiap item bisa berbeda. */
+  deliveryId: number;
   partNumber: string | null;
   partName: string | null;
   customerPartNumber: string | null;
@@ -77,19 +80,25 @@ const KATA = {
  * truk. Itu yang ditaruh paling besar.
  */
 export function LoadingScan({
-  doc,
+  docs,
   phase = 'LOADING',
 }: {
-  doc: LoadingDetail;
+  /** Satu loading list, atau semua loading list terbuka dalam satu manifest. */
+  docs: LoadingDetail[];
   phase?: LoadingPhase;
 }) {
+  const doc = docs[0]!;
+  const ids = docs.map((d) => d.id);
+  const manifestGroup = docs.length > 1;
   const kata = KATA[phase];
   const router = useRouter();
   const [finishing, setFinishing] = useState(false);
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [finishWarning, setFinishWarning] = useState('');
   const [code, setCode] = useState('');
-  const [lines, setLines] = useState<LineState[]>(doc.lines.map((l) => toLineState(l, phase)));
+  const [lines, setLines] = useState<LineState[]>(
+    docs.flatMap((d) => d.lines.map((l) => toLineState(l, phase, d.id))),
+  );
   const [result, setResult] = useState<LoadingScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -120,7 +129,7 @@ export function LoadingScan({
   const inputRef = useRef<HTMLInputElement>(null);
   const undoDialog = useRef<HTMLDialogElement>(null);
   const queue = useRef<QueuedScan[]>([]);
-  const queueKey = `delivery-scan:${doc.id}:${phase}`;
+  const queueKey = `delivery-scan:${ids.join('-')}:${phase}`;
   const draining = useRef(false);
   const sound = useScanSound(soundOn);
 
@@ -247,6 +256,8 @@ export function LoadingScan({
           // Kunci idempoten dari sisi klien: kalau jaringan putus dan
           // permintaan dikirim ulang, kanban yang sama tidak terhitung dua kali.
           clientRef: value.clientRef,
+          // Server yang memilih loading list tujuan di dalam manifest.
+          ...(manifestGroup ? { groupDeliveryIds: ids } : {}),
         });
 
         if ('error' in res) {
@@ -295,7 +306,8 @@ export function LoadingScan({
     if (undoLine === null || undoBusy || reason.length < 3) return;
     setUndoBusy(true);
     try {
-      const res = await undoKanbanAction(doc.id, undoLine, phase, reason);
+      const owner = lines.find((line) => line.id === undoLine)?.deliveryId ?? doc.id;
+      const res = await undoKanbanAction(owner, undoLine, phase, reason);
       if ('error' in res) {
         setError(res.error);
         return;
@@ -320,15 +332,20 @@ export function LoadingScan({
   async function finishPulling() {
     if (busy || pending > 0 || finishing || customerKanban) return;
     setFinishing(true);
-    const result = await completePickingAction(doc.id);
-    if ('error' in result) {
-      setError(result.error);
-      setFinishing(false);
-      return;
+    // Satu manifest ditutup per loading list; yang gagal dilaporkan dengan nomornya.
+    const shortages = [];
+    for (const d of docs) {
+      const result = await completePickingAction(d.id);
+      if ('error' in result) {
+        setError(manifestGroup ? `${d.documentNumber}: ${result.error}` : result.error);
+        setFinishing(false);
+        return;
+      }
+      shortages.push(...result.shortages);
     }
-    if (result.shortages.length) {
+    if (shortages.length) {
       setFinishWarning(
-        `Pulling selesai, tetapi saldo gudang kurang: ${result.shortages.map((s) => `${s.partNumber} perlu ${s.needed}, tersedia ${s.available}, kurang ${s.short}`).join('; ')}.`,
+        `Pulling selesai, tetapi saldo gudang kurang: ${shortages.map((s) => `${s.partNumber} perlu ${s.needed}, tersedia ${s.available}, kurang ${s.short}`).join('; ')}.`,
       );
       return;
     }
@@ -351,48 +368,34 @@ export function LoadingScan({
       </section>
     );
 
+  // Warna tile kanban mengikuti hasil scan terakhir, seperti stasiun pulling lama.
+  const scanTone: TileTone = error
+    ? 'bad'
+    : result
+      ? result.status === 'ACCEPTED'
+        ? 'ok'
+        : result.status === 'OVER'
+          ? 'warn'
+          : 'bad'
+      : 'default';
+  // Hasil pasangan terakhir tetap terlihat; tanda "giliran scan" kembali setelah layar bersih.
+  const customerTone: TileTone = customerKanban
+    ? 'ok'
+    : currentScan.customer && (result || error)
+      ? scanTone
+      : threeWay
+        ? 'active'
+        : 'default';
+  const internalTone: TileTone = !threeWay
+    ? 'muted'
+    : customerKanban
+      ? 'active'
+      : currentScan.internal
+        ? scanTone
+        : 'default';
+
   return (
-    <div className="grid gap-3 sm:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-      {phase === 'PULLING' ? (
-        <section className="rounded-2xl border border-line bg-card p-4 xl:col-span-2">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-ink-muted">
-              Pulling selesai → GI AIIA → GR AII → surat jalan
-            </p>
-            <button
-              disabled={busy || pending > 0 || finishing || !!customerKanban || totalActual === 0}
-              onClick={() => setConfirmFinish(true)}
-              className="min-h-12 rounded-full bg-accent px-5 text-sm font-bold text-white disabled:opacity-40"
-            >
-              Finish Pulling
-            </button>
-          </div>
-          {confirmFinish ? (
-            <div className="mt-3 border-t border-line pt-3">
-              <p className="text-sm">
-                Selesaikan {totalActual} dari {totalPlanned} kanban? Qty yang dipakai adalah hasil
-                scan aktual.
-              </p>
-              <div className="mt-3 flex gap-2">
-                <button
-                  disabled={busy || pending > 0 || finishing || !!customerKanban}
-                  onClick={() => void finishPulling()}
-                  className="min-h-12 rounded-full bg-accent px-5 font-bold text-white disabled:opacity-40"
-                >
-                  {finishing ? 'Memproses…' : 'Ya, Finish Pulling'}
-                </button>
-                <button
-                  disabled={finishing}
-                  onClick={() => setConfirmFinish(false)}
-                  className="min-h-12 px-4"
-                >
-                  Kembali
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
+    <div className="mx-auto grid w-full max-w-[1100px] gap-4 md:grid-cols-2 md:items-start md:gap-x-8 md:gap-y-5">
       <dialog
         ref={undoDialog}
         aria-labelledby="undo-title"
@@ -452,324 +455,296 @@ export function LoadingScan({
           </div>
         </form>
       </dialog>
-      {/* ── Kiri: input dan status ──────────────────────────────────────── */}
-      <div className="space-y-3 sm:space-y-6">
-        <section className="rounded-card border border-line bg-card p-4 sm:p-6">
-          <div className="mb-5 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-3">
-            <ScanState
-              label="Dokumen"
-              value={doc.documentNumber}
-              done
-              className="col-span-2 sm:col-span-1"
-            />
-            <ScanState
-              label="Kanban customer"
-              value={currentScan.customer ?? 'Menunggu scan'}
-              done={Boolean(customerKanban)}
-              active={!customerKanban}
-            />
-            <ScanState
-              label="Kanban internal"
-              value={threeWay ? (currentScan.internal ?? 'Menunggu scan') : 'Tidak diperlukan'}
-              done={Boolean(currentScan.internal)}
-              active={threeWay && Boolean(customerKanban)}
-              optional={!threeWay}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <label htmlFor="kanban" className="text-[15px] font-bold">
-                {scanTitle}
-              </label>
-              {customerKanban ? (
-                <p className="tabular mt-1 max-w-lg truncate text-[13px] text-ink-muted">
-                  Kanban customer tersimpan: {customerKanban}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-2">
-              {customerKanban ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCustomerKanban(null);
-                    setResult(null);
-                    setError(null);
-                    focusInput();
-                  }}
-                  className="h-10 rounded-full border border-line px-4 text-[13px] font-semibold text-ink-muted transition-colors hover:border-ink hover:text-ink"
-                >
-                  Ganti customer
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  setSoundOn((v) => !v);
-                  focusInput();
-                }}
-                aria-label={soundOn ? 'Matikan suara' : 'Nyalakan suara'}
-                className="grid size-10 place-items-center rounded-full border border-line text-ink-muted transition-colors hover:border-ink hover:text-ink"
-              >
-                {soundOn ? (
-                  <Volume2 className="size-[18px]" strokeWidth={1.9} aria-hidden />
-                ) : (
-                  <VolumeX className="size-[18px]" strokeWidth={1.9} aria-hidden />
-                )}
-              </button>
-            </div>
-          </div>
 
-          {/* Pemindai barcode mengetik lalu menekan Enter — ditangani sebagai
-              submit form, sama seperti layar stasiun produksi. */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              acceptScan(code);
-            }}
-            className="relative mt-4"
-          >
-            <ScanLine
-              className="pointer-events-none absolute left-5 top-1/2 size-6 -translate-y-1/2 text-ink-muted"
-              strokeWidth={1.8}
-              aria-hidden
-            />
-            {/* Input TIDAK PERNAH di-disable: elemen yang dinonaktifkan kehilangan
-                fokus, dan scan berikutnya akan hilang tanpa disadari operator. */}
-            <input
-              id="kanban"
-              ref={inputRef}
-              readOnly={finishing}
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              autoComplete="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              aria-label={scanTitle}
-              placeholder={customerKanban ? 'scan kanban internal…' : 'scan kanban customer…'}
-              className="tabular h-16 w-full rounded-2xl border-2 border-line bg-surface pl-14 pr-4 text-[18px] font-semibold outline-none transition-colors focus:border-accent focus:bg-card sm:h-20 sm:rounded-3xl sm:pr-5 sm:text-[26px]"
-            />
-          </form>
+      {/* ── Kiri: info dokumen dan pasangan kanban ─────────────────────────── */}
+      <section className="flex min-w-0 flex-col gap-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[13px] font-bold">Loading list</span>
+          <span className="tabular grid min-w-6 place-items-center rounded-full bg-accent px-2 text-[12px] font-bold text-white">
+            {docs.length}
+          </span>
+        </div>
+        {manifestGroup && doc.manifestNumber ? (
+          <p className="tabular -mt-1 text-[12px] text-ink-muted">
+            Manifest <span className="font-bold text-ink">{doc.manifestNumber}</span>
+          </p>
+        ) : null}
+        <ul className="grid gap-2">
+          {docs.map((d) => (
+            <li
+              key={d.id}
+              className="tabular flex min-h-11 items-center justify-center rounded-lg border border-accent/30 bg-accent/10 px-3 text-center text-[17px] font-bold break-all"
+            >
+              {d.documentNumber}
+            </li>
+          ))}
+        </ul>
+        <div className="grid grid-cols-4 gap-2.5">
+          <Tile label="Customer" className="col-span-3">
+            {doc.customerName ?? '—'}
+          </Tile>
+          <Tile label="Cycle">{[...new Set(docs.map((d) => d.cycle))].join(', ')}</Tile>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Tile label="Kanban Customer" tone={customerTone}>
+            {currentScan.customer ?? '-'}
+          </Tile>
+          <Tile label="Kanban Internal" tone={internalTone}>
+            {threeWay ? (currentScan.internal ?? '-') : 'Tidak diperlukan'}
+          </Tile>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          {/* Kode SLOC di depan: nama seperti "Finish Good" berulang di tiap pabrik. */}
+          <Tile label="Dari" compact>
+            {doc.locationCode ?? '—'}
+            {doc.locationName ? <Sub>{doc.locationName}</Sub> : null}
+          </Tile>
+          <Tile label="Ke" compact>
+            {doc.stagingLocationCode ?? '—'}
+            {doc.stagingLocationName ? <Sub>{doc.stagingLocationName}</Sub> : null}
+          </Tile>
+        </div>
+      </section>
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[13px] text-ink-muted">
-              {threeWay
-                ? MODE_LOADING_INSTRUKSI[doc.loadingMode]
-                : 'Scan setiap kanban yang diambil dari gudang ke area staging.'}{' '}
-              <span className="font-semibold">
-                Format {doc.partNumberFormat ?? 'NONE'} dibaca otomatis.
-              </span>
-            </p>
-            {/* Antrean ditampilkan supaya jelas scan-nya tertahan, bukan hilang. */}
-            {pending > 0 ? (
-              <span className="tabular rounded-full border border-line px-3 py-1 text-[13px] font-semibold text-ink-muted">
-                {pending} menunggu dikirim
-                {!busy ? (
-                  <button
-                    type="button"
-                    onClick={() => void drain()}
-                    className="ml-2 font-bold text-accent"
-                  >
-                    Kirim ulang
-                  </button>
-                ) : null}
-              </span>
-            ) : null}
-          </div>
-        </section>
-
-        {/* Status besar — dibaca dari dekat truk, bukan dari depan layar. */}
-        <section className="sm:min-h-[210px]">
-          <AnimatePresence mode="wait">
-            {error ? (
-              <StatusPanel
-                key={`err-${error}`}
-                tone="bad"
-                icon={XCircle}
-                title="Gagal"
-                detail={error}
-              />
-            ) : result ? (
-              <StatusPanel
-                key={`${result.status}-${result.partNumber}-${result.actualKanban}`}
-                tone={
-                  result.status === 'ACCEPTED' ? 'ok' : result.status === 'OVER' ? 'warn' : 'bad'
-                }
-                icon={
-                  result.status === 'ACCEPTED'
-                    ? CheckCircle2
-                    : result.status === 'OVER'
-                      ? AlertTriangle
-                      : XCircle
-                }
-                title={
-                  result.status === 'ACCEPTED'
-                    ? 'Diterima'
-                    : result.status === 'OVER'
-                      ? 'Melebihi rencana'
-                      : 'Ditolak'
-                }
-                detail={result.message}
-                partNumber={result.partNumber}
-                converted={result.convertedPartNumber}
-                counter={
-                  result.status === 'REJECTED'
-                    ? null
-                    : `${result.actualKanban} / ${result.plannedKanban}`
-                }
-              />
-            ) : customerKanban ? (
-              <StatusPanel
-                key="customer-ok"
-                tone="idle"
-                icon={ScanLine}
-                title="Lanjut scan internal"
-                detail="Kanban customer sudah dibaca. Scan kanban internal pada box yang sama."
-              />
-            ) : (
-              <StatusPanel
-                key="idle"
-                tone="idle"
-                icon={ScanLine}
-                title="Menunggu scan"
-                detail="Tempelkan barcode kanban ke pemindai."
-              />
-            )}
-          </AnimatePresence>
-        </section>
-      </div>
-
-      {/* ── Kanan: sisa muatan ──────────────────────────────────────────── */}
-      <div className="space-y-3 sm:space-y-6">
-        <section
+      {/* ── Kanan: hitungan, scan, aksi, status, item ──────────────────────── */}
+      <section className="flex min-w-0 flex-col gap-2.5">
+        <div
           className={cn(
-            'rounded-card border p-4 transition-colors sm:p-6',
+            'flex min-h-14 items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-colors',
             done ? 'border-ok/40 bg-ok/10' : 'border-line bg-card',
           )}
         >
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <p className="text-[13px] font-semibold uppercase tracking-wide text-ink-muted">
-                {kata.sisa}
-              </p>
-              {/* Angka terpenting di layar ini: berapa lagi yang harus naik truk. */}
-              <p
-                className={cn(
-                  'tabular mt-1 text-[48px] font-extrabold leading-none sm:text-[64px]',
-                  done ? 'text-ok' : undefined,
-                )}
-              >
-                {remaining}
-              </p>
-            </div>
-            <p className="tabular pb-2 text-right text-[15px] text-ink-muted">
-              {phase === 'PULLING' ? 'sudah diambil' : 'sudah dimuat'}
-              <span className="block text-[24px] font-bold text-ink">
-                {totalActual} <span className="font-normal text-ink-muted">/ {totalPlanned}</span>
-              </span>
+          <div className="flex items-center gap-2.5">
+            <span className="rounded bg-ink px-1.5 py-0.5 text-[11px] font-bold text-card">Qty</span>
+            {/* Yang sudah diambil dari rencana; sisa ditulis kecil di sampingnya. */}
+            <p className="tabular text-[24px] font-extrabold leading-none">
+              <span className={done ? 'text-ok' : undefined}>{totalActual}</span>
+              <span className="text-[16px] font-semibold text-ink-muted"> / {totalPlanned}</span>
             </p>
+            <span className="tabular text-[13px] text-ink-muted">
+              {kata.sisa.toLowerCase()} <span className="font-bold text-ink">{remaining}</span>
+            </span>
           </div>
-          {done ? <p className="mt-3 text-[14px] font-semibold text-ok">{kata.selesai}</p> : null}
-        </section>
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className={cn(
+                'size-3.5 rounded-full',
+                error || result?.status === 'REJECTED'
+                  ? 'bg-ng'
+                  : result?.status === 'OVER'
+                    ? 'bg-warn'
+                    : busy
+                      ? 'animate-pulse bg-accent'
+                      : 'bg-ok',
+              )}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setSoundOn((v) => !v);
+                focusInput();
+              }}
+              aria-label={soundOn ? 'Matikan suara' : 'Nyalakan suara'}
+              className="grid size-9 place-items-center rounded-full border border-line text-ink-muted transition-colors hover:border-ink hover:text-ink"
+            >
+              {soundOn ? (
+                <Volume2 className="size-4" strokeWidth={1.9} aria-hidden />
+              ) : (
+                <VolumeX className="size-4" strokeWidth={1.9} aria-hidden />
+              )}
+            </button>
+          </div>
+        </div>
 
-        <section className="rounded-card border border-line bg-card">
-          <header className="border-b border-line px-5 py-4">
-            <h2 className="text-[15px] font-bold">Item customer yang akan discan</h2>
-            <p className="mt-0.5 text-[12px] text-ink-muted">{kata.muatan}</p>
-          </header>
-          <div className="space-y-2 p-3 md:hidden">
+        {/* Pemindai barcode mengetik lalu menekan Enter — ditangani sebagai submit form. */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            acceptScan(code);
+          }}
+          className="relative"
+        >
+          <label htmlFor="kanban" className="sr-only">
+            {scanTitle}
+          </label>
+          <ScanLine
+            className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-ink-muted"
+            strokeWidth={1.8}
+            aria-hidden
+          />
+          {/* Input TIDAK PERNAH di-disable: elemen yang dinonaktifkan kehilangan
+              fokus, dan scan berikutnya akan hilang tanpa disadari operator. */}
+          <input
+            id="kanban"
+            ref={inputRef}
+            readOnly={finishing}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            placeholder={customerKanban ? 'scan kanban internal…' : 'scan kanban customer…'}
+            className="tabular h-14 w-full rounded-lg border-2 border-line bg-card px-11 text-center text-[18px] font-semibold outline-none transition-colors focus:border-accent"
+          />
+        </form>
+        {customerKanban ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-1.5 text-[12px]">
+            <span className="tabular min-w-0 truncate">Kanban customer tersimpan: {customerKanban}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setCustomerKanban(null);
+                setResult(null);
+                setError(null);
+                focusInput();
+              }}
+              className="shrink-0 font-bold text-accent"
+            >
+              Ganti customer
+            </button>
+          </div>
+        ) : null}
+
+        {phase === 'PULLING' ? (
+          <div className="grid grid-cols-[2fr_3fr] gap-3">
+            {/*
+             * Delay = tunda dokumen ini dan kembali ke scan loading list, seperti
+             * stasiun pulling lama. Progres sudah tersimpan per scan di server;
+             * berbeda dari stasiun lama, localStorage TIDAK dihapus — isinya antrean
+             * scan yang belum terkirim, jadi tombol ini menunggu antrean kosong.
+             */}
+            <button
+              type="button"
+              disabled={busy || pending > 0 || finishing}
+              title={pending > 0 ? 'Tunggu antrean scan terkirim sebelum menunda.' : undefined}
+              onClick={() => router.push('/delivery-scan')}
+              className="inline-flex h-13 items-center justify-center gap-2 rounded-lg bg-ng text-[16px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              <Pause className="size-4" aria-hidden />
+              Delay
+            </button>
+            <button
+              type="button"
+              disabled={busy || pending > 0 || finishing || !!customerKanban || totalActual === 0}
+              onClick={() => setConfirmFinish(true)}
+              className="inline-flex h-13 items-center justify-center gap-2 rounded-lg bg-ok text-[16px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              <CheckCircle2 className="size-4" aria-hidden />
+              Finish Pulling
+            </button>
+          </div>
+        ) : null}
+        {confirmFinish ? (
+          <div className="rounded-lg border border-ok/40 bg-ok/10 p-3">
+            <p className="text-[14px]">
+              Selesaikan <span className="font-bold">{totalActual}</span> dari {totalPlanned} kanban?
+              Qty yang dipakai adalah hasil scan aktual, lalu lanjut GI AIIA → GR AII → surat jalan.
+            </p>
+            <div className="mt-2.5 flex gap-2">
+              <button
+                type="button"
+                disabled={busy || pending > 0 || finishing || !!customerKanban}
+                onClick={() => void finishPulling()}
+                className="h-11 rounded-lg bg-ok px-4 text-[14px] font-bold text-white disabled:opacity-40"
+              >
+                {finishing ? 'Memproses…' : 'Ya, Finish Pulling'}
+              </button>
+              <button
+                type="button"
+                disabled={finishing}
+                onClick={() => setConfirmFinish(false)}
+                className="h-11 px-3 text-[14px] font-semibold"
+              >
+                Kembali
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Status satu baris, hanya muncul setelah ada hasil scan. */}
+        <AnimatePresence mode="wait" initial={false}>
+          {error ? (
+            <StatusBar key={`err-${error}`} tone="bad" icon={XCircle} title="Gagal" detail={error} />
+          ) : result ? (
+            <StatusBar
+              key={`${result.status}-${result.partNumber}-${result.actualKanban}`}
+              tone={result.status === 'ACCEPTED' ? 'ok' : result.status === 'OVER' ? 'warn' : 'bad'}
+              icon={
+                result.status === 'ACCEPTED'
+                  ? CheckCircle2
+                  : result.status === 'OVER'
+                    ? AlertTriangle
+                    : XCircle
+              }
+              title={
+                result.status === 'ACCEPTED'
+                  ? 'Diterima'
+                  : result.status === 'OVER'
+                    ? 'Melebihi rencana'
+                    : 'Ditolak'
+              }
+              detail={
+                result.partNumber &&
+                result.convertedPartNumber &&
+                result.convertedPartNumber !== result.partNumber
+                  ? `${result.message} · dibaca sebagai ${result.convertedPartNumber}`
+                  : result.message
+              }
+              counter={
+                result.status === 'REJECTED' ? null : `${result.actualKanban}/${result.plannedKanban}`
+              }
+            />
+          ) : done ? (
+            <StatusBar key="done" tone="ok" icon={CheckCircle2} title="Selesai" detail={kata.selesai} />
+          ) : null}
+        </AnimatePresence>
+
+        {/* Antrean ditampilkan supaya jelas scan-nya tertahan, bukan hilang. */}
+        {pending > 0 ? (
+          <p className="tabular flex items-center justify-between rounded-lg border border-warn/40 bg-warn/10 px-3 py-1.5 text-[13px] font-semibold text-warn">
+            {pending} scan menunggu dikirim
+            {!busy ? (
+              <button type="button" onClick={() => void drain()} className="font-bold text-accent">
+                Kirim ulang
+              </button>
+            ) : null}
+          </p>
+        ) : null}
+
+        <div className="overflow-hidden rounded-lg border border-line bg-card">
+          <div className="flex items-center justify-between border-b border-line px-3 py-2">
+            <h2 className="text-[13px] font-bold">{kata.muatan}</h2>
+            <span className="tabular grid min-w-6 place-items-center rounded-full bg-surface px-2 text-[12px] font-bold">
+              {lines.length}
+            </span>
+          </div>
+          <ul className="scroll-slim max-h-[42dvh] divide-y divide-line overflow-y-auto">
             {lines.map((line) => (
-              <MobileItem key={line.id} line={line} onUndo={undo} />
+              <ItemRow
+                key={line.id}
+                line={line}
+                onUndo={undo}
+                documentNumber={
+                  manifestGroup ? docs.find((d) => d.id === line.deliveryId)?.documentNumber : undefined
+                }
+              />
             ))}
-          </div>
-          <div className="scroll-slim hidden overflow-x-auto md:block">
-            <table className="w-full text-[14px]">
-              <thead>
-                <tr className="border-b border-line text-left">
-                  <Th>Part</Th>
-                  <Th>Pesanan</Th>
-                  <Th>Scan</Th>
-                  <Th>Progres</Th>
-                  <Th />
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((l) => {
-                  const pct =
-                    l.plannedKanban > 0
-                      ? Math.min(100, (l.actualKanban / l.plannedKanban) * 100)
-                      : 0;
-                  const over = l.actualKanban > l.plannedKanban;
-                  const complete = !over && l.actualKanban === l.plannedKanban;
-                  return (
-                    <tr key={l.id} className="border-b border-line last:border-0">
-                      <td className="px-5 py-3">
-                        <div className="tabular font-semibold">
-                          {l.customerPartNumber ?? l.partNumber}
-                        </div>
-                        <div className="text-[13px] text-ink-muted">
-                          {l.partNumber} · {l.partName}
-                        </div>
-                      </td>
-                      <td className="tabular whitespace-nowrap px-5 py-3">
-                        <span className="font-semibold">
-                          {l.plannedQty.toLocaleString('id-ID')} {l.uom ?? 'pcs'}
-                        </span>
-                        <div className="text-[12px] text-ink-muted">{l.orderedKanban} kanban</div>
-                      </td>
-                      <td className="tabular whitespace-nowrap px-5 py-3">
-                        <span
-                          className={cn(
-                            'text-[19px] font-bold',
-                            over ? 'text-ng' : complete ? 'text-ok' : undefined,
-                          )}
-                        >
-                          {l.actualKanban}
-                        </span>
-                        <span className="text-ink-muted"> / {l.plannedKanban}</span>
-                        <div className="text-[12px] text-ink-muted">
-                          {(l.actualKanban * l.qtyPerKanban).toLocaleString('id-ID')} pcs
-                        </div>
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="h-2 w-28 overflow-hidden rounded-full bg-surface">
-                          <motion.div
-                            className={cn(
-                              'h-full rounded-full',
-                              over ? 'bg-ng' : complete ? 'bg-ok' : 'bg-accent',
-                            )}
-                            initial={false}
-                            animate={{ width: `${over ? 100 : pct}%` }}
-                            transition={springSoft}
-                          />
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void undo(l.id)}
-                          disabled={l.actualKanban === 0}
-                          aria-label={`Batalkan satu kanban ${l.partNumber}`}
-                          className="grid size-9 place-items-center rounded-full border border-line text-ink-muted transition-colors hover:border-ink hover:text-ink disabled:opacity-30"
-                        >
-                          <Undo2 className="size-4" strokeWidth={1.9} aria-hidden />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+          </ul>
+        </div>
+      </section>
     </div>
   );
 }
 
-function toLineState(l: LoadingDetail['lines'][number], phase: LoadingPhase): LineState {
+function toLineState(
+  l: LoadingDetail['lines'][number],
+  phase: LoadingPhase,
+  deliveryId: number,
+): LineState {
   return {
     id: l.id,
+    deliveryId,
     partNumber: l.partNumber,
     partName: l.partName,
     customerPartNumber: l.customerPartNumber,
@@ -784,12 +759,16 @@ function toLineState(l: LoadingDetail['lines'][number], phase: LoadingPhase): Li
   };
 }
 
-function MobileItem({
+/** Satu baris item: part customer besar, progres kanban di kanan, bar tipis di bawah. */
+function ItemRow({
   line,
   onUndo,
+  documentNumber,
 }: {
   line: LineState;
   onUndo: (lineId: number) => Promise<void>;
+  /** Diisi pada pulling per manifest: loading list pemilik item ini. */
+  documentNumber?: string;
 }) {
   const pct =
     line.plannedKanban > 0 ? Math.min(100, (line.actualKanban / line.plannedKanban) * 100) : 0;
@@ -797,50 +776,43 @@ function MobileItem({
   const complete = !over && line.actualKanban === line.plannedKanban;
 
   return (
-    <article className="rounded-2xl border border-line bg-surface/60 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="tabular break-all text-[16px] font-extrabold">
+    <li className={cn('px-3 py-2', complete && 'bg-ok/5')}>
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="tabular truncate text-[15px] font-bold" title={line.customerPartNumber ?? undefined}>
             {line.customerPartNumber ?? line.partNumber}
           </p>
-          <p className="mt-0.5 text-[12px] text-ink-muted">
-            {line.partNumber} · {line.partName}
+          <p className="truncate text-[12px] text-ink-muted">
+            {documentNumber ? <span className="font-semibold text-ink-soft">{documentNumber} · </span> : null}
+            {line.partNumber} · {line.partName} · {line.plannedQty.toLocaleString('id-ID')}{' '}
+            {line.uom ?? 'pcs'}
           </p>
         </div>
+        <p className="tabular shrink-0 text-right leading-tight">
+          <span
+            className={cn(
+              'text-[18px] font-extrabold',
+              over ? 'text-ng' : complete ? 'text-ok' : undefined,
+            )}
+          >
+            {line.actualKanban}
+          </span>
+          <span className="text-[13px] text-ink-muted"> / {line.plannedKanban}</span>
+          <span className="block text-[11px] text-ink-muted">
+            {(line.actualKanban * line.qtyPerKanban).toLocaleString('id-ID')} pcs
+          </span>
+        </p>
         <button
           type="button"
           onClick={() => void onUndo(line.id)}
           disabled={line.actualKanban === 0}
           aria-label={`Batalkan satu kanban ${line.partNumber}`}
-          className="grid size-9 shrink-0 place-items-center rounded-full border border-line text-ink-muted disabled:opacity-30"
+          className="grid size-8 shrink-0 place-items-center rounded-full border border-line text-ink-muted transition-colors hover:border-ink hover:text-ink disabled:opacity-30"
         >
-          <Undo2 className="size-4" aria-hidden />
+          <Undo2 className="size-3.5" strokeWidth={1.9} aria-hidden />
         </button>
       </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-3 text-[12px]">
-        <div>
-          <p className="text-ink-muted">Pesanan customer</p>
-          <p className="tabular mt-0.5 font-bold">
-            {line.plannedQty.toLocaleString('id-ID')} {line.uom ?? 'pcs'}
-          </p>
-          <p className="text-ink-muted">{line.orderedKanban} kanban</p>
-        </div>
-        <div className="text-right">
-          <p className="text-ink-muted">Progres scan</p>
-          <p
-            className={cn(
-              'tabular mt-0.5 text-[22px] font-extrabold',
-              over ? 'text-ng' : complete ? 'text-ok' : '',
-            )}
-          >
-            {line.actualKanban}{' '}
-            <span className="text-[14px] font-normal text-ink-muted">/ {line.plannedKanban}</span>
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-card">
+      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface">
         <motion.div
           className={cn('h-full rounded-full', over ? 'bg-ng' : complete ? 'bg-ok' : 'bg-accent')}
           initial={false}
@@ -848,62 +820,53 @@ function MobileItem({
           transition={springSoft}
         />
       </div>
-    </article>
+    </li>
   );
 }
 
-function ScanState({
+type TileTone = 'default' | 'active' | 'ok' | 'warn' | 'bad' | 'muted';
+const TILE_TONES: Record<TileTone, string> = {
+  default: 'border-accent/25 bg-accent/5',
+  active: 'border-accent bg-accent/15 ring-2 ring-accent/20',
+  ok: 'border-ok/50 bg-ok/10',
+  warn: 'border-warn/50 bg-warn/10',
+  bad: 'border-ng/50 bg-ng/10',
+  muted: 'border-line bg-surface/60 text-ink-muted',
+};
+
+/** Tile label-kecil + nilai-tebal-di-tengah, ukuran yang sama seperti stasiun pulling lama. */
+function Tile({
   label,
-  value,
-  done = false,
-  active = false,
-  optional = false,
+  tone = 'muted',
+  compact = false,
   className,
+  children,
 }: {
   label: string;
-  value: string;
-  done?: boolean;
-  active?: boolean;
-  optional?: boolean;
+  tone?: TileTone;
+  compact?: boolean;
   className?: string;
+  children: React.ReactNode;
 }) {
   return (
     <div
       className={cn(
-        'min-w-0 rounded-2xl border px-3 py-3 transition-colors',
-        active
-          ? 'border-accent bg-accent/10'
-          : done
-            ? 'border-ok/40 bg-ok/10 text-ok'
-            : 'border-line bg-surface/50',
+        'flex min-w-0 flex-col justify-center rounded-lg border px-3 py-2 transition-colors',
+        compact ? 'min-h-14' : 'min-h-16',
+        TILE_TONES[tone],
         className,
       )}
     >
-      <div className="flex items-center gap-1.5">
-        <span
-          className={cn(
-            'size-1.5 shrink-0 rounded-full',
-            active ? 'bg-accent' : done ? 'bg-ok' : 'bg-ink-muted/40',
-          )}
-        />
-        <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
-          {label}
-        </p>
+      <p className="text-[12px] font-medium text-ink-muted">{label}</p>
+      <div className="tabular mt-0.5 text-center text-[16px] font-bold leading-snug break-words text-ink">
+        {children}
       </div>
-      <p
-        className={cn(
-          'tabular mt-1 truncate text-[14px] font-extrabold text-ink sm:text-[15px]',
-          !done && !active && 'text-ink-muted',
-        )}
-        title={value}
-      >
-        {value}
-      </p>
-      {optional ? (
-        <p className="mt-0.5 text-[10px] text-ink-muted">Mode customer langsung</p>
-      ) : null}
     </div>
   );
+}
+
+function Sub({ children }: { children: React.ReactNode }) {
+  return <span className="block truncate text-[11px] font-medium text-ink-muted">{children}</span>;
 }
 
 function displayKanban(raw: string): string {
@@ -919,61 +882,38 @@ const TONES = {
   ok: 'border-ok/40 bg-ok/10 text-ok',
   warn: 'border-warn/40 bg-warn/10 text-warn',
   bad: 'border-ng/40 bg-ng/10 text-ng',
-  idle: 'border-line bg-card text-ink-muted',
 } as const;
 
-function StatusPanel({
+function StatusBar({
   tone,
   icon: Icon,
   title,
   detail,
-  partNumber,
-  converted,
   counter,
 }: {
   tone: keyof typeof TONES;
   icon: typeof CheckCircle2;
   title: string;
   detail: string;
-  partNumber?: string | null;
-  converted?: string | null;
   counter?: string | null;
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
+      exit={{ opacity: 0, y: -4 }}
       transition={{ duration: durations.base, ease: easeSoft }}
       role="status"
-      className={cn('rounded-card border p-6', TONES[tone])}
+      className={cn('flex min-h-16 items-center gap-3 rounded-lg border px-3 py-2', TONES[tone])}
     >
-      <div className="flex items-start gap-4">
-        <Icon className="mt-1 size-9 shrink-0" strokeWidth={1.9} aria-hidden />
-        <div className="min-w-0 flex-1">
-          <p className="text-[30px] font-extrabold leading-tight">{title}</p>
-          {partNumber ? (
-            <p className="tabular mt-1 text-[20px] font-bold text-ink">{partNumber}</p>
-          ) : null}
-          <p className="mt-1 text-[15px] text-ink-soft">{detail}</p>
-          {converted && converted !== partNumber ? (
-            <p className="tabular mt-2 text-[13px] text-ink-muted">
-              barcode dibaca sebagai <span className="font-semibold">{converted}</span>
-            </p>
-          ) : null}
-        </div>
-        {counter ? (
-          <p className="tabular shrink-0 text-[34px] font-extrabold text-ink">{counter}</p>
-        ) : null}
+      <Icon className="size-7 shrink-0" strokeWidth={1.9} aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="text-[18px] font-extrabold leading-tight">{title}</p>
+        <p className="line-clamp-2 text-[13px] text-ink-soft">{detail}</p>
       </div>
+      {counter ? (
+        <p className="tabular shrink-0 text-[24px] font-extrabold text-ink">{counter}</p>
+      ) : null}
     </motion.div>
-  );
-}
-
-function Th({ children }: { children?: React.ReactNode }) {
-  return (
-    <th className="px-5 py-3 text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-      {children}
-    </th>
   );
 }

@@ -40,6 +40,15 @@ export function DeliveryDocumentScan() {
       router.push(`/picking/${open[0]!.id}`);
       return;
     }
+    // Yang discan nomor MANIFEST: seluruh loading list terbukanya di-pull dalam satu layar.
+    const manifest = open.filter(
+      (item) => item.manifestNumber?.trim().toUpperCase() === value.toUpperCase(),
+    );
+    if (manifest.length > 0) {
+      const [first, ...rest] = manifest.map((item) => item.id).sort((a, b) => a - b);
+      router.push(rest.length ? `/picking/${first}?ids=${[first, ...rest].join(',')}` : `/picking/${first}`);
+      return;
+    }
     setMatches(result.matches);
   }
 
