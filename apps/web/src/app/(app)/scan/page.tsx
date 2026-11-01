@@ -24,7 +24,7 @@ export default async function ScanIndexPage() {
     <>
       <PageHeader
         crumbs={[{ label: 'Scan' }]}
-        title="Stasiun Scan"
+        title="Scan Produksi"
         description="Pilih line tempat Anda bekerja"
       />
 

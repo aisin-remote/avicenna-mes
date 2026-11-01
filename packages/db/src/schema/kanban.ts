@@ -1,4 +1,12 @@
-import { boolean, index, integer, jsonb, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { daftarNilai, enumCol, fk, kanbanSchema, pk, timestamps } from './_shared';
 import { parts, customers, lines } from './master';
@@ -8,6 +16,7 @@ import { plants, users, devices } from './org';
  * Keadaan kartu dalam satu putaran.
  *
  *   AVAILABLE kosong, siap ditempeli barang di lini
+ *   SHOPPED   sudah dicocokkan lewat belanja
  *   PRODUCED  sudah berisi barang jadi
  *   STORED    barangnya masuk gudang barang jadi
  *   PULLED    diambil untuk sebuah pengiriman, menunggu truk
@@ -25,9 +34,36 @@ import { plants, users, devices } from './org';
  * dipertimbangkan, lalu ditolak: dua nama untuk satu keadaan berarti setiap
  * pemeriksaan "kartu ini boleh dipakai?" harus menyebut keduanya, dan yang
  * ketiga pasti lupa.
+ *
+ * ── SHOPPED hanya untuk kartu yang BERBELANJA ───────────────────────────────
+ *
+ * Satu putaran penuh, pada kartu yang prosesnya mewajibkan belanja:
+ *
+ *   AVAILABLE   kosong, di pos kanban
+ *   SHOPPED     sudah belanja — box-box komponennya sudah diambil dan
+ *               dicocokkan, dan kartu ini tinggal menunggu discan produksi
+ *   PRODUCED    box-nya penuh, menunggu diambil proses berikutnya
+ *   AVAILABLE   proses berikutnya membelanjakannya; kartu ini dicopot dan
+ *               kembali ke pos
+ *
+ * Kartu yang DIBELANJAKAN (komponennya) tidak pernah berstatus SHOPPED: ia
+ * lepas dari PRODUCED langsung ke AVAILABLE pada saat belanja, sebab di situlah
+ * kartunya benar-benar dicopot dari box dan dibawa pulang ke posnya. Box-nya
+ * berjalan ke proses berikutnya diantar kartu INDUK, bukan kartunya sendiri.
+ *
+ * Akibat yang dikehendaki: lini tidak bisa membuat box baru sebelum proses
+ * berikutnya mengambil box yang lama, karena kartunya belum kembali. Itu bukan
+ * efek samping — itu justru sistem pull-nya, dan jumlah kartu beredar yang
+ * menjadi batas WIP.
+ *
+ * Namanya BUKAN "PAIRED", meskipun itu kata yang lebih tepat secara harfiah:
+ * TT_KANBAN_EVENT bertipe PAIRED sudah dipakai scan produksi untuk menempelkan
+ * satu UNIT ke kartu (lihat `tempelUnitKeKartu`). Dua arti pada satu kata di
+ * tabel yang bersebelahan adalah salah paham yang menunggu terjadi.
  */
 export const KANBAN_STATUSES = [
   'AVAILABLE',
+  'SHOPPED',
   'PRODUCED',
   'STORED',
   'PULLED',
@@ -136,7 +172,7 @@ export const kanbans = kanbanSchema.table(
     uniqueIndex('TM_KANBAN_PART_SERIAL_UNIQUE').on(t.partId, t.serialNumber),
     index('TM_KANBAN_PLANT_PART_IDX').on(t.plantId, t.partId),
     index('TM_KANBAN_STATUS_IDX').on(t.status, t.createdAt),
-  
+
     daftarNilai('TM_KANBAN_CHR_KANBAN_TYPE_CHK', t.kanbanType, KANBAN_TYPES),
     daftarNilai('TM_KANBAN_CHR_OWNER_CHK', t.owner, KANBAN_OWNERS),
     daftarNilai('TM_KANBAN_CHR_STATUS_CHK', t.status, KANBAN_STATUSES),
@@ -188,10 +224,103 @@ export const kanbanItemsRelations = relations(kanbanItems, ({ one }) => ({
   kanban: one(kanbans, { fields: [kanbanItems.kanbanId], references: [kanbans.id] }),
 }));
 
+/**
+ * PASANGAN BELANJA YANG SEDANG BERJALAN — kartu FG dan kartu-kartu WIP-nya.
+ *
+ * Belanja adalah langkah di antara WIP dan FG di Body: orang membawa kartu FG
+ * ke rak barang setengah jadi, mengambil box-box yang dibutuhkannya, lalu
+ * men-scan kartu FG itu bersama kartu WIP tiap box. Isinya diperiksa terhadap
+ * BOM; kalau cocok, pasangannya tercatat di sini dan scan produksi assembling
+ * baru diizinkan.
+ *
+ * ── Keadaan sekarang, bukan riwayat ─────────────────────────────────────────
+ *
+ * Baris di sini DIHAPUS ketika kartu induknya discan produksi. Riwayatnya ada
+ * di TT_KANBAN_EVENT bertipe SHOPPED, append-only, lengkap dengan
+ * INT_PAIRED_KANBAN_ID. Alasannya sama persis dengan TT_KANBAN_ITEM:
+ * pertanyaan "box apa saja yang SEKARANG dibawa kartu ini" harus satu query
+ * sederhana, bukan pelipatan seluruh riwayat.
+ *
+ * ── Kenapa INT_WIP_KANBAN_ID TIDAK unik ─────────────────────────────────────
+ *
+ * Kartu WIP lepas ke peredaran pada saat belanja, bukan saat induknya discan
+ * produksi — jadi ia bisa dipakai lagi, terisi lagi, dan dibelanjakan lagi
+ * sementara baris ini masih ada. Unique index di sini akan menolak belanja
+ * KEDUA yang sepenuhnya sah, dan menolaknya di lantai, pada kartu yang baru
+ * saja dikembalikan dengan benar.
+ *
+ * Yang mencegah satu box dibelanjakan dua kali adalah STATUS kartunya: hanya
+ * kartu PRODUCED yang boleh masuk belanja, dan belanja memindahkannya ke
+ * AVAILABLE di bawah kunci baris.
+ *
+ * ── Kenapa qty dan producedAt disalin ───────────────────────────────────────
+ *
+ * INT_QTY_PER_BOX di master kanban bisa diubah besok. Pasangan yang sudah
+ * dibuat harus tetap menyatakan jumlah yang BENAR-BENAR dibawa saat
+ * dicocokkan, sama seperti CHR_PRODUCTION_VERSION disalin ke kartu alih-alih
+ * dibaca ulang dari part.
+ *
+ * DTM_WIP_PRODUCED_AT menyimpan kapan box itu dinyatakan penuh, SEBELUM
+ * kartunya dilepas. Tanpa itu, membatalkan belanja hanya bisa mengira-ngira
+ * waktu produksi box yang harus dipasang kembali.
+ */
+export const kanbanPairings = kanbanSchema.table(
+  'TT_KANBAN_PAIRING',
+  {
+    id: pk(),
+    /** Kartu FG yang membawa — yang nanti discan di produksi. */
+    fgKanbanId: fk('INT_FG_KANBAN_ID')
+      .notNull()
+      .references(() => kanbans.id, { onDelete: 'cascade' }),
+    /** Kartu WIP yang terikat padanya. */
+    wipKanbanId: fk('INT_WIP_KANBAN_ID')
+      .notNull()
+      .references(() => kanbans.id, { onDelete: 'cascade' }),
+    /** Unit yang dibawa kartu WIP ini pada saat dicocokkan. */
+    qty: integer('INT_QTY').notNull(),
+    /** Kapan box-nya dinyatakan penuh — dipakai memulihkan pembatalan. */
+    wipProducedAt: timestamp('DTM_WIP_PRODUCED_AT', { withTimezone: true, mode: 'date' }),
+    npk: varchar('CHR_NPK', { length: 32 }),
+    userId: fk('INT_USER_ID').references(() => users.id),
+    pairedAt: timestamp('DTM_PAIRED_AT', { withTimezone: true, mode: 'date' }).notNull(),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    index('TT_KANBAN_PAIRING_FG_IDX').on(t.fgKanbanId),
+    // Untuk menjawab "kartu ini terakhir dibelanjakan ke mana".
+    index('TT_KANBAN_PAIRING_WIP_IDX').on(t.wipKanbanId),
+  ],
+);
+
+export const kanbanPairingsRelations = relations(kanbanPairings, ({ one }) => ({
+  fgKanban: one(kanbans, {
+    fields: [kanbanPairings.fgKanbanId],
+    references: [kanbans.id],
+    relationName: 'pasanganFg',
+  }),
+  wipKanban: one(kanbans, {
+    fields: [kanbanPairings.wipKanbanId],
+    references: [kanbans.id],
+    relationName: 'pasanganWip',
+  }),
+  user: one(users, { fields: [kanbanPairings.userId], references: [users.id] }),
+}));
+
 export const KANBAN_EVENT_TYPES = [
   'PRODUCED',
   'PULLED',
   'PAIRED',
+  /**
+   * Kartu dicocokkan lewat belanja.
+   *
+   * Dicatat di KEDUA kartu: di kartu FG dengan INT_PAIRED_KANBAN_ID menunjuk
+   * kartu WIP-nya, dan sebaliknya. Dua baris per pasangan, bukan satu, supaya
+   * riwayat sebuah kartu bisa dibaca dari kartunya sendiri tanpa menyapu
+   * seluruh tabel mencari dirinya di kolom pasangan.
+   *
+   * Dibedakan dari PAIRED, yang sudah dipakai menempelkan satu UNIT ke kartu.
+   */
+  'SHOPPED',
   'STORED',
   'LOADED',
   'DELIVERED',
@@ -250,7 +379,7 @@ export const kanbanEvents = kanbanSchema.table(
   (t) => [
     index('TT_KANBAN_EVENT_KANBAN_IDX').on(t.kanbanId, t.occurredAt),
     index('TT_KANBAN_EVENT_TYPE_TIME_IDX').on(t.type, t.occurredAt),
-  
+
     daftarNilai('TT_KANBAN_EVENT_CHR_TYPE_CHK', t.type, KANBAN_EVENT_TYPES),
   ],
 );

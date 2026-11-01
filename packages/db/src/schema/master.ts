@@ -382,6 +382,24 @@ export const routeProcesses = masterSchema.table(
      * sah; nilai itu tidak pernah ditawarkan lagi di formulir.
      */
     scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM).notNull().default('PART_SAJA'),
+    /**
+     * Scan produksi di proses ini WAJIB didahului belanja.
+     *
+     * Belanja = kartu FG dicocokkan dengan kartu-kartu WIP yang isinya sesuai
+     * BOM. Tanpa pencocokan itu, scan produksinya ditolak — itulah interlock-nya.
+     *
+     * ── Kenapa per (pabrik + proses), bukan per project ─────────────────────
+     *
+     * Di bella aturan ini berupa daftar putih di dalam kode
+     * (`KanbanPairing::INTERLOCK_PROJECTS = ['660A']`), jadi menyalakannya
+     * untuk project berikutnya menuntut deploy — dan daftar itu tidak terlihat
+     * oleh siapa pun yang memakai aplikasinya. Di sini keadaannya terbaca di
+     * master Rute Proses, sebaris dengan bendera SAP yang sudah ada.
+     *
+     * Bawaannya mati: proses yang tidak pernah belanja tidak boleh berubah
+     * perilakunya hanya karena kolomnya ditambahkan.
+     */
+    requirePairing: boolean('FLG_REQUIRE_PAIRING').notNull().default(false),
     /** Kosong = pakai SLOC asal lini. */
     inputLocationId: fk('INT_INPUT_LOCATION_ID'),
     /** Kosong = pakai SLOC tujuan lini. */

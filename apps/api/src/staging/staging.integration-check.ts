@@ -60,6 +60,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { RedisService } from '../queue/redis.service';
 import { QueueService } from '../queue/queue.service';
 import { LoadingService } from '../loading/loading.service';
+import { BelanjaService } from '../belanja/belanja.service';
 import { BackflushService } from '../backflush/backflush.service';
 import { bacaStagingConfig, keMssqlConfig } from './staging.config';
 import { SettingService } from '../setting/setting.service';
@@ -370,6 +371,7 @@ async function main() {
     new QueueService(redis),
     new LoadingService(db),
     processTypes,
+    new BelanjaService(db, processTypes),
   );
   const outbox = new SapOutboxService(db, processTypes);
   /*

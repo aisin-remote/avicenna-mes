@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   bacaBarcode,
+  bacaKanban,
   punyaIdentitasPart,
   aturanBerlaku,
+  seriKanban,
+  susunKodeKartuKanban,
+  kodeKetikKanban,
+  PENANDA_KARTU_KANBAN,
   BarcodeTidakDikenali,
   DAFTAR_ATURAN,
   ATURAN_SERIAL_SAJA,
@@ -213,5 +218,96 @@ describe('ATURAN_PROGRAM_15 — barcode produksi nyata', () => {
   it('format berpemisah tetap menang', () => {
     // Barcode ber-"|" 15 karakter tidak boleh direbut aturan program.
     expect(bacaBarcode('12|B1|S1|3456').aturan).toBe('BERPEMISAH');
+  });
+});
+
+describe('kartu kanban cetakan sendiri', () => {
+  const kartu = {
+    partNumber: '212110-34141',
+    backNumber: 'CI25',
+    serialNumber: seriKanban(1),
+    qtyPerBox: 60,
+  };
+
+  it('yang dicetak terbaca kembali — satu pasang dengan pembacanya', () => {
+    /*
+     * Ini properti yang paling penting dari seluruh halaman cetak: kalau
+     * penyusun dan pembacanya pernah berbeda pendapat, seribu kartu tercetak
+     * dan tidak satu pun terbaca di lantai.
+     */
+    const teks = susunKodeKartuKanban(kartu);
+    expect(teks).toBe('AVK1|212110-34141|CI25|0001|60');
+
+    const baca = bacaKanban(teks);
+    expect(baca.aturan).toBe('KANBAN_AVICENNA');
+    expect(baca.partNumber).toBe('212110-34141');
+    expect(baca.backNumber).toBe('CI25');
+    expect(baca.serialNumber).toBe('0001');
+    expect(baca.qty).toBe(60);
+  });
+
+  it('dikenali dari penandanya, bukan dari jumlah ruas', () => {
+    // Ruas boleh bertambah di AVK2 nanti tanpa mematikan pembacanya.
+    expect(bacaKanban(`${PENANDA_KARTU_KANBAN}|P1|CI25|0001|60|tambahan`).aturan).toBe(
+      'KANBAN_AVICENNA',
+    );
+  });
+
+  it('kartu kanban TIDAK terbaca sebagai barcode part', () => {
+    /*
+     * Keduanya memakai "|". Tanpa penyingkiran penanda di ATURAN_BERPEMISAH,
+     * kartu yang discan di kotak part terbaca sebagai part bernomor "AVK1" —
+     * dan operator disuruh melapor soal part yang tidak ada, padahal yang
+     * keliru cuma kotak scan-nya.
+     */
+    const hasil = bacaBarcode(susunKodeKartuKanban(kartu));
+    expect(hasil.aturan).not.toBe('BERPEMISAH');
+    expect(hasil.partNumber).toBeUndefined();
+  });
+
+  it('bentuk ketik manual menuju kartu yang sama', () => {
+    // Yang tercetak sebagai teks di bawah QR. Kuncinya (back number + seri)
+    // sama, jadi kartu yang ditemukan juga sama — yang hilang hanya
+    // pemeriksaan part dan qty.
+    const ketik = kodeKetikKanban(kartu);
+    expect(ketik).toBe('CI25|0001');
+
+    const baca = bacaKanban(ketik);
+    expect(baca.aturan).toBe('KANBAN_BERPEMISAH');
+    expect(baca.backNumber).toBe(bacaKanban(susunKodeKartuKanban(kartu)).backNumber);
+    expect(baca.serialNumber).toBe(bacaKanban(susunKodeKartuKanban(kartu)).serialNumber);
+  });
+
+  it('seri diberi nol di depan sampai empat digit, dan di atas itu tidak dipotong', () => {
+    // Aturan lama mengambil EMPAT KARAKTER TERAKHIR; "1" dan "0001" harus sama.
+    expect(seriKanban(1)).toBe('0001');
+    expect(seriKanban(1000)).toBe('1000');
+    // Memotongnya akan membuat 10001 dan 20001 berseri sama.
+    expect(seriKanban(10001)).toBe('10001');
+  });
+
+  it('menolak ruas yang kosong, bukan mencetak kode setengah jadi', () => {
+    /*
+     * Kartu kertas tidak bisa ditarik kembali: ruas yang kosong saat dicetak
+     * akan beredar bertahun-tahun, dan pembacanya harus memaafkannya selamanya.
+     */
+    expect(() => susunKodeKartuKanban({ ...kartu, backNumber: '  ' })).toThrow(/back number/);
+    expect(() => susunKodeKartuKanban({ ...kartu, partNumber: '' })).toThrow(/nomor part/);
+    expect(() => susunKodeKartuKanban({ ...kartu, serialNumber: ' ' })).toThrow(/nomor seri/);
+    expect(() => susunKodeKartuKanban({ ...kartu, qtyPerBox: 0 })).toThrow(/isi box/);
+    expect(() => susunKodeKartuKanban({ ...kartu, qtyPerBox: 2.5 })).toThrow(/isi box/);
+  });
+
+  it('pemisah di dalam ruas dibuang, bukan menambah ruas', () => {
+    // Satu "|" yang ikut tercetak akan menggeser seluruh ruas sesudahnya, dan
+    // qty terbaca sebagai seri.
+    const teks = susunKodeKartuKanban({
+      ...kartu,
+      backNumber: 'C|I 25',
+      partNumber: '212110 -341|41',
+    });
+    expect(teks.split('|')).toHaveLength(5);
+    expect(bacaKanban(teks).backNumber).toBe('CI25');
+    expect(bacaKanban(teks).qty).toBe(60);
   });
 });

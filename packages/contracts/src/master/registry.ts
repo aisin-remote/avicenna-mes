@@ -770,6 +770,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint: 'Bila diisi, hasil scan langsung dipindah dari SLOC keluar ke sini (dua mutasi TRANSFER).',
       },
       {
+        name: 'requirePairing',
+        label: 'Wajib Belanja',
+        kind: 'boolean',
+        defaultValue: false,
+        inList: true,
+        hint:
+          'Scan produksi di proses ini hanya menerima kartu FG yang sudah dicocokkan ' +
+          'dengan kartu WIP-nya di stasiun Belanja. Butuh BOM part-nya terisi.',
+      },
+      {
         name: 'sapProductionEnabled',
         label: 'Push Produksi ke SAP',
         kind: 'boolean',

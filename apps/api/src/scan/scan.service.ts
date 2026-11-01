@@ -81,6 +81,7 @@ import type {
 } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
 import { ProcessTypeService } from '../master/process-type.service';
+import { BelanjaService } from '../belanja/belanja.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { QueueService } from '../queue/queue.service';
 import { QUEUES, JOBS } from '../queue/queue.constants';
@@ -154,6 +155,7 @@ export class ScanService {
     private readonly queue: QueueService,
     private readonly loading: LoadingService,
     private readonly processTypes: ProcessTypeService,
+    private readonly belanja: BelanjaService,
   ) {}
 
   /**
@@ -517,6 +519,15 @@ export class ScanService {
     const syarat = processType ? syaratScan(katalog, modeScan, processType) : null;
 
     /*
+     * Apakah proses ini mewajibkan belanja lebih dulu.
+     *
+     * Dari master Rute Proses per (pabrik + proses), bukan dari daftar project
+     * di dalam kode seperti di bella — menyalakannya untuk proses berikutnya
+     * tidak boleh menuntut deploy.
+     */
+    const wajibBelanja = aturanProses?.requirePairing ?? false;
+
+    /*
      * Metode yang dikenal tetapi alurnya belum dibangun ditolak di sini.
      *
      * Diam-diam memperlakukannya sebagai metode lain adalah kegagalan yang
@@ -532,6 +543,12 @@ export class ScanService {
     }
 
     let labelDn: LabelDn | null = null;
+    /*
+     * Peringatan dari KARTUNYA, bukan dari prosesnya — lihat pemeriksaan qty
+     * di bawah. Disimpan dulu karena `hasilDasar` baru ada setelah seluruh
+     * pemeriksaan kartu selesai.
+     */
+    let peringatanKartu: string | null = null;
     let kanbanTerpilih:
       | {
           id: number;
@@ -669,16 +686,49 @@ export class ScanService {
           );
         }
 
+        /*
+         * INTERLOCK BELANJA.
+         *
+         * Proses yang mewajibkannya hanya menerima kartu yang sudah dicocokkan
+         * dengan kartu-kartu WIP-nya (status SHOPPED). Tanpa ini, assembling
+         * bisa menyatakan hasil produksi tanpa pernah mengambil barangnya —
+         * dan selisihnya baru ketahuan saat stock opname, berbulan kemudian.
+         *
+         * Diperiksa dari STATUS, lalu dipastikan lagi dari tabel pasangan:
+         * status bisa benar sementara pasangannya sudah dipakai scan lain
+         * dalam selisih milidetik.
+         */
+        if (wajibBelanja && kartu.status !== 'SHOPPED') {
+          throw new ScanRejected(
+            'KANBAN_BELUM_BELANJA',
+            `${REJECT_MESSAGES.KANBAN_BELUM_BELANJA} (seri ${kb.serialNumber})`,
+          );
+        }
+
         if (syarat.tolakKartuTerproduksi && kartu.status === 'PRODUCED') {
           /*
            * Inilah duplikat di mode per-kanban. Barcode part-nya sama untuk
            * seluruh shift, jadi yang membedakan satu scan dari yang lain
            * adalah KARTUNYA — dan kartu yang sudah tercatat produksi belum
-           * boleh dicatat lagi sampai pulling mengambilnya.
+           * boleh dicatat lagi sampai proses berikutnya mengambil box-nya.
+           *
+           * ── Kenapa sebabnya dicari dulu ──────────────────────────────────
+           *
+           * Kalau proses hilir part ini mewajibkan belanja, penolakan ini
+           * BUKAN kekeliruan operator: box-nya memang belum diambil, dan
+           * itulah sistem pull-nya bekerja. "Sudah discan produksi" tidak
+           * menjelaskan apa pun kepada orang yang kehabisan kartu kosong —
+           * yang perlu ia tahu adalah bahwa yang harus bergerak ada di hilir.
+           *
+           * Satu kueri, dan hanya di jalur penolakan.
            */
+          const menunggu = await this.belanja.menungguBelanjaHilir(plantId, part.id);
           throw new ScanRejected(
             'KANBAN_ALREADY_PRODUCED',
-            `${REJECT_MESSAGES.KANBAN_ALREADY_PRODUCED} (seri ${kb.serialNumber})`,
+            menunggu
+              ? `Kartu ${kb.serialNumber} masih menempel di box yang belum dibelanjakan proses ` +
+                'berikutnya. Ambil kartu kosong lain, atau minta proses berikutnya belanja dulu.'
+              : `${REJECT_MESSAGES.KANBAN_ALREADY_PRODUCED} (seri ${kb.serialNumber})`,
           );
         }
 
@@ -696,6 +746,33 @@ export class ScanService {
             );
           }
         }
+        /*
+         * Qty/box yang TERCETAK di kartu vs yang terdaftar sekarang.
+         *
+         * Yang dicatat tetap angka terdaftar — master-lah yang benar. Yang
+         * diberitahukan adalah bahwa kartu fisiknya basi: isi box sudah diubah
+         * sejak kartu ini dicetak, dan MUKA kartunya masih menyuruh orang
+         * mengisi box dengan jumlah yang lama.
+         *
+         * ── Kenapa peringatan, bukan penolakan ──────────────────────────────
+         *
+         * Mengubah isi box di master adalah satu klik; mencetak ulang seluruh
+         * kartu yang beredar adalah pekerjaan setengah hari OMD. Menolak scan
+         * berarti satu klik itu menghentikan lini sampai kartunya selesai
+         * dicetak — dan yang menanggungnya operator, yang tidak bisa berbuat
+         * apa pun. Scan-nya diterima dengan angka yang benar, dan kartu yang
+         * perlu diganti tetap kelihatan.
+         *
+         * Hanya untuk kartu cetakan sendiri: kartu customer BODY menyimpan pcs
+         * pada SATU digit (lihat ATURAN_KANBAN_BODY), jadi angkanya memang
+         * tidak pernah sama dengan isi box yang sebenarnya.
+         */
+        if (kb.aturan === 'KANBAN_AVICENNA' && kb.qty !== undefined && kb.qty !== kartu.qtyPerBox) {
+          peringatanKartu =
+            `Kartu seri ${kartu.serialNumber} tercetak ${kb.qty}/box, sekarang terdaftar ` +
+            `${kartu.qtyPerBox}/box. Scan dihitung ${kartu.qtyPerBox} — minta OMD cetak ulang kartunya.`;
+        }
+
         kanbanTerpilih = {
           id: kartu.id,
           capacity: kartu.unitPerKanban,
@@ -731,7 +808,7 @@ export class ScanService {
       serialNumber: seriScan,
       kanbanOwner: kanbanTerpilih?.owner ?? null,
       loadingList: labelDn ? await this.ringkasanLoadingList(labelDn.deliveryId) : null,
-      peringatan: null,
+      peringatan: peringatanKartu,
     };
 
     /*
@@ -755,6 +832,12 @@ export class ScanService {
             .from(kanbans)
             .where(eq(kanbans.id, kanbanTerpilih.id))
             .for('update');
+
+          if (wajibBelanja && terkunci?.status !== 'SHOPPED') {
+            // Di bawah kunci: dua scanner mengirim kartu yang sama dalam
+            // selisih milidetik, dan keduanya lolos pemeriksaan di atas.
+            throw new ScanRejected('KANBAN_BELUM_BELANJA', REJECT_MESSAGES.KANBAN_BELUM_BELANJA);
+          }
 
           if (syarat?.tolakKartuTerproduksi && terkunci?.status === 'PRODUCED') {
             // Diperiksa ulang DI BAWAH KUNCI: dua scanner mengirim kartu yang
@@ -853,6 +936,24 @@ export class ScanService {
             occurredAt: normalized.scannedAt,
             meta: { scanEventId: insertedId, scanMode: modeScan },
           });
+        }
+
+        /*
+         * Pasangan belanjanya ditutup: barisnya dihapus sekarang bahwa box
+         * induknya benar-benar jadi. Kartu box-nya sendiri sudah lepas sejak
+         * belanja, jadi tidak ada status kartu lain yang berubah di sini.
+         *
+         * Di dalam transaksi yang sama dengan scan-nya: pasangan yang
+         * tertinggal akan membuat kartu ini terus muncul di daftar tunggu
+         * stasiun belanja padahal pekerjaannya sudah selesai.
+         */
+        if (kanbanTerpilih && wajibBelanja) {
+          const ditutup = await this.belanja.tutupPasangan(tx, kanbanTerpilih.id);
+          if (ditutup > 0) {
+            this.logger.log(
+              `belanja kartu ${kanbanTerpilih.serial} selesai: ${ditutup} pasangan ditutup`,
+            );
+          }
         }
 
         if (kanbanTerpilih && insertedId && syarat?.tempelUnitKeKartu) {

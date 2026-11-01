@@ -4,6 +4,8 @@ import {
   parts,
   lines,
   plants,
+  locations,
+  routeProcesses,
   customers,
   suppliers,
   kanbans,
@@ -142,6 +144,99 @@ export async function listLines() {
     .leftJoin(plants, eq(lines.plantId, plants.id))
     .where(eq(lines.isActive, true))
     .orderBy(plants.code, lines.sortOrder);
+}
+
+export interface AreaBelanja {
+  id: number;
+  code: string;
+  name: string;
+  /** Proses di pabrik ini yang scan produksinya mewajibkan belanja. */
+  prosesWajib: string[];
+}
+
+/**
+ * Area belanja — satu per pabrik, seperti area komponen.
+ *
+ * Pabrik yang belum punya satu pun proses berpenanda "Wajib Belanja" tetap
+ * ditampilkan: belanja di sana tetap bisa dicatat, hanya belum menginterlock
+ * apa pun. Menyembunyikannya membuat orang mengira menunya rusak, padahal yang
+ * kurang satu centang di master Rute Proses.
+ */
+export async function listAreaBelanja(): Promise<AreaBelanja[]> {
+  const db = getDb();
+
+  const [barisPabrik, barisProses] = await Promise.all([
+    db
+      .select({ id: plants.id, code: plants.code, name: plants.name })
+      .from(plants)
+      .where(eq(plants.isActive, true))
+      .orderBy(plants.code),
+    db
+      .select({ plantId: routeProcesses.plantId, processType: routeProcesses.processType })
+      .from(routeProcesses)
+      .where(and(eq(routeProcesses.requirePairing, true), eq(routeProcesses.isActive, true))),
+  ]);
+
+  return barisPabrik.map((pabrik) => ({
+    ...pabrik,
+    prosesWajib: barisProses
+      .filter((p) => p.plantId === pabrik.id)
+      .map((p) => p.processType)
+      .filter((p): p is string => Boolean(p)),
+  }));
+}
+
+export interface AreaKomponen {
+  id: number;
+  code: string;
+  name: string;
+  sapCode: string | null;
+  gudang: string | null;
+  wip: string | null;
+}
+
+/**
+ * Area perpindahan komponen — SATU PER PABRIK.
+ *
+ * Bukan per lini: yang dicatat stasiun itu perpindahan SLOC, dan SLOC milik
+ * pabrik (WH70 ke WP70, WH80 ke WP80, WH90 ke WP90). Lini tidak menentukan apa
+ * pun di dokumennya, jadi menampilkan seluruh lini di sini hanya menyuruh
+ * operator menebak lini mana yang "benar" untuk gerakan yang sama.
+ *
+ * SLOC-nya dicari lewat JENIS lokasi, bukan kode: kodenya berbeda tiap pabrik,
+ * dan menuliskannya satu per satu berarti pabrik keempat nanti diam-diam tidak
+ * berfungsi.
+ *
+ * Pabrik yang belum punya salah satu SLOC tetap ditampilkan, dengan kekosongan
+ * yang kelihatan. Menyembunyikannya membuat areanya hilang tanpa sebab yang
+ * bisa dibaca siapa pun — dan yang hilang itu baru ketahuan di lantai, sebagai
+ * kartu pertama yang ditolak.
+ */
+export async function listAreaKomponen(): Promise<AreaKomponen[]> {
+  const db = getDb();
+
+  const [barisPabrik, barisSloc] = await Promise.all([
+    db
+      .select({
+        id: plants.id,
+        code: plants.code,
+        name: plants.name,
+        sapCode: plants.sapCode,
+      })
+      .from(plants)
+      .where(eq(plants.isActive, true))
+      .orderBy(plants.code),
+    db
+      .select({ plantId: locations.plantId, code: locations.code, kind: locations.kind })
+      .from(locations)
+      .where(inArray(locations.kind, ['WAREHOUSE', 'WIP'])),
+  ]);
+
+  return barisPabrik.map((pabrik) => ({
+    ...pabrik,
+    gudang: barisSloc.find((l) => l.plantId === pabrik.id && l.kind === 'WAREHOUSE')?.code ?? null,
+    wip: barisSloc.find((l) => l.plantId === pabrik.id && l.kind === 'WIP')?.code ?? null,
+  }));
 }
 
 export interface LineProduksi {

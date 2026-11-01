@@ -85,7 +85,9 @@ describe('bolehScanDi', () => {
   it('jp dan leader tidak men-scan sama sekali', () => {
     // Mereka memeriksa data. Membiarkannya men-scan berarti hasil produksi bisa
     // bertambah dari orang yang tidak berdiri di lini.
-    expect(bolehScanDi(KATALOG_UJI, { kind: 'VIEW', processGroup: 'CASTING' }, 'CASTING_WIP')).toBe(false);
+    expect(bolehScanDi(KATALOG_UJI, { kind: 'VIEW', processGroup: 'CASTING' }, 'CASTING_WIP')).toBe(
+      false,
+    );
   });
 
   it('admin boleh di mana saja', () => {
@@ -162,6 +164,9 @@ describe('sepertiKartuLogin', () => {
      */
     expect(sepertiKartuLogin('BN-001|1001')).toBe(false);
     expect(sepertiKartuLogin('TB-001|9612')).toBe(false);
+    // Kartu cetakan sendiri: lima ruas, jadi syarat "tepat satu pemisah" yang
+    // menyingkirkannya — bukan panjang sandinya.
+    expect(sepertiKartuLogin('AVK1|212110-34141|CI25|0001|60')).toBe(false);
   });
 
   it('barcode part berpemisah TIDAK dianggap kartu login', () => {
