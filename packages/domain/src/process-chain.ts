@@ -100,6 +100,7 @@ export type ScanRejectReason =
   | 'KANBAN_UNIT_ALREADY_PAIRED'
   | 'KANBAN_NOT_EXPECTED'
   | 'KANBAN_ALREADY_PRODUCED'
+  | 'KANBAN_BELUM_BELANJA'
   | 'DN_NOT_FOUND'
   | 'DN_CLOSED'
   | 'DN_PART_NOT_LISTED'
@@ -120,7 +121,8 @@ export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
    * melihat "berhasil", stoknya tidak pernah bergerak, dan selisihnya baru
    * ketahuan saat stock opname.
    */
-  PART_NOT_RECOGNIZED: 'Part tidak dikenali dari barcode ini. JANGAN diproses — laporkan ke leader.',
+  PART_NOT_RECOGNIZED:
+    'Part tidak dikenali dari barcode ini. JANGAN diproses — laporkan ke leader.',
   PROCESS_NOT_IN_ROUTE: 'Part ini tidak melewati proses di lini ini. Periksa part-nya.',
   STOCK_LOCATION_INVALID: 'SLOC rute belum lengkap atau tidak sesuai pabrik. Laporkan ke leader.',
 
@@ -138,6 +140,12 @@ export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
   KANBAN_NOT_EXPECTED: 'Lini ini tidak memakai kanban. Cukup scan part code.',
   // Mode per-kanban: kartu yang sudah tercatat produksi belum dipull lagi.
   KANBAN_ALREADY_PRODUCED: 'Kanban ini sudah discan produksi. Ambil kartu berikutnya.',
+  /*
+   * Interlock belanja. Hanya berlaku di proses yang FLG_REQUIRE_PAIRING-nya
+   * dinyalakan — di proses lain kartu tanpa pasangan memang hal biasa.
+   */
+  KANBAN_BELUM_BELANJA:
+    'Kartu ini belum belanja. Cocokkan dulu dengan kartu WIP-nya di stasiun Belanja.',
 
   /*
    * Label DN (direct pulling di lini FG). Label ini bukan kartu terdaftar —

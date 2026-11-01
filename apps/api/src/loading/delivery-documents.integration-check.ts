@@ -2,7 +2,8 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rmdir, unlink } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { resolve, join, sep } from 'node:path';
 import {
   getDb,
   closeDb,
@@ -25,9 +26,11 @@ import type { Principal } from '../auth/auth.types';
 async function main() {
   const url = new URL(process.env.DATABASE_URL!);
   assert(['localhost', '127.0.0.1'].includes(url.hostname), 'Test hanya untuk database lokal.');
-  const base = resolve('D:/Temp'),
+  /* Folder sementara milik SISTEM: pemeriksaan ini dijalankan di Windows dan
+     di macOS, dan "D:/Temp" hanya ada di salah satunya. */
+  const base = resolve(tmpdir()),
     dir = join(base, `avicenna-document-check-${randomUUID()}`);
-  assert(dir.startsWith(base + '\\'));
+  assert(dir.startsWith(base + sep));
   await mkdir(dir, { recursive: true });
   const previous = process.env.DELIVERY_DOCUMENT_DIR;
   process.env.DELIVERY_DOCUMENT_DIR = dir;
@@ -182,7 +185,7 @@ async function main() {
     for (const file of await readdir(dir)) {
       assert(/^[a-f0-9-]{36}\.pdf$/.test(file));
       const target = resolve(dir, file);
-      assert(target.startsWith(dir + '\\'));
+      assert(target.startsWith(dir + sep));
       await unlink(target);
     }
     await rmdir(dir);

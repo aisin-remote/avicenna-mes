@@ -15,6 +15,37 @@ import {
 const berspasi = (kolom: string[]) => kolom.join(' ');
 const isi = (n: number, nilai = 'x') => Array.from({ length: n }, () => nilai);
 
+describe('bacaKanban — kartu cetakan sendiri', () => {
+  it('membaca AVK1|PART|BACK|SERI|QTY', () => {
+    expect(bacaKanban('AVK1|212110-34141|CI25|0001|60')).toEqual({
+      raw: 'AVK1|212110-34141|CI25|0001|60',
+      partNumber: '212110-34141',
+      backNumber: 'CI25',
+      serialNumber: '0001',
+      qty: 60,
+      aturan: 'KANBAN_AVICENNA',
+    });
+  });
+
+  it('qty yang tidak masuk akal diabaikan, bukan dibawa sebagai nol', () => {
+    /*
+     * qty dari kartu hanya dipakai MEMBANDINGKAN dengan master. Nol atau teks
+     * yang lolos ke pembandingnya akan memperingatkan setiap kartu, dan
+     * peringatan yang selalu muncul berhenti dibaca orang.
+     */
+    expect(bacaKanban('AVK1|212110-34141|CI25|0001|0').qty).toBeUndefined();
+    expect(bacaKanban('AVK1|212110-34141|CI25|0001|').qty).toBeUndefined();
+  });
+
+  it('tanpa seri dianggap tidak terbaca walau penandanya benar', () => {
+    expect(() => bacaKanban('AVK1|212110-34141|CI25||60')).toThrow(KanbanTidakTerbaca);
+  });
+
+  it('dianggap kartu di layar FG, bukan barcode part', () => {
+    expect(sepertiKanban('AVK1|212110-34141|CI25|0001|60')).toBe(true);
+  });
+});
+
 describe('bacaKanban — format berpemisah', () => {
   it('membaca BACKNUMBER|SERIAL', () => {
     expect(bacaKanban('BN-001|1456')).toEqual({
@@ -169,8 +200,8 @@ describe('susunLabelDn — label yang dicetak harus terbaca aturannya sendiri', 
   });
 
   it('spasi dan "~" di dalam ruas dibuang supaya ruasnya tetap empat', () => {
-    expect(susunLabelDn({ customerCode: 'A B', customerPartNumber: 'X~Y', dnNumber: 'DN 1', dnSeq: 1 })).toBe(
-      'AB~XY~DN1~1',
-    );
+    expect(
+      susunLabelDn({ customerCode: 'A B', customerPartNumber: 'X~Y', dnNumber: 'DN 1', dnSeq: 1 }),
+    ).toBe('AB~XY~DN1~1');
   });
 });

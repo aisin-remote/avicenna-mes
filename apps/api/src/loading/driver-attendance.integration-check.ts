@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, readdir, rmdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   getDb,
@@ -38,7 +39,8 @@ async function main() {
     ['127.0.0.1', 'localhost'].includes(new URL(process.env.DATABASE_URL!).hostname),
     'Fixture hanya untuk database lokal.',
   );
-  const dir = await mkdtemp('D:/Temp/avicenna-attendance-qa-');
+  /* Folder sementara milik SISTEM, bukan "D:/Temp" yang hanya ada di Windows. */
+  const dir = await mkdtemp(join(tmpdir(), 'avicenna-attendance-qa-'));
   const oldDir = process.env.FOTO_DIR;
   process.env.FOTO_DIR = dir;
   const db = getDb(),

@@ -73,11 +73,35 @@ const MENU_TETAP: MenuDef[] = [
   },
   {
     key: 'scan',
-    label: 'Stasiun Scan',
+    label: 'Scan Produksi',
     href: '/scan',
     icon: 'ScanLine',
     group: 'Produksi',
     sortOrder: 20,
+  },
+  {
+    /*
+     * Alamatnya pemilih lini, BUKAN stasiunnya sendiri.
+     *
+     * Stasiunnya ada di /komponen/<line> supaya layar di lantai bisa
+     * di-bookmark dan kembali ke lini yang sama setelah komputernya mati.
+     * Menu tidak bisa menunjuk ke sana: tidak ada satu lini yang benar untuk
+     * semua orang yang menekannya.
+     */
+    key: 'komponen',
+    label: 'Scan Komponen',
+    href: '/komponen',
+    icon: 'ScanBarcode',
+    group: 'Produksi',
+    sortOrder: 25,
+  },
+  {
+    key: 'belanja',
+    label: 'Scan Belanja',
+    href: '/belanja',
+    icon: 'ShoppingCart',
+    group: 'Produksi',
+    sortOrder: 26,
   },
   {
     key: 'monitor',
@@ -94,6 +118,19 @@ const MENU_TETAP: MenuDef[] = [
     icon: 'TriangleAlert',
     group: 'Produksi',
     sortOrder: 40,
+  },
+
+  {
+    /*
+     * Milik OMD, bukan lini — tempatnya di urutan terakhir grup Produksi.
+     * Di sinilah master kanban lahir: lihat catatan di cetakKanbanSchema.
+     */
+    key: 'produksi.cetak-kanban',
+    label: 'Cetak Kanban',
+    href: '/produksi/kanban',
+    icon: 'Printer',
+    group: 'Produksi',
+    sortOrder: 50,
   },
 
   {

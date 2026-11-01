@@ -4,6 +4,9 @@ import { APP_GUARD } from '@nestjs/core';
 import { DbModule } from './db/db.module';
 import { ProcessTypeModule } from './master/process-type.module';
 import { SettingModule } from './setting/setting.module';
+import { KomponenModule } from './komponen/komponen.module';
+import { BelanjaModule } from './belanja/belanja.module';
+import { KanbanModule } from './kanban/kanban.module';
 import { QueueModule } from './queue/queue.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { AuthModule } from './auth/auth.module';
@@ -39,6 +42,9 @@ import { loadEnv } from './config/env';
     DbModule,
     ProcessTypeModule,
     SettingModule,
+    KomponenModule,
+    BelanjaModule,
+    KanbanModule,
     QueueModule,
     RealtimeModule,
     AuthModule,

@@ -17,6 +17,8 @@ export * from './bom';
 export * from './backflush';
 export * from './receiving';
 export * from './receiving-session';
+export * from './kartu-komponen';
+export * from './belanja';
 export * from './import-rows';
 export * from './customer-part';
 export * from './allocate-fifo';

@@ -93,6 +93,17 @@ export const SCAN_KINDS = [
   'RECEIVING',
   'INSPECTION',
   'STOCK_TAKE',
+  /**
+   * Scan kartu di stasiun kanban: kartu komponen ARES dan kartu WIP kita.
+   *
+   * Satu jenis untuk keduanya karena yang dinyatakan operator memang sama —
+   * "box ini sekarang dipakai proses ini". Yang berbeda hanya akibatnya:
+   * kartu ARES memindahkan WH ke WP dan menghasilkan dokumen SAP, kartu WIP
+   * kembali kosong tanpa dokumen apa pun.
+   *
+   * Dipisah dari PULLING, yang sudah dipakai pengambilan barang kirim.
+   */
+  'COMPONENT',
 ] as const;
 
 /**

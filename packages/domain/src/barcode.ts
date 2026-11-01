@@ -90,16 +90,36 @@ export class BarcodeTidakDikenali extends Error {
 }
 
 /**
+ * Penanda kartu kanban cetakan sendiri, sekaligus VERSI formatnya.
+ *
+ * Dideklarasikan di sini — jauh di atas aturan kanban yang memakainya — karena
+ * aturan barcode PART di bawah ini harus menyingkirkannya lebih dulu. Isi
+ * lengkapnya ada di ATURAN_KANBAN_AVICENNA, di bagian KANBAN berkas ini.
+ *
+ * Angka 1 pada "AVK1" adalah versi, dan itu disengaja. Menambah ruas nanti
+ * berarti menerbitkan AVK2 sambil membiarkan pembaca AVK1 tetap hidup: kartu
+ * yang sudah tercetak dan beredar di rak tidak bisa ditarik serentak, dan
+ * kartu lama yang tiba-tiba tidak terbaca menghentikan lini.
+ */
+export const PENANDA_KARTU_KANBAN = 'AVK1';
+
+/**
  * Format berpemisah: PARTNUMBER|BACKNUMBER|SERIAL|QTY
  *
  * Ini format yang dipakai sejak awal sistem ini dan sudah punya test. Tetap
  * ditaruh paling depan karena bentuknya paling khas — adanya "|" membuatnya
  * tidak mungkin tertukar dengan format lain.
+ *
+ * Kecuali satu hal: kartu kanban cetakan sendiri memakai pemisah yang sama,
+ * jadi penandanya disingkirkan di sini. Tanpa itu kartu `AVK1|…` terbaca
+ * sebagai barcode part dengan nomor part "AVK1" — part yang tidak ada — dan
+ * operator mendapat pesan "part tidak dikenali", padahal yang dipegangnya
+ * kartu dan yang keliru adalah kotak scan-nya.
  */
 export const ATURAN_BERPEMISAH: AturanBarcode = {
   nama: 'BERPEMISAH',
   keterangan: 'PARTNUMBER|BACKNUMBER|SERIAL|QTY',
-  cocok: (raw) => raw.includes('|'),
+  cocok: (raw) => raw.includes('|') && !raw.startsWith(`${PENANDA_KARTU_KANBAN}|`),
   baca(raw) {
     const [partNumber, backNumber, serialNumber, qtyRaw] = raw.split('|');
     const qty = qtyRaw ? Number.parseInt(qtyRaw, 10) : undefined;
@@ -265,7 +285,14 @@ export interface ParsedKanban {
    * sedang dikerjakan.
    */
   partNumber?: string;
-  /** Isi kartu menurut kartunya sendiri (pcs). Bila ada, dicocokkan ke master. */
+  /**
+   * Isi kartu menurut kartunya sendiri (pcs).
+   *
+   * Yang DICATAT tetap angka terdaftar di master, bukan angka ini. Gunanya
+   * mendeteksi kartu basi: scan.service membandingkan keduanya dan
+   * memperingatkan bila berbeda — tetapi hanya untuk kartu cetakan sendiri,
+   * karena kartu customer BODY menyimpan pcs pada satu digit saja.
+   */
   qty?: number;
   /**
    * Label DN — hanya pada ATURAN_KANBAN_LABEL_DN.
@@ -332,9 +359,89 @@ export const ATURAN_KANBAN_BERSPASI: AturanKanban = {
 };
 
 /**
+ * Kartu kanban cetakan SENDIRI — `AVK1|PART|BACK|SERI|QTY`.
+ *
+ * Contoh: `AVK1|212110-34141|CI25|0001|60`
+ *
+ * ── Kenapa isinya tidak cukup back number dan seri ──────────────────────────
+ *
+ * Dua ruas sudah cukup untuk MENEMUKAN kartunya di master, dan itulah yang
+ * dipakai kartu percobaan pertama. Tetapi "cukup untuk mencari" tidak sama
+ * dengan "cukup untuk diperiksa": seluruh pemeriksaan jadi bergantung pada
+ * baris master yang kebetulan ditemukan, dan kartu yang salah cetak atau salah
+ * tempel tidak bisa dibantah oleh kartunya sendiri.
+ *
+ * Dengan nomor part ikut tercetak, kartu bisa dicocokkan dengan part yang
+ * SEDANG dikerjakan di lini (lihat KANBAN_PART_MISMATCH di scan.service) —
+ * persis seperti kartu customer BODY, yang sejak dulu menyebut nomor part-nya
+ * sendiri. Kartu kita jadi setara dengan kartu mereka, bukan versi yang lebih
+ * miskin yang harus ditangani jalur lain.
+ *
+ * ── Kenapa qty/box ikut, padahal angkanya bisa berubah ─────────────────────
+ *
+ * Qty/box tercetak di MUKA kartu juga. Kalau isi box diubah di master, kartu
+ * yang beredar sudah berbohong kepada orang yang mengisi box — barcodenya
+ * tidak menambah kebohongan baru, ia membuat kebohongan yang sudah ada bisa
+ * TERDETEKSI: server membandingkannya dengan yang terdaftar dan memperingatkan
+ * bahwa kartu itu perlu dicetak ulang.
+ *
+ * ── Yang SENGAJA tidak ikut ────────────────────────────────────────────────
+ *
+ *   nama part   teks bebas, panjangnya tidak terbatas, dan tidak ada satu pun
+ *               keputusan sistem yang bergantung padanya — mata orang membacanya
+ *               dari muka kartu
+ *   nama lini   penugasan lini berubah tanpa kartunya dicetak ulang; begitu
+ *               tercetak di barcode, ia jadi fakta basi yang bisa dipercaya
+ *               pembacanya
+ *   kode pabrik nomor part sudah menentukannya — pabrik di barcode hanya ruas
+ *               kedua yang harus ikut dijaga agar tidak bertentangan
+ *   id baris    id internal membuat kartu kertas terikat pada satu database.
+ *               Restore yang menomori ulang membuat setiap kartu menunjuk part
+ *               lain, dan salahnya TIDAK kelihatan — id-nya tetap ada
+ *
+ * Isinya ±30 karakter, jadi QR-nya masih versi rendah dan modulnya tetap besar
+ * di kartu 36 mm.
+ */
+export const ATURAN_KANBAN_AVICENNA: AturanKanban = {
+  nama: 'KANBAN_AVICENNA',
+  keterangan: `${PENANDA_KARTU_KANBAN}|PART|BACK|SERI|QTY (kartu cetakan sendiri)`,
+  /*
+   * Dikenali dari PENANDANYA, bukan dari jumlah ruas.
+   *
+   * Jumlah ruas akan bertabrakan dengan barcode part empat ruas, dan menambah
+   * ruas di masa depan akan mematikan aturan ini tanpa satu pun galat.
+   */
+  cocok: (raw) => raw.startsWith(`${PENANDA_KARTU_KANBAN}|`),
+  baca(raw) {
+    const [, partNumber, backNumber, serialNumber, qtyRaw] = raw.split('|');
+    const qty = Number.parseInt(qtyRaw ?? '', 10);
+    return {
+      raw,
+      partNumber: partNumber?.trim() || undefined,
+      backNumber: backNumber?.trim() || undefined,
+      serialNumber: serialNumber?.trim() || undefined,
+      qty: Number.isFinite(qty) && qty > 0 ? qty : undefined,
+    };
+  },
+};
+
+/**
  * Format ringkas: BACKNUMBER|SERIAL.
  *
- * Dipakai kartu cetakan baru. Ditaruh lebih dulu karena bentuknya paling khas.
+ * Dua peran, dan keduanya masih perlu:
+ *
+ *   ketik manual   stasiun scan punya tombol ketik manual untuk kartu yang
+ *                  QR-nya tergores. Mengetik `CI25|0001` masih mungkin di
+ *                  lantai; mengetik seluruh isi AVK1 tidak, dan orang akan
+ *                  menyerah lalu melewatkan scan-nya
+ *   kartu lama     kartu percobaan yang sudah tercetak dengan format ini tetap
+ *                  terbaca. Kartu yang sah tetapi tidak terbaca menghentikan
+ *                  lini, dan itu harga yang tidak perlu dibayar untuk
+ *                  kerapian format
+ *
+ * Yang hilang saat kartu diketik manual hanyalah pemeriksaan tambahan (part dan
+ * qty); pencarian kartunya sendiri tetap utuh, karena (back number + seri)
+ * itulah kunci yang dipakai mencari.
  */
 export const ATURAN_KANBAN_BERPEMISAH: AturanKanban = {
   nama: 'KANBAN_BERPEMISAH',
@@ -351,6 +458,83 @@ export const ATURAN_KANBAN_BERPEMISAH: AturanKanban = {
     };
   },
 };
+
+/** Panjang nomor seri kartu kanban cetakan kita. */
+export const PANJANG_SERI_KANBAN = 4;
+
+/**
+ * Nomor seri kartu sebagai teks, dari angka yang diminta OMD.
+ *
+ * Empat digit dengan nol di depan. Bukan selera: ATURAN_KANBAN_BERSPASI milik
+ * sistem lama mengambil EMPAT KARAKTER TERAKHIR kolom serinya, dan seri "1"
+ * yang tercetak apa adanya akan terbaca berbeda dari "0001" yang tersimpan di
+ * master. Lebar yang tetap juga membuat kartu berjajar rapi di rak.
+ *
+ * Angka di atas 9999 dibiarkan apa adanya — memotongnya diam-diam akan membuat
+ * kartu 10001 dan 20001 punya seri yang sama.
+ */
+export function seriKanban(nomor: number): string {
+  return String(Math.trunc(nomor)).padStart(PANJANG_SERI_KANBAN, '0');
+}
+
+/** Membuang pemisah dan spasi dari satu ruas sebelum disusun jadi barcode. */
+function ruasBersih(nilai: string): string {
+  return nilai.trim().replace(/[|\s]/g, '');
+}
+
+/**
+ * Menyusun isi barcode QR kartu kanban yang dicetak.
+ *
+ * Kebalikan ATURAN_KANBAN_AVICENNA, di satu tempat supaya yang dicetak pasti
+ * terbaca — persis seperti `susunLabelDn` untuk label DN.
+ *
+ * ── Kenapa SEMUA ruas wajib ─────────────────────────────────────────────────
+ *
+ * Kartu kertas tidak bisa ditarik kembali. Satu ruas yang kosong saat dicetak
+ * akan beredar bertahun-tahun, dan pembacanya harus memaafkannya selamanya —
+ * jadi yang tidak lengkap ditolak di sini, saat kertasnya belum keluar.
+ *
+ * Masing-masing menyingkirkan satu kekeliruan:
+ *
+ *   back number  seri TIDAK unik antar part: "1001" ada pada beberapa part
+ *                sekaligus. Back number-lah yang memisahkannya saat dicari
+ *   seri         identitas kartu itu sendiri
+ *   nomor part   mencocokkan kartu dengan part yang sedang dikerjakan di lini
+ *   qty/box      mendeteksi kartu yang tercetak sebelum isi box diubah
+ */
+export function susunKodeKartuKanban(kartu: {
+  partNumber: string;
+  backNumber: string;
+  serialNumber: string;
+  qtyPerBox: number;
+}): string {
+  const part = ruasBersih(kartu.partNumber);
+  const back = ruasBersih(kartu.backNumber);
+  const seri = ruasBersih(kartu.serialNumber);
+  if (!part) throw new Error('Kartu kanban tidak bisa dicetak tanpa nomor part');
+  if (!back) throw new Error('Kartu kanban tidak bisa dicetak tanpa back number');
+  if (!seri) throw new Error('Kartu kanban tidak bisa dicetak tanpa nomor seri');
+  if (!Number.isInteger(kartu.qtyPerBox) || kartu.qtyPerBox <= 0) {
+    throw new Error('Kartu kanban tidak bisa dicetak tanpa isi box yang wajar');
+  }
+  return [PENANDA_KARTU_KANBAN, part, back, seri, String(kartu.qtyPerBox)].join('|');
+}
+
+/**
+ * Isi barcode versi KETIK MANUAL, yang tercetak sebagai teks di bawah QR.
+ *
+ * Bukan isi QR-nya yang ditulis di situ, dan itu disengaja: gunanya untuk
+ * diketik orang saat QR-nya tergores, dan tiga puluh karakter tidak akan
+ * diketik siapa pun di lantai. Keduanya menuju kartu yang sama — (back number +
+ * seri) adalah kunci pencariannya, ruas lain hanya pemeriksaan tambahan.
+ */
+export function kodeKetikKanban(kartu: { backNumber: string; serialNumber: string }): string {
+  const back = ruasBersih(kartu.backNumber);
+  const seri = ruasBersih(kartu.serialNumber);
+  if (!back) throw new Error('Kartu kanban tidak bisa dicetak tanpa back number');
+  if (!seri) throw new Error('Kartu kanban tidak bisa dicetak tanpa nomor seri');
+  return `${back}|${seri}`;
+}
 
 /**
  * Daftar aturan kanban, berurutan.
@@ -491,6 +675,7 @@ export function susunLabelDn(label: {
 }
 
 export const DAFTAR_ATURAN_KANBAN: AturanKanban[] = [
+  ATURAN_KANBAN_AVICENNA,
   ATURAN_KANBAN_LABEL_DN,
   ATURAN_KANBAN_BERPEMISAH,
   ATURAN_KANBAN_AIGSYS,
