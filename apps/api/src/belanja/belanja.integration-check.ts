@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import {
   and,
-  bomLines,
+  partPairings,
   closeDb,
   eq,
   getDb,
@@ -84,7 +84,7 @@ async function main() {
         })
         .returning({ id: parts.id });
 
-      // Komponen beli: ikut di BOM, TIDAK boleh ikut diperiksa saat belanja.
+      // Komponen beli: ikut di Part Pairing, TIDAK boleh ikut diperiksa saat belanja.
       const [partBeli] = await tx
         .insert(parts)
         .values({
@@ -100,7 +100,7 @@ async function main() {
         .returning({ id: parts.id });
 
       const kemarin = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-      await tx.insert(bomLines).values([
+      await tx.insert(partPairings).values([
         {
           plantId: pabrik.id,
           parentPartId: partFg!.id,
@@ -435,7 +435,7 @@ async function main() {
         })
         .returning({ id: parts.id });
 
-      await tx.insert(bomLines).values({
+      await tx.insert(partPairings).values({
         plantId: pabrik.id,
         parentPartId: partWip!.id,
         componentPartId: partInj!.id,
@@ -466,7 +466,7 @@ async function main() {
       assert.equal(belanjaPainting.hasil, 'DITERIMA', belanjaPainting.pesan);
       assert.equal(belanjaPainting.sesi?.komponen[0]?.partNumber, 'UJI-INJ-660A');
       assert.equal(belanjaPainting.sesi?.komponen[0]?.dibutuhkan, 50);
-      catat('kartu painting kini jadi INDUK: meminta kartu injection sesuai BOM-nya');
+      catat('kartu painting kini jadi INDUK: meminta kartu injection sesuai pasangannya');
 
       const paintingId = belanjaPainting.sesi!.fg.kanbanId;
       const simpanPainting = await belanja.simpan({

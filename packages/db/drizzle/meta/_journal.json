@@ -120,6 +120,20 @@
       "when": 1793568613925,
       "tag": "0016_kanban_status_belanja",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793568614925,
+      "tag": "0017_part_pairing_rename",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793670207983,
+      "tag": "0018_work_center_dan_pv_langkah",
+      "breakpoints": true
     }
   ]
 }

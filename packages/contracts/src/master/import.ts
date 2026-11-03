@@ -67,7 +67,7 @@ export const KUNCI_ALAMI: Record<MasterEntity, KunciAlami> = {
   'work-breaks': { kolom: 'name', perPabrik: false },
   'stop-reasons': { kolom: 'code', perPabrik: true },
   'part-processes': { kolom: 'seqNo', perPabrik: true },
-  bom: { kolom: 'qtyPer', perPabrik: true },
+  'part-pairings': { kolom: 'qtyPer', perPabrik: true },
 };
 
 /** Judul kolom di berkas Excel — memakai label yang sama dengan formulir. */

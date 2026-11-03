@@ -62,7 +62,7 @@ export class StockWorker implements OnModuleInit, OnModuleDestroy {
           this.logger.log(
             `backflush scan=${scanEventId}: ${result.consumed} komponen` +
               (result.shortages > 0 ? `, ${result.shortages} kurang stok` : '') +
-              (result.noBom ? ' (tanpa BOM)' : ''),
+              (result.tanpaPasangan ? ' (tanpa pasangan part)' : ''),
           );
           return result;
         }

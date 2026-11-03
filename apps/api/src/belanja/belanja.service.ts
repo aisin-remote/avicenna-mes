@@ -15,7 +15,7 @@ import {
   type Database,
 } from '@avicenna/db';
 import {
-  bomLines,
+  partPairings,
   kanbanEvents,
   kanbanPairings,
   kanbans,
@@ -76,7 +76,7 @@ type Pencarian =
 /**
  * ─── STASIUN BELANJA ────────────────────────────────────────────────────────
  *
- * Mencocokkan satu kartu FG dengan kartu-kartu WIP yang isinya sesuai BOM.
+ * Mencocokkan satu kartu FG dengan kartu WIP yang isinya sesuai Part Pairing.
  * Setelah cocok, kartu FG berstatus SHOPPED dan scan produksi di proses yang
  * mewajibkan belanja baru menerimanya. Lihat `periksaBelanja` di @avicenna/domain
  * untuk aturan jumlahnya, dan FLG_REQUIRE_PAIRING di TM_ROUTE_PROCESS untuk
@@ -160,7 +160,7 @@ export class BelanjaService {
   }
 
   /**
-   * Komponen BOM yang ikut diperiksa saat belanja.
+   * Komponen yang ikut diperiksa saat belanja, menurut Part Pairing.
    *
    * Disaring dua kali, dan keduanya perlu:
    *
@@ -183,22 +183,22 @@ export class BelanjaService {
         partId: parts.id,
         partNumber: parts.partNumber,
         partName: parts.name,
-        qtyPer: bomLines.qtyPer,
+        qtyPer: partPairings.qtyPer,
         sourceType: parts.sourceType,
         processType: parts.processType,
         modeProses: routeProcesses.scanMode,
       })
-      .from(bomLines)
-      .innerJoin(parts, eq(parts.id, bomLines.componentPartId))
+      .from(partPairings)
+      .innerJoin(parts, eq(parts.id, partPairings.componentPartId))
       .leftJoin(
         routeProcesses,
         and(eq(routeProcesses.plantId, plantId), eq(routeProcesses.processType, parts.processType)),
       )
       .where(
         and(
-          eq(bomLines.parentPartId, fgPartId),
-          lte(bomLines.effectiveFrom, hariIni),
-          or(isNull(bomLines.effectiveTo), gte(bomLines.effectiveTo, hariIni)),
+          eq(partPairings.parentPartId, fgPartId),
+          lte(partPairings.effectiveFrom, hariIni),
+          or(isNull(partPairings.effectiveTo), gte(partPairings.effectiveTo, hariIni)),
         ),
       );
 
@@ -378,7 +378,7 @@ export class BelanjaService {
      * Kartu tanpa komponen yang bisa dibelanjakan ditolak di sini, bukan
      * dibiarkan membuka sesi yang mustahil disimpan.
      *
-     * Dua sebabnya berbeda dan keduanya disebutkan: BOM-nya memang belum
+     * Dua sebabnya berbeda dan keduanya disebutkan: pasangannya memang belum
      * diisi, atau seluruh komponennya tidak berkartu (part beli lewat ARES).
      * Operator tidak bisa membedakannya sendiri, dan yang harus memperbaiki
      * keduanya bukan dia.
@@ -388,8 +388,8 @@ export class BelanjaService {
       return {
         hasil: 'DITOLAK',
         pesan:
-          `${kartu.partNumber} tidak punya komponen berkartu di BOM-nya, jadi tidak ada yang ` +
-          'bisa dibelanjakan. Periksa BOM-nya di Master Data.',
+          `${kartu.partNumber} tidak punya komponen berkartu, jadi tidak ada yang bisa ` +
+          'dibelanjakan. Periksa Master Data › Part Pairing.',
         rawCode: raw,
         sisi: 'FG',
         sesi: null,
@@ -476,7 +476,7 @@ export class BelanjaService {
     if (bukan) {
       return {
         hasil: 'DITOLAK',
-        pesan: `${kartu.partNumber} bukan komponen ${fg.partNumber} menurut BOM.`,
+        pesan: `${kartu.partNumber} bukan komponen ${fg.partNumber} menurut Part Pairing.`,
         rawCode: input.rawCode,
         sisi: 'WIP',
         sesi: await this.sesi(plantId, fg, sudah),
@@ -857,9 +857,9 @@ export class BelanjaService {
   async menungguBelanjaHilir(plantId: number, partId: number): Promise<boolean> {
     const hariIni = toLocalDateKey(new Date());
     const [induk] = await this.db
-      .select({ id: bomLines.id })
-      .from(bomLines)
-      .innerJoin(parts, eq(parts.id, bomLines.parentPartId))
+      .select({ id: partPairings.id })
+      .from(partPairings)
+      .innerJoin(parts, eq(parts.id, partPairings.parentPartId))
       .innerJoin(
         routeProcesses,
         and(
@@ -870,9 +870,9 @@ export class BelanjaService {
       )
       .where(
         and(
-          eq(bomLines.componentPartId, partId),
-          lte(bomLines.effectiveFrom, hariIni),
-          or(isNull(bomLines.effectiveTo), gte(bomLines.effectiveTo, hariIni)),
+          eq(partPairings.componentPartId, partId),
+          lte(partPairings.effectiveFrom, hariIni),
+          or(isNull(partPairings.effectiveTo), gte(partPairings.effectiveTo, hariIni)),
         ),
       )
       .limit(1);

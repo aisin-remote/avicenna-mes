@@ -22,7 +22,7 @@ import {
   customerParts,
   ngMasters,
   locations,
-  bomLines,
+  partPairings,
   suppliers,
 } from './schema/index';
 
@@ -425,7 +425,7 @@ async function main() {
    *      v  dirakit
    *   AV-12345-001 housing cover A      (barang jadi, dikirim ke customer)
    *
-   * Rantai ini ada di seed supaya begitu database dibuat, BOM, backflush, dan
+   * Rantai ini ada di seed supaya begitu database dibuat, Part Pairing, backflush, dan
    * telusur silsilah bisa langsung diperagakan tanpa mengetik master dulu.
    */
   await insertMissing(
@@ -641,20 +641,20 @@ async function main() {
     ],
   );
 
-  // ── BOM: WIP-A-001 dibuat dari RM-D-001 ───────────────────────────────────
+  // ── Part Pairing: WIP-A-001 dibuat dari RM-D-001 ──────────────────────────
   const partRowsForBom = await db.select().from(parts);
   const findPart = (pn: string) =>
     mustFind(partRowsForBom, (p) => p.partNumber === pn, `part ${pn}`);
   const wipA = findPart('WIP-A-001');
   const rmD = findPart('RM-D-001');
 
-  const bomAda = await db
+  const pasanganAda = await db
     .select()
-    .from(bomLines)
-    .where(eq(bomLines.parentPartId, wipA.id))
+    .from(partPairings)
+    .where(eq(partPairings.parentPartId, wipA.id))
     .limit(1);
-  if (bomAda.length === 0) {
-    await db.insert(bomLines).values({
+  if (pasanganAda.length === 0) {
+    await db.insert(partPairings).values({
       plantId: unit.id,
       parentPartId: wipA.id,
       componentPartId: rmD.id,
@@ -664,7 +664,7 @@ async function main() {
       uom: 'kg',
       effectiveFrom: '2026-01-01',
     });
-    console.log('[seed]   + BOM WIP-A-001 <- RM-D-001');
+    console.log('[seed]   + pasangan WIP-A-001 <- RM-D-001');
   }
 
   // ── Mapping part <-> customer ─────────────────────────────────────────────

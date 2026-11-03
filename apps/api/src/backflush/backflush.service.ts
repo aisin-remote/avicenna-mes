@@ -4,7 +4,7 @@ import {
   scanEvents,
   parts,
   lines,
-  bomLines,
+  partPairings,
   lots,
   mutations,
   consumptions,
@@ -14,7 +14,7 @@ import { planBackflush, toLocalDateKey, type AvailableLot, type BomLine } from '
 import { InjectDb } from '../db/db.module';
 
 /**
- * Mengurangi stok komponen otomatis setiap ada produksi, mengikuti BOM.
+ * Mengurangi stok komponen otomatis setiap ada produksi, mengikuti Part Pairing.
  *
  * Dijalankan dari antrean, bukan di dalam request scan. Dua alasannya: layar
  * operator tidak boleh ikut menunggu perhitungan material, dan kegagalan
@@ -30,7 +30,7 @@ export class BackflushService {
 
   constructor(@InjectDb() private readonly db: Database) {}
 
-  async run(scanEventId: number): Promise<{ consumed: number; shortages: number; noBom: boolean }> {
+  async run(scanEventId: number): Promise<{ consumed: number; shortages: number; tanpaPasangan: boolean }> {
     const scanRows = await this.db
       .select()
       .from(scanEvents)
@@ -41,13 +41,13 @@ export class BackflushService {
     if (!scan || !scan.partId) {
       // Scan tanpa part yang dikenali tidak bisa di-backflush. Bukan kesalahan:
       // barcode yang belum terpetakan ke master tetap tercatat sebagai produksi.
-      return { consumed: 0, shortages: 0, noBom: true };
+      return { consumed: 0, shortages: 0, tanpaPasangan: true };
     }
     const partId = scan.partId;
 
     // Kunci tanggal dari komponen waktu SETEMPAT. toISOString() memakai UTC,
     // sehingga scan pukul 06.00 di UTC+7 terbaca sebagai tanggal kemarin — dan
-    // masa berlaku BOM akan dinilai dengan tanggal yang salah.
+    // masa berlaku pasangan akan dinilai dengan tanggal yang salah.
     const onDate = toLocalDateKey(scan.scannedAt);
 
     /*
@@ -72,7 +72,7 @@ export class BackflushService {
       );
     }
 
-    const rawBom = await this.db.select().from(bomLines).where(eq(bomLines.parentPartId, partId));
+    const rawBom = await this.db.select().from(partPairings).where(eq(partPairings.parentPartId, partId));
 
     const bom: BomLine[] = rawBom.map((l) => ({
       parentPartId: l.parentPartId,
@@ -94,7 +94,7 @@ export class BackflushService {
           .for('update');
         const meta = (terkunci?.meta ?? {}) as Record<string, unknown>;
         if (meta.backflushCompleted === true) {
-          return { sudah: true as const, noBom: meta.backflushNoBom === true, plan: null };
+          return { sudah: true as const, tanpaPasangan: meta.backflushNoBom === true, plan: null };
         }
 
         // Scan lama mungkin pernah di-backflush sebelum penanda ini ada.
@@ -133,17 +133,17 @@ export class BackflushService {
         const plan = planBackflush({
           producedPartId: partId,
           qty: scan.qty,
-          bomLines: bom,
+          partPairings: bom,
           onDate,
           availableLots,
         });
 
-        if (plan.noBom) {
+        if (plan.tanpaPasangan) {
           await tx
             .update(scanEvents)
             .set({ meta: { ...meta, backflushCompleted: true, backflushNoBom: true } })
             .where(eq(scanEvents.id, scan.id));
-          return { sudah: false as const, noBom: true, plan };
+          return { sudah: false as const, tanpaPasangan: true, plan };
         }
 
         for (const c of plan.consumptions) {
@@ -193,16 +193,16 @@ export class BackflushService {
           .update(scanEvents)
           .set({ meta: { ...meta, backflushCompleted: true, backflushNoBom: false } })
           .where(eq(scanEvents.id, scan.id));
-        return { sudah: false as const, noBom: false, plan };
+        return { sudah: false as const, tanpaPasangan: false, plan };
       },
       { isolationLevel: 'read committed' },
     );
 
-    if (hasil.sudah) return { consumed: 0, shortages: 0, noBom: hasil.noBom };
+    if (hasil.sudah) return { consumed: 0, shortages: 0, tanpaPasangan: hasil.tanpaPasangan };
     const plan = hasil.plan;
-    if (plan.noBom) {
-      this.logger.debug(`part ${scan.partId} tidak punya BOM aktif, backflush dilewati`);
-      return { consumed: 0, shortages: 0, noBom: true };
+    if (plan.tanpaPasangan) {
+      this.logger.debug(`part ${scan.partId} tidak punya pasangan part aktif, backflush dilewati`);
+      return { consumed: 0, shortages: 0, tanpaPasangan: true };
     }
 
     if (plan.shortages.length > 0) {
@@ -219,7 +219,7 @@ export class BackflushService {
     return {
       consumed: plan.consumptions.length,
       shortages: plan.shortages.length,
-      noBom: false,
+      tanpaPasangan: false,
     };
   }
 

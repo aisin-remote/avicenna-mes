@@ -445,7 +445,7 @@ async function main() {
    * worker, jadi service yang sama dipanggil langsung — bukan penandanya yang
    * dipalsukan.
    *
-   * Part trial tidak punya BOM, jadi hasilnya noBom: tidak ada komponen yang
+   * Part trial tidak punya pasangan part, jadi hasilnya tanpaPasangan: tidak ada komponen yang
    * dipotong, dan penandanya tetap dipasang. Itu perilaku yang benar — tanpa
    * penanda, hasil produksi akan menggantung di luar outbox selamanya.
    */
@@ -455,12 +455,12 @@ async function main() {
     .select({ id: scanEvents.id })
     .from(scanEvents)
     .where(and(inArray(scanEvents.partId, idPart), gte(scanEvents.createdAt, mulai)));
-  let noBom = 0;
+  let tanpaPasangan = 0;
   for (const e of peristiwa) {
     const r = await backflush.run(e.id);
-    if (r.noBom) noBom += 1;
+    if (r.tanpaPasangan) tanpaPasangan += 1;
   }
-  console.log(`\n  backflush: ${peristiwa.length} scan ditandai (${noBom} tanpa BOM)`);
+  console.log(`\n  backflush: ${peristiwa.length} scan ditandai (${tanpaPasangan} tanpa pasangan)`);
 
   // ── 4. Outbox ────────────────────────────────────────────────────────────
   console.log(garis('4. Dokumen outbox'));

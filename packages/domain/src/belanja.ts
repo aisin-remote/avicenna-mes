@@ -37,7 +37,7 @@
  *
  * ── Hanya BOM tingkat satu ──────────────────────────────────────────────────
  *
- * Yang diperiksa komponen LANGSUNG, bukan hasil `explodeBom`. Yang diambil
+ * Yang diperiksa pasangan LANGSUNG, bukan hasil `explodeBom`. Yang diambil
  * orang dari rak adalah box barang setengah jadi; raw material di bawahnya
  * sudah habis terpakai di proses sebelumnya dan tidak punya kartu untuk
  * discan. Mengurai sampai raw material akan menuntut operator men-scan

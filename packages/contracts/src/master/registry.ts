@@ -24,7 +24,7 @@ export const MASTER_ENTITIES = [
   'toolings',
   'locations',
   'ng-masters',
-  'bom',
+  'part-pairings',
   'part-processes',
   'route-processes',
   'process-types',
@@ -236,6 +236,17 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       { name: 'code', label: 'Kode', kind: 'text', required: true, max: 32, inList: true },
       { name: 'name', label: 'Nama', kind: 'text', required: true, max: 128, inList: true },
       {
+        name: 'sapWorkCenter',
+        label: 'Work Center SAP',
+        kind: 'text',
+        max: 10,
+        inList: true,
+        hint:
+          'Enam karakter tanpa pemisah, mis. DCAA01 — itulah yang dikenal SAP. ' +
+          'KOSONG berarti hasil produksi lini ini DITAHAN, tidak terkirim: kode lini kita ' +
+          'tidak pernah dikenal SAP, dan mengirimnya membuat barisnya tersaring tanpa jejak.',
+      },
+      {
         name: 'processType',
         label: 'Proses',
         kind: 'select',
@@ -318,7 +329,8 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         options: PART_TYPES,
         required: true,
         inList: true,
-        hint: 'Posisi part di rantai pasok. Raw material tidak punya BOM; barang jadi tidak dibeli.',
+        hint:
+          'Posisi part di rantai pasok. Raw material tidak punya pasangan; barang jadi tidak dibeli.',
       },
       {
         name: 'sourceType',
@@ -811,7 +823,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         inList: true,
         hint:
           'Scan produksi di proses ini hanya menerima kartu FG yang sudah dicocokkan ' +
-          'dengan kartu WIP-nya di stasiun Belanja. Butuh BOM part-nya terisi.',
+          'dengan kartu WIP-nya di stasiun Belanja. Butuh Part Pairing-nya terisi.',
       },
       {
         name: 'sapProductionEnabled',
@@ -972,17 +984,28 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         inList: true,
         hint: 'Boleh kosong bila prosesnya dikerjakan beberapa line yang setara.',
       },
+      {
+        name: 'productionVersion',
+        label: 'Production Version',
+        kind: 'text',
+        max: 8,
+        inList: true,
+        hint:
+          'PV SAP untuk LANGKAH ini, mis. 0002. PV adalah pasangan BOM + routing dan ' +
+          'berbeda per langkah — satu part bisa punya beberapa. Kosong = ikut nilai di ' +
+          'master Part. Jangan ditebak: SAP menurunkan plant dan SLOC dari PV.',
+      },
 
       activeField,
     ],
   },
 
-  bom: {
-    key: 'bom',
-    label: 'BOM',
-    singular: 'Baris BOM',
+  'part-pairings': {
+    key: 'part-pairings',
+    label: 'Part Pairing',
+    singular: 'Pasangan Part',
     icon: 'Network',
-    description: 'Komposisi part — apa membutuhkan apa',
+    description: 'Part mana berpasangan dengan part mana — dipakai stasiun Belanja',
     searchFields: ['note'],
     defaultSort: 'parentPartId',
     fields: [
@@ -1003,7 +1026,9 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         refEntity: 'parts',
         required: true,
         inList: true,
-        hint: 'Part yang dibutuhkan untuk membuat induk.',
+        hint:
+          'Part yang harus ada untuk membuat induk. Yang berarti di sini hanya ' +
+          'part BERKARTU — part beli datang lewat kartu ARES dan tidak ditembak di Belanja.',
       },
       {
         name: 'qtyPer',
@@ -1031,7 +1056,9 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         kind: 'date',
         required: true,
         inList: true,
-        hint: 'BOM berversi: telusur produksi lama tetap memakai komposisi yang berlaku saat itu.',
+        hint:
+          'Pasangan berversi: telusur produksi lama tetap memakai pasangan yang berlaku saat itu. ' +
+          'Mengubah pasangan berarti menutup baris lama dan membuat baris baru, bukan menyuntingnya.',
       },
       {
         name: 'effectiveTo',

@@ -25,7 +25,7 @@ const lot = (lotId: number, partId: number, qty: number, day: number): Available
 
 describe('planBackflush — hanya komponen langsung', () => {
   it('memproduksi ABC mengurangi A, B, C — TIDAK mengurangi D', () => {
-    const plan = planBackflush({ producedPartId: ABC, qty: 1, bomLines: BOM, onDate: TODAY });
+    const plan = planBackflush({ producedPartId: ABC, qty: 1, partPairings: BOM, onDate: TODAY });
     const parts = plan.consumptions.map((c) => c.componentPartId).sort();
     expect(parts).toEqual([A, B, C].sort());
     // D sudah berkurang saat A diproduksi. Menguranginya lagi di sini akan
@@ -34,14 +34,14 @@ describe('planBackflush — hanya komponen langsung', () => {
   });
 
   it('memproduksi A mengurangi D', () => {
-    const plan = planBackflush({ producedPartId: A, qty: 10, bomLines: BOM, onDate: TODAY });
+    const plan = planBackflush({ producedPartId: A, qty: 10, partPairings: BOM, onDate: TODAY });
     expect(plan.consumptions).toEqual([
       { componentPartId: D, qty: 8, uom: 'kg' },
     ]);
   });
 
   it('jumlahnya mengikuti qty produksi', () => {
-    const plan = planBackflush({ producedPartId: ABC, qty: 5, bomLines: BOM, onDate: TODAY });
+    const plan = planBackflush({ producedPartId: ABC, qty: 5, partPairings: BOM, onDate: TODAY });
     const byPart = new Map(plan.consumptions.map((c) => [c.componentPartId, c.qty]));
     expect(byPart.get(A)).toBe(5);
     expect(byPart.get(B)).toBe(10);
@@ -49,8 +49,8 @@ describe('planBackflush — hanya komponen langsung', () => {
   });
 
   it('part tanpa BOM ditandai, bukan dianggap gagal', () => {
-    const plan = planBackflush({ producedPartId: D, qty: 100, bomLines: BOM, onDate: TODAY });
-    expect(plan.noBom).toBe(true);
+    const plan = planBackflush({ producedPartId: D, qty: 100, partPairings: BOM, onDate: TODAY });
+    expect(plan.tanpaPasangan).toBe(true);
     expect(plan.consumptions).toEqual([]);
     expect(plan.shortages).toEqual([]);
   });
@@ -59,7 +59,7 @@ describe('planBackflush — hanya komponen langsung', () => {
     const withScrap: BomLine[] = [
       { parentPartId: ABC, componentPartId: B, qtyPer: 2, scrapPct: 10 },
     ];
-    const plan = planBackflush({ producedPartId: ABC, qty: 100, bomLines: withScrap, onDate: TODAY });
+    const plan = planBackflush({ producedPartId: ABC, qty: 100, partPairings: withScrap, onDate: TODAY });
     expect(plan.consumptions[0]?.qty).toBeCloseTo(220, 6);
   });
 
@@ -67,7 +67,7 @@ describe('planBackflush — hanya komponen langsung', () => {
     const expired: BomLine[] = [
       { parentPartId: ABC, componentPartId: B, qtyPer: 2, effectiveTo: '2026-01-31' },
     ];
-    expect(planBackflush({ producedPartId: ABC, qty: 1, bomLines: expired, onDate: TODAY }).noBom).toBe(true);
+    expect(planBackflush({ producedPartId: ABC, qty: 1, partPairings: expired, onDate: TODAY }).tanpaPasangan).toBe(true);
   });
 });
 
@@ -76,7 +76,7 @@ describe('planBackflush — alokasi lot FIFO', () => {
     const plan = planBackflush({
       producedPartId: ABC,
       qty: 10,
-      bomLines: [{ parentPartId: ABC, componentPartId: B, qtyPer: 1 }],
+      partPairings: [{ parentPartId: ABC, componentPartId: B, qtyPer: 1 }],
       onDate: TODAY,
       availableLots: [lot(200, B, 50, 5), lot(100, B, 4, 1)],
     });
@@ -89,7 +89,7 @@ describe('planBackflush — alokasi lot FIFO', () => {
     const plan = planBackflush({
       producedPartId: ABC,
       qty: 10,
-      bomLines: [{ parentPartId: ABC, componentPartId: B, qtyPer: 1 }],
+      partPairings: [{ parentPartId: ABC, componentPartId: B, qtyPer: 1 }],
       onDate: TODAY,
       availableLots: [lot(1, B, 3, 1), lot(2, B, 3, 2), lot(3, B, 10, 3)],
     });
@@ -101,7 +101,7 @@ describe('planBackflush — alokasi lot FIFO', () => {
     const plan = planBackflush({
       producedPartId: ABC,
       qty: 2,
-      bomLines: [{ parentPartId: ABC, componentPartId: B, qtyPer: 1 }],
+      partPairings: [{ parentPartId: ABC, componentPartId: B, qtyPer: 1 }],
       onDate: TODAY,
       availableLots: [lot(1, B, 0, 1), lot(2, B, 5, 2)],
     });
@@ -112,7 +112,7 @@ describe('planBackflush — alokasi lot FIFO', () => {
     const plan = planBackflush({
       producedPartId: ABC,
       qty: 3,
-      bomLines: [{ parentPartId: ABC, componentPartId: A, qtyPer: 1 }],
+      partPairings: [{ parentPartId: ABC, componentPartId: A, qtyPer: 1 }],
       onDate: TODAY,
       availableLots: [],
     });
@@ -126,7 +126,7 @@ describe('planBackflush — stok kurang', () => {
     const plan = planBackflush({
       producedPartId: ABC,
       qty: 10,
-      bomLines: [{ parentPartId: ABC, componentPartId: B, qtyPer: 1 }],
+      partPairings: [{ parentPartId: ABC, componentPartId: B, qtyPer: 1 }],
       onDate: TODAY,
       availableLots: [lot(1, B, 4, 1)],
     });
@@ -140,7 +140,7 @@ describe('planBackflush — stok kurang', () => {
     const plan = planBackflush({
       producedPartId: ABC,
       qty: 5,
-      bomLines: [{ parentPartId: ABC, componentPartId: B, qtyPer: 1 }],
+      partPairings: [{ parentPartId: ABC, componentPartId: B, qtyPer: 1 }],
       onDate: TODAY,
       availableLots: [lot(1, B, 5, 1)],
     });

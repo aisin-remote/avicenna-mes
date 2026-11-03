@@ -8,20 +8,40 @@ import { lines } from './master';
 import type { AresOrderSource } from '@avicenna/contracts';
 
 /**
- * ─── BOM ──────────────────────────────────────────────────────────────────
+ * ─── PART PAIRING ───────────────────────────────────────────────────────────
  *
- * Apa membutuhkan apa. Bersarang, sehingga ABC bisa diurai sampai raw material
- * tanpa tabel terpisah:
+ * Part mana berpasangan dengan part mana, dan berapa banyak. Bersarang, jadi
+ * rantai berapa tahap pun tidak butuh tabel terpisah:
  *
- *   ABC → A ×1, B ×2, C ×4
- *   A   → D ×0,8 kg
+ *   assy  → cover ×1, bracket ×2
+ *   cover → cover injection ×1
  *
- * BERVERSI lewat effectiveFrom/effectiveTo. Tanpa itu, mengubah komposisi hari
+ * ── Kenapa BUKAN bernama BOM ────────────────────────────────────────────────
+ *
+ * Tabel ini pernah bernama TM_BOM, dan namanya menyesatkan ke dua arah.
+ *
+ * Pertama, BOM yang sebenarnya ADA DI SAP dan tidak perlu disalin ke sini:
+ * yang kita kirim ke SAP adalah production version (CHR_PV di
+ * TT_PRODUCTION_RESULT), yaitu penunjuk ke BOM mana yang SAP pakai — bukan
+ * daftar komponennya. Perpindahan komponen pun dibentuk dari KARTU ARES yang
+ * discan, lengkap dengan part dan qty-nya, bukan dari menguraikan tabel ini.
+ *
+ * Kedua, nama BOM menuntut kelengkapan: semua komponen termasuk yang dibeli,
+ * sampai raw material. Yang dibutuhkan sistem ini jauh lebih sempit — PASANGAN
+ * KARTU: kalau satu box FG dikerjakan, box WIP apa saja yang harus ada di
+ * stasiun Belanja. Hanya part berkartu yang berarti di sini; part beli datang
+ * lewat kartu ARES dan tidak punya pasangan untuk ditembak.
+ *
+ * Yang hanya bisa diketahui di sini adalah RANTAI TAHAP PROSES — injection →
+ * painting → assy. SAP tidak menyimpannya: hanya proses FG yang mengirim hasil
+ * produksi ke sana, jadi tahap WIP tidak ada di SAP sama sekali.
+ *
+ * BERVERSI lewat effectiveFrom/effectiveTo. Tanpa itu, mengubah pasangan hari
  * ini akan ikut mengubah telusur produksi bulan lalu — dan jawaban atas
  * pertanyaan audit menjadi salah tanpa ada yang menyadarinya.
  */
-export const bomLines = productionSchema.table(
-  'TM_BOM',
+export const partPairings = productionSchema.table(
+  'TM_PART_PAIRING',
   {
     id: pk(),
     plantId: fk('INT_PLANT_ID')
@@ -51,8 +71,8 @@ export const bomLines = productionSchema.table(
     ...timestamps,
   },
   (t) => [
-    index('TM_BOM_PARENT_IDX').on(t.parentPartId, t.effectiveFrom),
-    index('TM_BOM_COMPONENT_IDX').on(t.componentPartId),
+    index('TM_PART_PAIRING_PARENT_IDX').on(t.parentPartId, t.effectiveFrom),
+    index('TM_PART_PAIRING_COMPONENT_IDX').on(t.componentPartId),
   ],
 );
 
@@ -353,9 +373,9 @@ export const transferLines = logisticsSchema.table(
 
 // ─── Relasi ─────────────────────────────────────────────────────────────────
 
-export const bomLinesRelations = relations(bomLines, ({ one }) => ({
-  parent: one(parts, { fields: [bomLines.parentPartId], references: [parts.id] }),
-  component: one(parts, { fields: [bomLines.componentPartId], references: [parts.id] }),
+export const partPairingsRelations = relations(partPairings, ({ one }) => ({
+  parent: one(parts, { fields: [partPairings.parentPartId], references: [parts.id] }),
+  component: one(parts, { fields: [partPairings.componentPartId], references: [parts.id] }),
 }));
 
 export const lotsRelations = relations(lots, ({ one, many }) => ({

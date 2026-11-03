@@ -480,7 +480,7 @@ export class MasterImportService {
     const kolomKunci = ENTITY_DEFS[entity].fields.find((f) => f.name === k.kolom);
 
     /*
-     * Entitas tanpa kode sendiri (kanban, rute, BOM) dilewati di sini.
+     * Entitas tanpa kode sendiri (kanban, rute, pasangan part) dilewati di sini.
      *
      * Identitasnya gabungan beberapa kolom, dan menebak gabungan yang benar
      * lebih berbahaya daripada membiarkan database yang menolak: UNIQUE index

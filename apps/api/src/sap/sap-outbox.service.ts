@@ -11,6 +11,7 @@ import {
   lots,
   scanEvents,
   lines,
+  partProcesses,
   users,
   ngRecords,
 } from '@avicenna/db';
@@ -219,16 +220,40 @@ export class SapOutboxService {
             .select({
               meta: scanEvents.meta,
               processType: scanEvents.processType,
-              lineCode: lines.code,
+              /*
+               * Work center SAP milik lini, BUKAN kode lini kita.
+               *
+               * Kode kita berbentuk `AS-02`/`MC-01`; SAP memakai enam karakter
+               * tanpa pemisah. Lini yang belum punya padanan mengembalikan
+               * kosong, dan dokumennya ditahan dengan sebab tertulis — lihat
+               * CHR_SAP_WORK_CENTER di TM_LINE.
+               */
+              lineCode: lines.sapWorkCenter,
               backNumber: parts.backNumber,
               partName: parts.name,
-              productionVersion: parts.productionVersion,
+              /*
+               * PV dari LANGKAH yang discan, dengan TM_PARTS sebagai cadangan.
+               *
+               * PV adalah pasangan BOM + routing, dan di SAP ia berkunci
+               * (part + PV) — satu baris per langkah. Satu nilai di part tidak
+               * bisa benar untuk part yang lewat tiga proses. Cadangan di part
+               * dipertahankan selama peralihan supaya part yang sudah terisi
+               * tidak berhenti terkirim.
+               */
+              productionVersion: sql<string | null>`coalesce(${partProcesses.productionVersion}, ${parts.productionVersion})`,
               serialNumber: scanEvents.serialNumber,
               npk: users.npk,
             })
             .from(scanEvents)
             .leftJoin(lines, eq(scanEvents.lineId, lines.id))
             .leftJoin(parts, eq(scanEvents.partId, parts.id))
+            .leftJoin(
+              partProcesses,
+              and(
+                eq(partProcesses.partId, scanEvents.partId),
+                eq(partProcesses.processType, scanEvents.processType),
+              ),
+            )
             .leftJoin(users, eq(scanEvents.userId, users.id))
             .where(eq(scanEvents.id, sourceId))
             .limit(1)
@@ -292,7 +317,7 @@ export class SapOutboxService {
       }
 
       // Job backflush bisa tertunda lebih dari jeda kolektor. Produksi baru
-      // boleh masuk outbox setelah konsumsi komponennya selesai atau BOM
+      // boleh masuk outbox setelah konsumsi komponennya selesai atau pasangan
       // dipastikan kosong. Transfer SLOC tetap boleh berjalan terpisah.
       if (
         docType === 'PRODUCTION' &&
@@ -500,6 +525,13 @@ export class SapOutboxService {
         })),
       );
 
+      /*
+       * Work center SAP kosong = lini itu belum dipetakan ke SAP.
+       *
+       * Dulu kolomnya diisi kode lini kita, jadi keadaan ini tidak pernah
+       * terjadi — dan dokumennya terkirim membawa work center yang tidak
+       * dikenal SAP, lalu tersaring penjemput tanpa jejak.
+       */
       const kurangKonteks =
         docType === 'PRODUCTION' && sourceTable === 'TT_HISTORY_SCAN' && !scan?.lineCode;
       let menungguProduksi: string | null = null;
@@ -535,7 +567,9 @@ export class SapOutboxService {
         transferTakSah?.alasan ?? null,
         siap ? null : `movement type belum diputuskan untuk: ${belum.join(', ')}`,
         kurangSloc.length > 0 ? kurangSloc.join('; ') : null,
-        kurangKonteks ? 'work center dari line scan kosong' : null,
+        kurangKonteks
+          ? 'lini scan ini belum punya work center SAP — isi di Master Data › Line'
+          : null,
         menungguProduksi,
       ]
         .filter(Boolean)

@@ -11,6 +11,7 @@ import {
   count,
   sum,
   inArray,
+  sql,
   type Database,
 } from '@avicenna/db';
 import {
@@ -40,6 +41,8 @@ import {
 import { galatDuplikat } from '@avicenna/db';
 import {
   normalizeScan,
+  normalkanNomorPart,
+  nomorPartSama,
   bacaBarcode,
   BarcodeTidakDikenali,
   punyaIdentitasPart,
@@ -615,7 +618,11 @@ export class ScanService {
           labelDn = await this.periksaLabelDn(kb, part, plantId, opsi);
         }
 
-        if (kb.partNumber && kb.partNumber.toUpperCase() !== part.partNumber.toUpperCase()) {
+        /*
+         * Dibandingkan dalam bentuk BAKU, bukan apa adanya: kartu tercetak
+         * membawa bentuk berstrip sedangkan master memakai bentuk SAP.
+         */
+        if (kb.partNumber && !nomorPartSama(kb.partNumber, part.partNumber)) {
           throw new ScanRejected(
             'KANBAN_PART_MISMATCH',
             `${REJECT_MESSAGES.KANBAN_PART_MISMATCH} (kartu untuk ${kb.partNumber}, sample ${part.partNumber})`,
@@ -1026,7 +1033,7 @@ export class ScanService {
     // yang datanya sudah tersimpan tidak bisa diterima, karena device akan
     // mengira scan-nya gagal dan operator akan men-scan ulang.
     /*
-     * Backflush: komponen berkurang otomatis mengikuti BOM.
+     * Backflush: komponen berkurang otomatis mengikuti Part Pairing.
      *
      * Dijadwalkan, tidak dikerjakan di sini. Operator tidak boleh menunggu
      * perhitungan material, dan kegagalannya tidak boleh menggagalkan
@@ -1327,8 +1334,33 @@ export class ScanService {
             : eq(parts.partNumber, partNumber),
         )
         .limit(1);
-      // Nomor part disebut tetapi tidak ada: berhenti di sini.
-      return byPartNumber[0];
+      if (byPartNumber[0]) return byPartNumber[0];
+
+      /*
+       * Percobaan kedua: cocokkan tanpa tanda hubung.
+       *
+       * Master beralih ke bentuk SAP (`21211034010`), sedangkan label dan
+       * kartu yang SUDAH tercetak membawa bentuk Gentani (`212110-34010`).
+       * Keduanya nomor yang sama — lihat normalkanNomorPart. Tanpa percobaan
+       * ini, label sah akan ditolak "part tidak dikenali" dan operator
+       * disuruh melapor soal part yang sebenarnya ada.
+       *
+       * Yang persis dicoba LEBIH DULU supaya jalur normal tetap memakai indeks;
+       * kueri tanpa indeks di bawah ini hanya berjalan saat yang persis gagal.
+       */
+      const baku = normalkanNomorPart(partNumber);
+      const bentukBaku = sql`replace(upper(${parts.partNumber}), '-', '')`;
+      const byBaku = await this.db
+        .select()
+        .from(parts)
+        .where(
+          plantId
+            ? and(eq(bentukBaku, baku), eq(parts.plantId, plantId))
+            : eq(bentukBaku, baku),
+        )
+        .limit(1);
+      // Nomor part disebut tetapi tidak ada dalam bentuk apa pun: berhenti.
+      return byBaku[0];
     }
 
     if (backNumber) {

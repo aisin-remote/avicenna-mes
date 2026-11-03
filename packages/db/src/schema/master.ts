@@ -38,6 +38,27 @@ export const lines = masterSchema.table(
      * cocok untuk salah satunya.
      */
     scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM),
+    /**
+     * Work center SAP untuk lini ini. Kosong = hasil produksinya DITAHAN.
+     *
+     * ── Kenapa kolom sendiri, bukan memakai CHR_CODE ────────────────────────
+     *
+     * Dulu push hasil produksi mengirim `CHR_CODE` lini sebagai
+     * CHR_WORK_CENTER. Kode kita berbentuk lain — `AS-02`, `INJ-01`, `MC-01` —
+     * sedangkan SAP memakai enam karakter tanpa pemisah: `DCAA01`, `ASDL01`,
+     * `GIIH01`. Tidak satu pun kode berstrip kita dikenal di sana, jadi setiap
+     * dokumen produksi membawa work center yang tidak ada.
+     *
+     * Dipisah karena keduanya milik pihak berbeda: kode lini muncul di alamat
+     * halaman dan bookmark layar lantai, sedangkan work center milik SAP dan
+     * bisa berubah tanpa lini kita berganti nama.
+     *
+     * KOSONG BERARTI DITAHAN, bukan ditebak. Lini yang belum punya padanan di
+     * SAP memunculkan dokumen HELD dengan sebab tertulis — satu-satunya
+     * kegagalan yang bisa dilihat orang. Menebak dari kode lini berarti
+     * barisnya tersaring penjemput SAP tanpa jejak sama sekali.
+     */
+    sapWorkCenter: varchar('CHR_SAP_WORK_CENTER', { length: 10 }),
     /*
      * SLOC asal dan tujuan line ini.
      *
@@ -332,6 +353,26 @@ export const partProcesses = masterSchema.table(
      * memaksa satu lini di sini akan menolak scan dari lini kembarannya.
      */
     lineId: fk('INT_LINE_ID').references(() => lines.id),
+    /**
+     * Production Version SAP untuk LANGKAH ini. Kosong = ikut TM_PARTS.
+     *
+     * ── Kenapa di sini, bukan di part ───────────────────────────────────────
+     *
+     * PV adalah pasangan (alternatif BOM + routing) untuk satu material, dan
+     * di SAP ia berkunci (nomor part + PV) — satu baris per langkah proses.
+     * Terbukti dari staging: part `-3121104010B1` punya ENAM PV, masing-masing
+     * terikat work center, dan tiga di antaranya berbagi work center yang sama.
+     *
+     * `TM_PARTS.CHR_PRODUCTION_VERSION` menyimpan satu nilai per part, jadi
+     * part yang lewat casting lalu machining lalu assembly hanya bisa membawa
+     * satu dari tiga versinya. Itulah sebabnya kolom itu masih kosong pada 89
+     * dari 92 part UNIT: tidak ada satu nilai yang benar untuk diisi.
+     *
+     * Yang di TM_PARTS dibiarkan sebagai cadangan selama peralihan — bukan
+     * sumber kedua. Begitu tarik SAP mengisi kolom ini untuk seluruh langkah,
+     * kolom di part tidak dipakai lagi.
+     */
+    productionVersion: varchar('CHR_PRODUCTION_VERSION', { length: 8 }),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
