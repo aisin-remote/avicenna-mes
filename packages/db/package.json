@@ -39,6 +39,7 @@
     "db:check": "tsx src/check.ts",
     "db:seed-papan-trial": "tsx src/seed-papan-trial.ts",
     "db:seed-belanja-trial": "tsx src/seed-belanja-trial.ts",
+    "db:seed-rfid-trial": "tsx src/seed-rfid-trial.ts",
     "db:selaraskan-master-sap": "tsx src/selaraskan-master-sap.ts"
   },
   "dependencies": {

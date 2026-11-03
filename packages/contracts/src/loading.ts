@@ -38,6 +38,11 @@ export const loadingScanSchema = z.object({
    * dua kali. Tanpa ini tiap scan dianggap kejadian baru.
    */
   clientRef: z.string().trim().max(64).optional(),
+  /**
+   * Pulling satu MANIFEST: semua loading list di dalamnya (termasuk deliveryId).
+   * Server memilih loading list yang part-nya cocok dan masih punya sisa.
+   */
+  groupDeliveryIds: z.array(z.coerce.number().int().positive()).min(1).max(50).optional(),
 });
 export type LoadingScanInput = z.infer<typeof loadingScanSchema>;
 

@@ -24,3 +24,4 @@ export * from './customer-part';
 export * from './allocate-fifo';
 export * from './sap-movement';
 export * from './sap-proses';
+export * from './pis';

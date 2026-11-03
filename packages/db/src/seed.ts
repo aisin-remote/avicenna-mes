@@ -989,7 +989,7 @@ async function seedMenu(): Promise<void> {
     if (r.kind === 'ADMIN' || sudahPunya.has(r.id)) continue;
     const keys =
       r.kind === 'SCANNING' && r.processGroup === 'DELIVERY'
-        ? ['delivery.scan']
+        ? ['delivery.scan', 'delivery.pis']
         : bawaan[r.kind] ?? [];
     const values = keys
       .map((k) => idMenu.get(k))

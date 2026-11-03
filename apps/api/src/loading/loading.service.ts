@@ -57,6 +57,26 @@ import type { Principal } from '../auth/auth.types';
 import { prepareDeliveryOrder, lockDeliveryOrder } from './delivery-order';
 import { readDeliveryFlow, scanDriverDocument, receiveDeliveryOrderReturn } from './delivery-flow';
 
+/**
+ * Nomor part customer dari barcode kanban: apa adanya dan setelah konversi format
+ * customer. Dipakai scan biasa dan pemilihan loading list per manifest, supaya
+ * keduanya membaca barcode yang sama dengan cara yang sama.
+ */
+function bacaPartCustomer(raw: string, format: PartNumberFormat) {
+  let customerPart = raw.trim();
+  let serialNumber: string | undefined;
+  try {
+    // Delivery menerima kartu BODY berformat posisi tetap. Pencocokan part
+    // tetap menjadi pagar bila format serupa datang dari pabrik lain.
+    const kanban = bacaKanban(raw, { customerFormat: format, scanMode: 'PER_KANBAN' });
+    customerPart = kanban.customerPartNumber ?? kanban.partNumber ?? customerPart;
+    serialNumber = kanban.serialNumber ?? undefined;
+  } catch {
+    // Nomor part polos tetap didukung untuk scanner lama dan pengetesan manual.
+  }
+  return { customerPart, serialNumber, converted: convertCustomerPartNumber(customerPart, format) };
+}
+
 /** Pelanggaran unique index MySQL, dipakai mengenali retry scan idempoten. */
 
 @Injectable()
@@ -282,7 +302,92 @@ export class LoadingService {
    * berbeda dari isi truk yang sebenarnya.
    */
   async scan(input: LoadingScanInput, principal?: Principal): Promise<LoadingScanResult> {
-    return this.scanKanban(input, principal);
+    const { groupDeliveryIds, ...rest } = input;
+    if (!groupDeliveryIds || groupDeliveryIds.length < 2) return this.scanKanban(rest, principal);
+    return this.scanKanban(
+      { ...rest, deliveryId: await this.manifestTarget(rest, groupDeliveryIds) },
+      principal,
+    );
+  }
+
+  /**
+   * ─── Pulling per MANIFEST: loading list mana yang menerima kanban ini ──────
+   *
+   * Satu manifest bisa berisi beberapa loading list; operator men-scan
+   * kanbannya tanpa memilih dokumen. Barcode dibaca dengan aturan yang sama
+   * dengan scanKanban(), lalu diarahkan ke loading list pertama yang part-nya
+   * cocok dan masih punya sisa. Kalau tidak ada yang cocok, dokumen utama yang
+   * menolaknya — pesannya sama dengan scan satu loading list.
+   *
+   * clientRef diperiksa ke SELURUH manifest lebih dulu: kiriman ulang setelah
+   * scan pertama memenuhi loading list A tidak boleh pindah lalu terhitung di B.
+   *
+   * ponytail: dua scanner pada manifest yang sama bisa sama-sama memilih
+   * loading list yang tersisa satu kanban; yang kalah tercatat OVER, bukan
+   * pindah ke loading list berikutnya. Kunci per manifest bila itu terjadi.
+   */
+  private async manifestTarget(input: LoadingScanInput, groupIds: number[]): Promise<number> {
+    const ids = [...new Set([input.deliveryId, ...groupIds])];
+    const docs = await this.db
+      .select({
+        id: deliveries.id,
+        plantId: deliveries.plantId,
+        manifestNumber: deliveries.manifestNumber,
+        format: customers.partNumberFormat,
+      })
+      .from(deliveries)
+      .leftJoin(customers, eq(deliveries.customerId, customers.id))
+      .where(inArray(deliveries.id, ids))
+      .orderBy(deliveries.id);
+    const manifest = docs[0]?.manifestNumber?.trim();
+    if (
+      docs.length !== ids.length ||
+      !manifest ||
+      docs.some((d) => d.plantId !== docs[0]!.plantId || d.manifestNumber?.trim() !== manifest)
+    )
+      throw new BadRequestException('Loading list yang dipilih bukan satu manifest yang sama.');
+
+    if (input.clientRef) {
+      const [previous] = await this.db
+        .select({ dedupeKey: scanEvents.dedupeKey })
+        .from(scanEvents)
+        .where(
+          inArray(
+            scanEvents.dedupeKey,
+            ids.map((id) => `load:${id}:${input.phase}:${input.clientRef}`),
+          ),
+        )
+        .limit(1);
+      if (previous?.dedupeKey) return Number(previous.dedupeKey.split(':')[1]);
+    }
+
+    const lines = await this.db
+      .select({
+        deliveryId: deliveryLines.deliveryId,
+        partNumber: parts.partNumber,
+        customerPartNumber: sql<
+          string | null
+        >`COALESCE(${deliveryLines.customerPartNumberSource}, ${customerParts.customerPartNumber})`,
+        remaining: sql<number>`${deliveryLines.plannedKanban} - ${deliveryLines.pickedKanban}`,
+      })
+      .from(deliveryLines)
+      .leftJoin(parts, eq(deliveryLines.partId, parts.id))
+      .leftJoin(customerParts, eq(deliveryLines.customerPartId, customerParts.id))
+      .where(inArray(deliveryLines.deliveryId, ids))
+      .orderBy(deliveryLines.deliveryId, deliveryLines.id);
+    const matching = lines.filter((line) => {
+      const format = (docs.find((d) => d.id === line.deliveryId)?.format ??
+        'NONE') as PartNumberFormat;
+      const { customerPart, converted } = bacaPartCustomer(input.customerPart, format);
+      return [converted, customerPart].some(
+        (part) => part === line.customerPartNumber || part === line.partNumber,
+      );
+    });
+    return (
+      matching.find((line) => Number(line.remaining) > 0)?.deliveryId ??
+      matching[0]?.deliveryId ??
+      input.deliveryId
+    );
   }
 
   private async scanKanban(
@@ -395,20 +500,9 @@ export class LoadingService {
       // di bawah tetap menjadi pagar bila format serupa datang dari pabrik lain.
       scanMode: 'PER_KANBAN' as const,
     };
-    let customerPart = input.customerPart.trim();
-    let customerSerial = input.serialNumber;
-    try {
-      const customerKanban = bacaKanban(input.customerPart, kanbanContext);
-      customerPart = customerKanban.customerPartNumber ?? customerKanban.partNumber ?? customerPart;
-      customerSerial ??= customerKanban.serialNumber;
-    } catch {
-      // Nomor part polos tetap didukung untuk scanner lama dan pengetesan manual.
-    }
-
-    const converted = convertCustomerPartNumber(
-      customerPart,
-      (doc.format ?? 'NONE') as PartNumberFormat,
-    );
+    const barcode = bacaPartCustomer(input.customerPart, kanbanContext.customerFormat);
+    const { customerPart, converted } = barcode;
+    const customerSerial = input.serialNumber ?? barcode.serialNumber;
 
     const candidates = await this.db
       .select({

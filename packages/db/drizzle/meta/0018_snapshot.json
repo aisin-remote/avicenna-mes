@@ -1,6 +1,6 @@
 {
-  "id": "f04b0f18-d380-46f5-affe-2fd8a847897e",
-  "prevId": "39af60a7-f0d4-4838-973f-1045c284c8dc",
+  "id": "c17f9605-9024-431c-a072-12316770a0ac",
+  "prevId": "17d2f83e-cf94-4522-ac87-6336780b2c51",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1129,12 +1129,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "CHR_SAP_WORK_CENTER": {
-          "name": "CHR_SAP_WORK_CENTER",
-          "type": "varchar(10)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "INT_INPUT_LOCATION_ID": {
           "name": "INT_INPUT_LOCATION_ID",
           "type": "bigint",
@@ -1450,12 +1444,6 @@
         "INT_LINE_ID": {
           "name": "INT_LINE_ID",
           "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "CHR_PRODUCTION_VERSION": {
-          "name": "CHR_PRODUCTION_VERSION",
-          "type": "varchar(8)",
           "primaryKey": false,
           "notNull": false
         },
@@ -9229,193 +9217,6 @@
       },
       "isRLSEnabled": false
     },
-    "production.TM_PART_PAIRING": {
-      "name": "TM_PART_PAIRING",
-      "schema": "production",
-      "columns": {
-        "INT_ID": {
-          "name": "INT_ID",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "byDefault",
-            "name": "TM_PART_PAIRING_INT_ID_seq",
-            "schema": "production",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "INT_PLANT_ID": {
-          "name": "INT_PLANT_ID",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "INT_PARENT_PART_ID": {
-          "name": "INT_PARENT_PART_ID",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "INT_COMPONENT_PART_ID": {
-          "name": "INT_COMPONENT_PART_ID",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "FLT_QTY_PER": {
-          "name": "FLT_QTY_PER",
-          "type": "numeric(12, 4)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "CHR_UOM": {
-          "name": "CHR_UOM",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pcs'"
-        },
-        "FLT_SCRAP_PCT": {
-          "name": "FLT_SCRAP_PCT",
-          "type": "numeric(5, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "INT_SEQUENCE": {
-          "name": "INT_SEQUENCE",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "DTM_EFFECTIVE_FROM": {
-          "name": "DTM_EFFECTIVE_FROM",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "DTM_EFFECTIVE_TO": {
-          "name": "DTM_EFFECTIVE_TO",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "CHR_NOTE": {
-          "name": "CHR_NOTE",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "DTM_CREATED_AT": {
-          "name": "DTM_CREATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "DTM_UPDATED_AT": {
-          "name": "DTM_UPDATED_AT",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "TM_PART_PAIRING_PARENT_IDX": {
-          "name": "TM_PART_PAIRING_PARENT_IDX",
-          "columns": [
-            {
-              "expression": "INT_PARENT_PART_ID",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "DTM_EFFECTIVE_FROM",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "TM_PART_PAIRING_COMPONENT_IDX": {
-          "name": "TM_PART_PAIRING_COMPONENT_IDX",
-          "columns": [
-            {
-              "expression": "INT_COMPONENT_PART_ID",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "TM_PART_PAIRING_INT_PLANT_ID_TM_PLANT_INT_ID_fk": {
-          "name": "TM_PART_PAIRING_INT_PLANT_ID_TM_PLANT_INT_ID_fk",
-          "tableFrom": "TM_PART_PAIRING",
-          "tableTo": "TM_PLANT",
-          "schemaTo": "org",
-          "columnsFrom": [
-            "INT_PLANT_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "TM_PART_PAIRING_INT_PARENT_PART_ID_TM_PARTS_INT_ID_fk": {
-          "name": "TM_PART_PAIRING_INT_PARENT_PART_ID_TM_PARTS_INT_ID_fk",
-          "tableFrom": "TM_PART_PAIRING",
-          "tableTo": "TM_PARTS",
-          "schemaTo": "master",
-          "columnsFrom": [
-            "INT_PARENT_PART_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "TM_PART_PAIRING_INT_COMPONENT_PART_ID_TM_PARTS_INT_ID_fk": {
-          "name": "TM_PART_PAIRING_INT_COMPONENT_PART_ID_TM_PARTS_INT_ID_fk",
-          "tableFrom": "TM_PART_PAIRING",
-          "tableTo": "TM_PARTS",
-          "schemaTo": "master",
-          "columnsFrom": [
-            "INT_COMPONENT_PART_ID"
-          ],
-          "columnsTo": [
-            "INT_ID"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "logistics.TT_PURCHASE_RECEIPT_L": {
       "name": "TT_PURCHASE_RECEIPT_L",
       "schema": "logistics",
@@ -11248,6 +11049,414 @@
           "value": "\"sap\".\"TT_SAP_OUTBOX\".\"CHR_STATUS\" IN ('PENDING', 'SENT', 'CONFIRMED', 'REJECTED', 'FAILED', 'HELD', 'SKIPPED')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "logistics.TT_PIS_PACKING": {
+      "name": "TT_PIS_PACKING",
+      "schema": "logistics",
+      "columns": {
+        "INT_ID": {
+          "name": "INT_ID",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "TT_PIS_PACKING_INT_ID_seq",
+            "schema": "logistics",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "INT_PLANT_ID": {
+          "name": "INT_PLANT_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "INT_DELIVERY_ITEM_ID": {
+          "name": "INT_DELIVERY_ITEM_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "INT_PACKED_QTY": {
+          "name": "INT_PACKED_QTY",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "DTM_CREATED_AT": {
+          "name": "DTM_CREATED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "DTM_UPDATED_AT": {
+          "name": "DTM_UPDATED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "TT_PIS_PACKING_ITEM_UNIQUE": {
+          "name": "TT_PIS_PACKING_ITEM_UNIQUE",
+          "columns": [
+            {
+              "expression": "INT_DELIVERY_ITEM_ID",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "TT_PIS_PACKING_INT_PLANT_ID_TM_PLANT_INT_ID_fk": {
+          "name": "TT_PIS_PACKING_INT_PLANT_ID_TM_PLANT_INT_ID_fk",
+          "tableFrom": "TT_PIS_PACKING",
+          "tableTo": "TM_PLANT",
+          "schemaTo": "org",
+          "columnsFrom": [
+            "INT_PLANT_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_PIS_PACKING_INT_DELIVERY_ITEM_ID_TT_DELIVERY_ITEM_INT_ID_fk": {
+          "name": "TT_PIS_PACKING_INT_DELIVERY_ITEM_ID_TT_DELIVERY_ITEM_INT_ID_fk",
+          "tableFrom": "TT_PIS_PACKING",
+          "tableTo": "TT_DELIVERY_ITEM",
+          "schemaTo": "logistics",
+          "columnsFrom": [
+            "INT_DELIVERY_ITEM_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "logistics.TT_PIS_SESSION": {
+      "name": "TT_PIS_SESSION",
+      "schema": "logistics",
+      "columns": {
+        "INT_ID": {
+          "name": "INT_ID",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "TT_PIS_SESSION_INT_ID_seq",
+            "schema": "logistics",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "INT_PLANT_ID": {
+          "name": "INT_PLANT_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "INT_USER_ID": {
+          "name": "INT_USER_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "CHR_STATE": {
+          "name": "CHR_STATE",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "DTM_CREATED_AT": {
+          "name": "DTM_CREATED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "DTM_UPDATED_AT": {
+          "name": "DTM_UPDATED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "TT_PIS_SESSION_USER_PLANT_UNIQUE": {
+          "name": "TT_PIS_SESSION_USER_PLANT_UNIQUE",
+          "columns": [
+            {
+              "expression": "INT_USER_ID",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "INT_PLANT_ID",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "TT_PIS_SESSION_INT_PLANT_ID_TM_PLANT_INT_ID_fk": {
+          "name": "TT_PIS_SESSION_INT_PLANT_ID_TM_PLANT_INT_ID_fk",
+          "tableFrom": "TT_PIS_SESSION",
+          "tableTo": "TM_PLANT",
+          "schemaTo": "org",
+          "columnsFrom": [
+            "INT_PLANT_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TT_PIS_SESSION_INT_USER_ID_TM_USER_INT_ID_fk": {
+          "name": "TT_PIS_SESSION_INT_USER_ID_TM_USER_INT_ID_fk",
+          "tableFrom": "TT_PIS_SESSION",
+          "tableTo": "TM_USER",
+          "schemaTo": "org",
+          "columnsFrom": [
+            "INT_USER_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "production.TM_PART_PAIRING": {
+      "name": "TM_PART_PAIRING",
+      "schema": "production",
+      "columns": {
+        "INT_ID": {
+          "name": "INT_ID",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "TM_BOM_INT_ID_seq",
+            "schema": "production",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "INT_PLANT_ID": {
+          "name": "INT_PLANT_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "INT_PARENT_PART_ID": {
+          "name": "INT_PARENT_PART_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "INT_COMPONENT_PART_ID": {
+          "name": "INT_COMPONENT_PART_ID",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "FLT_QTY_PER": {
+          "name": "FLT_QTY_PER",
+          "type": "numeric(12, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "CHR_UOM": {
+          "name": "CHR_UOM",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pcs'"
+        },
+        "FLT_SCRAP_PCT": {
+          "name": "FLT_SCRAP_PCT",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "INT_SEQUENCE": {
+          "name": "INT_SEQUENCE",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "DTM_EFFECTIVE_FROM": {
+          "name": "DTM_EFFECTIVE_FROM",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "DTM_EFFECTIVE_TO": {
+          "name": "DTM_EFFECTIVE_TO",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "CHR_NOTE": {
+          "name": "CHR_NOTE",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "DTM_CREATED_AT": {
+          "name": "DTM_CREATED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "DTM_UPDATED_AT": {
+          "name": "DTM_UPDATED_AT",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "TM_PART_PAIRING_PARENT_IDX": {
+          "name": "TM_PART_PAIRING_PARENT_IDX",
+          "columns": [
+            {
+              "expression": "INT_PARENT_PART_ID",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "DTM_EFFECTIVE_FROM",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "TM_PART_PAIRING_COMPONENT_IDX": {
+          "name": "TM_PART_PAIRING_COMPONENT_IDX",
+          "columns": [
+            {
+              "expression": "INT_COMPONENT_PART_ID",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "TM_PART_PAIRING_INT_PLANT_ID_TM_PLANT_INT_ID_fk": {
+          "name": "TM_PART_PAIRING_INT_PLANT_ID_TM_PLANT_INT_ID_fk",
+          "tableFrom": "TM_PART_PAIRING",
+          "tableTo": "TM_PLANT",
+          "schemaTo": "org",
+          "columnsFrom": [
+            "INT_PLANT_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TM_PART_PAIRING_INT_PARENT_PART_ID_TM_PARTS_INT_ID_fk": {
+          "name": "TM_PART_PAIRING_INT_PARENT_PART_ID_TM_PARTS_INT_ID_fk",
+          "tableFrom": "TM_PART_PAIRING",
+          "tableTo": "TM_PARTS",
+          "schemaTo": "master",
+          "columnsFrom": [
+            "INT_PARENT_PART_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "TM_PART_PAIRING_INT_COMPONENT_PART_ID_TM_PARTS_INT_ID_fk": {
+          "name": "TM_PART_PAIRING_INT_COMPONENT_PART_ID_TM_PARTS_INT_ID_fk",
+          "tableFrom": "TM_PART_PAIRING",
+          "tableTo": "TM_PARTS",
+          "schemaTo": "master",
+          "columnsFrom": [
+            "INT_COMPONENT_PART_ID"
+          ],
+          "columnsTo": [
+            "INT_ID"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
