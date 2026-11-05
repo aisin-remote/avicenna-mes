@@ -592,6 +592,9 @@ export const toolingParts = masterSchema.table(
   'TM_TOOLING_PARTS',
   {
     id: pk(),
+    plantId: fk('INT_PLANT_ID')
+      .notNull()
+      .references(() => plants.id),
     toolingId: fk('INT_TOOLING_ID')
       .notNull()
       .references(() => toolings.id, { onDelete: 'cascade' }),
@@ -600,7 +603,10 @@ export const toolingParts = masterSchema.table(
       .references(() => parts.id, { onDelete: 'cascade' }),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_TOOLING_PARTS_UNIQUE').on(t.toolingId, t.partId)],
+  (t) => [
+    uniqueIndex('TM_TOOLING_PARTS_UNIQUE').on(t.toolingId, t.partId),
+    index('TM_TOOLING_PARTS_PLANT_IDX').on(t.plantId),
+  ],
 );
 
 export const linesRelations = relations(lines, ({ one, many }) => ({

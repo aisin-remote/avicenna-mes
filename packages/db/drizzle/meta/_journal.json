@@ -141,6 +141,13 @@
       "when": 1793670207983,
       "tag": "0019_work_center_dan_pv_langkah",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793693317572,
+      "tag": "0020_skinny_network",
+      "breakpoints": true
     }
   ]
 }

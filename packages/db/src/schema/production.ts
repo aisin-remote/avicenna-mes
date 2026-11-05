@@ -19,8 +19,9 @@ import {
   timestamps,
   type ProcessType,
 } from './_shared';
-import { lines, parts, customers, machines, processTypes } from './master';
+import { lines, parts, customers, machines, processTypes, toolings } from './master';
 import { plants, users, devices } from './org';
+import { kanbans } from './kanban';
 
 /**
  * Rencana produksi per hari per line.
@@ -171,6 +172,9 @@ export const scanEvents = productionSchema.table(
     index('TT_HISTORY_SCAN_DELIVERY_PHASE_IDX')
       .on(sql`(${t.meta}->>'deliveryId')`, sql`(${t.meta}->>'phase')`, t.id)
       .where(sql`${t.kind} = 'DELIVERY'`),
+    index('TT_HISTORY_SCAN_MOLD_CYCLE_IDX')
+      .on(t.lineId, sql`(${t.meta}->>'moldToolingId')`, sql`(${t.meta}->>'moldCycleNo')`)
+      .where(sql`${t.kind} = 'PRODUCTION' AND ${t.meta}->>'scanMode' = 'KANBAN_MOLD'`),
     /*
      * Barcode + proses.
      *
@@ -193,6 +197,94 @@ export const scanEvents = productionSchema.table(
     index('TT_HISTORY_SCAN_RAW_PROCESS_IDX').on(t.rawCode, t.processType, t.scannedAt),
 
     daftarNilai('TT_HISTORY_SCAN_CHR_KIND_CHK', t.kind, SCAN_KINDS),
+  ],
+);
+
+export interface MoldScannedMemberState {
+  partId: number;
+  kanbanId: number;
+  kanbanSerial: string;
+  qty: number;
+  /** Membedakan retry jaringan dari scan fisik kedua yang harus mengunci line. */
+  clientRef?: string;
+}
+
+/**
+ * Progres satu putaran mold per lini.
+ *
+ * Barisnya dikunci saat menerima scan agar dua terminal pada lini yang sama
+ * tidak dapat meloloskan anggota yang sama secara bersamaan. Progres disimpan
+ * di database, bukan browser, sehingga reload dan pergantian operator tidak
+ * menghapus interlock.
+ */
+export const moldScanSessions = productionSchema.table(
+  'TT_MOLD_SCAN_SESSION',
+  {
+    id: pk(),
+    lineId: fk('INT_LINE_ID')
+      .notNull()
+      .references(() => lines.id, { onDelete: 'cascade' }),
+    toolingId: fk('INT_TOOLING_ID').references(() => toolings.id),
+    status: enumCol('CHR_STATUS', ['WAITING_MOLD', 'COLLECTING', 'LOCKED'])
+      .notNull()
+      .default('WAITING_MOLD'),
+    cycleNo: integer('INT_CYCLE_NO').notNull().default(1),
+    memberPartIds: jsonb('CHR_MEMBER_PART_IDS')
+      .$type<number[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    scanned: jsonb('CHR_SCANNED')
+      .$type<MoldScannedMemberState[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    lockReason: varchar('CHR_LOCK_REASON', { length: 255 }),
+    lockedAt: timestamp('DTM_LOCKED_AT', { withTimezone: true, mode: 'date' }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('TT_MOLD_SCAN_SESSION_LINE_UNIQUE').on(t.lineId),
+    daftarNilai('TT_MOLD_SCAN_SESSION_STATUS_CHK', t.status, [
+      'WAITING_MOLD',
+      'COLLECTING',
+      'LOCKED',
+    ]),
+  ],
+);
+
+export const MOLD_SCAN_EVENT_TYPES = [
+  'MOLD_SELECTED',
+  'MEMBER_SCANNED',
+  'CYCLE_COMPLETED',
+  'LOCKED',
+  'UNLOCKED',
+] as const;
+
+/** Jejak append-only pemilihan mold, scan anggota, interlock, dan pembukanya. */
+export const moldScanEvents = productionSchema.table(
+  'TT_MOLD_SCAN_EVENT',
+  {
+    id: pk(),
+    lineId: fk('INT_LINE_ID')
+      .notNull()
+      .references(() => lines.id),
+    toolingId: fk('INT_TOOLING_ID').references(() => toolings.id),
+    partId: fk('INT_PART_ID').references(() => parts.id),
+    kanbanId: fk('INT_KANBAN_ID').references(() => kanbans.id),
+    cycleNo: integer('INT_CYCLE_NO').notNull(),
+    type: enumCol('CHR_TYPE', MOLD_SCAN_EVENT_TYPES).notNull(),
+    /** Idempotensi request scanner; null untuk event yang bukan scan anggota. */
+    clientRef: varchar('CHR_CLIENT_REF', { length: 64 }),
+    rawCode: varchar('CHR_RAW_CODE', { length: 255 }),
+    userId: fk('INT_USER_ID').references(() => users.id),
+    supervisorUserId: fk('INT_SUPERVISOR_USER_ID').references(() => users.id),
+    occurredAt: timestamp('DTM_OCCURRED_AT', { withTimezone: true, mode: 'date' }).notNull(),
+    meta: jsonb('CHR_META'),
+    createdAt: timestamps.createdAt,
+  },
+  (t) => [
+    index('TT_MOLD_SCAN_EVENT_LINE_TIME_IDX').on(t.lineId, t.occurredAt),
+    uniqueIndex('TT_MOLD_SCAN_EVENT_CLIENT_REF_UNIQUE').on(t.lineId, t.clientRef),
+    daftarNilai('TT_MOLD_SCAN_EVENT_TYPE_CHK', t.type, MOLD_SCAN_EVENT_TYPES),
   ],
 );
 
