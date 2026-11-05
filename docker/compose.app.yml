@@ -24,12 +24,24 @@ x-log: &log
 x-app-env: &app-env
   NODE_ENV: production
   TZ: ${TZ:-Asia/Jakarta}
-  # Nama host wadah, bukan IP. Docker yang menerjemahkannya; IP wadah berganti
-  # setiap kali ia dibuat ulang.
-  # Nama host wadah `postgres`, bukan IP. Sandi yang memuat karakter khusus
-  # (@ : / ?) harus sudah ter-encode di .env — bukan di sini — sebab compose
-  # menyalin nilainya apa adanya.
-  DATABASE_URL: postgresql://${POSTGRES_USER:-avicenna}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-avicenna}
+  # URL database diambil UTUH dari .env, tanpa nilai bawaan.
+  #
+  # Dulu URL ini disusun di sini dari POSTGRES_*. Akibatnya menunjuk database di
+  # server lain mustahil tanpa mengubah berkas ini, dan alamat yang ditulis di
+  # .env diam-diam diabaikan — dua sumber kebenaran yang saling bertentangan.
+  #
+  # Tanpa nilai bawaan dengan sengaja: kalau DATABASE_URL lupa diisi, compose
+  # berhenti dengan pesan jelas, bukan diam-diam menyambung ke wadah `postgres`
+  # lokal sementara yang dimaksud adalah server lain.
+  #
+  #   wadah lokal  : postgresql://postgres:<sandi>@postgres:5432/avicenna
+  #   server lain  : postgresql://postgres:<sandi>@172.18.3.73:5432/avicenna
+  #
+  # Nama host `postgres` hanya berlaku di dalam jaringan Docker; alamat di luar
+  # jaringan harus memakai IP/hostname yang bisa dijangkau dari wadah. Sandi
+  # yang memuat karakter khusus (@ : / ?) harus sudah ter-encode di .env —
+  # compose menyalin nilainya apa adanya.
+  DATABASE_URL: ${DATABASE_URL:?wajib diisi di .env — lihat .env.production.example}
   REDIS_URL: redis://valkey:6379
 
 services:

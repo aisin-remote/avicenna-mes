@@ -32,20 +32,35 @@ koneksi — satu di api, satu di web.
 cp .env.production.example .env
 ```
 
-Lalu isi `.env`. Dua yang wajib diganti:
+Lalu isi `.env`. Yang wajib dibangkitkan:
 
 ```bash
 openssl rand -base64 48     # tempel hasilnya ke JWT_SECRET
 ```
 
-`POSTGRES_PASSWORD` juga wajib — compose menolak menyala kalau kosong, bukan
-diam-diam memakai string kosong.
+`DATABASE_URL` wajib — compose berhenti dengan pesan jelas kalau kosong, bukan
+diam-diam menyambung ke tempat lain:
 
-Satu jebakan pada sandi: compose menyusun `DATABASE_URL` dari nilai itu apa
-adanya, jadi karakter `@ : / ? #` di dalam sandi harus di-encode (`@` menjadi
-`%40`). Tanpa itu pemisah host pada URL salah dibaca dan aplikasi menyambung ke
-tempat lain — tanpa satu pun pesan yang menyebut soal sandi. Paling aman: huruf,
-angka, dan tanda hubung saja.
+```bash
+postgresql://<user>:<sandi>@<host>:5432/avicenna
+```
+
+`<host>` diisi `postgres` kalau memakai wadah database lokal (tumpukan data di
+bawah), atau IP/hostname server Postgres lain kalau memakai database bersama.
+Jaringan Docker tidak bisa menerjemahkan IP server luar, jadi isi alamatnya
+apa adanya.
+
+`POSTGRES_PASSWORD` juga wajib, tetapi hanya untuk tumpukan data lokal: nilai
+itu yang dipakai saat database di wadah pertama kali dibuat. Kalau
+`DATABASE_URL` menunjuk server lain, tumpukan data tetap dijalankan — jaringan
+`avicenna-net` berasal dari sana — tapi database di dalamnya tidak dipakai
+aplikasi.
+
+Satu jebakan pada sandi: `DATABASE_URL` disalin apa adanya, jadi karakter
+`@ : / ? #` di dalam sandi harus di-encode (`@` menjadi `%40`). Tanpa itu
+pemisah host pada URL salah dibaca dan aplikasi menyambung ke tempat lain —
+tanpa satu pun pesan yang menyebut soal sandi. Paling aman: huruf, angka, dan
+tanda hubung saja.
 
 ```bash
 # 1. Tumpukan data. Membuat jaringan avicenna-net yang dipakai aplikasi.
