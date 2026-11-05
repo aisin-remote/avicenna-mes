@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { and, or, like, eq, asc, desc, count, inArray, sql, type Database } from '@avicenna/db';
-import { getMasterTable, locations, parts } from '@avicenna/db';
+import { getMasterTable, locations, parts, toolings } from '@avicenna/db';
 import { sebabGalatDb } from '@avicenna/db';
 import {
   getEntityDef,
@@ -308,6 +308,59 @@ export class MasterService {
     }
   }
 
+  /** Tooling dan part anggotanya wajib berasal dari pabrik yang sama. */
+  private async pastikanAnggotaTooling(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ) {
+    if (entity !== 'tooling-parts') return;
+
+    const toolingId = Number(values.toolingId ?? barisLama?.toolingId);
+    const partId = Number(values.partId ?? barisLama?.partId);
+    const plantId = Number(values.plantId ?? barisLama?.plantId);
+    const [[tooling], [part]] = await Promise.all([
+      this.db
+        .select({ plantId: toolings.plantId, code: toolings.code, active: toolings.isActive })
+        .from(toolings)
+        .where(eq(toolings.id, toolingId))
+        .limit(1),
+      this.db
+        .select({ plantId: parts.plantId, partNumber: parts.partNumber, active: parts.isActive })
+        .from(parts)
+        .where(eq(parts.id, partId))
+        .limit(1),
+    ]);
+
+    const details: Array<{ field: string; message: string }> = [];
+    if (!tooling?.active) {
+      details.push({ field: 'toolingId', message: 'Tooling tidak ditemukan atau sudah nonaktif.' });
+    }
+    if (!part?.active) {
+      details.push({ field: 'partId', message: 'Part tidak ditemukan atau sudah nonaktif.' });
+    }
+    if (tooling && part && tooling.plantId !== part.plantId) {
+      details.push({
+        field: 'partId',
+        message: `Part ${part.partNumber} bukan milik pabrik tooling ${tooling.code}.`,
+      });
+    }
+    if (tooling && tooling.plantId !== plantId) {
+      details.push({
+        field: 'plantId',
+        message: `Pabrik tidak sama dengan pabrik tooling ${tooling.code}.`,
+      });
+    }
+    if (details.length > 0) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'ValidationError',
+        message: 'Data yang dikirim tidak valid',
+        details,
+      });
+    }
+  }
+
   /**
    * Aturan SLOC yang diturunkan dari Blueprint SAP PP AIIA.
    *
@@ -495,6 +548,7 @@ export class MasterService {
     if (!parsed.success) throw validationError(parsed.error);
 
     await this.pastikanSatuPabrik(entity, parsed.data as Record<string, unknown>);
+    await this.pastikanAnggotaTooling(entity, parsed.data as Record<string, unknown>);
     await this.pastikanRuteProsesWajar(entity, parsed.data as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, parsed.data as Record<string, unknown>);
     await this.pastikanProductionVersion(entity, parsed.data as Record<string, unknown>);
@@ -524,6 +578,7 @@ export class MasterService {
     const table = this.table(entity);
     const barisLama = await this.findOne(entity, id);
     await this.pastikanSatuPabrik(entity, values, barisLama as Record<string, unknown>);
+    await this.pastikanAnggotaTooling(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanRuteProsesWajar(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanProductionVersion(entity, values, barisLama as Record<string, unknown>);

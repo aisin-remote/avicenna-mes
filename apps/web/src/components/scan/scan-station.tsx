@@ -16,17 +16,25 @@ import {
   PackageCheck,
   X,
   CircleDot,
+  Boxes,
+  LockKeyhole,
 } from 'lucide-react';
 import type {
   BerhentiLini,
   KanbanOwner,
+  MoldScanBoard,
   SampleCheck,
   StationResult,
   StationSummary,
   ProcessType,
 } from '@avicenna/contracts';
 import { sepertiKanban, sepertiKartuLogin, sepertiNomorPartPolos } from '@avicenna/domain';
-import { periksaSampleAction, periksaScanAction, submitScanAction } from '@/app/(app)/scan/actions';
+import {
+  periksaSampleAction,
+  periksaScanAction,
+  submitMoldScanAction,
+  submitScanAction,
+} from '@/app/(app)/scan/actions';
 import { PanelBerhenti } from './panel-berhenti';
 import { PanelFotoPart } from './panel-foto-part';
 import { urlFotoPart } from '@/lib/foto-part';
@@ -93,7 +101,13 @@ const LABEL_PEMILIK: Record<KanbanOwner, string> = {
  *    bersama tiap kanban, dan server mencocokkan keduanya — sample yang salah
  *    ditolak di kartu pertama, bukan ketahuan di akhir shift.
  */
-export function ScanStation({ summary }: { summary: StationSummary }) {
+export function ScanStation({
+  summary,
+  initialMold = null,
+}: {
+  summary: StationSummary;
+  initialMold?: MoldScanBoard | null;
+}) {
   /*
    * OK dan NG dalam SATU layar, bukan dua halaman.
    *
@@ -111,6 +125,9 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
   const [recent, setRecent] = useState<Row[]>(summary.recent.slice(0, MAX_RECENT));
 
   const perKanban = summary.line.scanMode === 'KANBAN_BOX';
+  const moldMode = summary.line.scanMode === 'KANBAN_MOLD';
+  const perBox = perKanban || moldMode;
+  const [moldBoard, setMoldBoard] = useState<MoldScanBoard | null>(initialMold);
   /*
    * Master sample yang sedang berlaku — hanya di lini per-kanban.
    *
@@ -258,8 +275,18 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
      * part berpemisah tidak ikut tersaring ke sini, karena tersaring berarti
      * operator dikeluarkan di tengah shift oleh barcode barang biasa.
      */
+    if (moldMode && moldBoard?.status === 'LOCKED') {
+      await submitMold(value);
+      return;
+    }
+
     if (sepertiKartuLogin(value)) {
       void keluar();
+      return;
+    }
+
+    if (moldMode) {
+      await submitMold(value);
       return;
     }
 
@@ -569,6 +596,66 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
   }
 
   /**
+   * Scan mold selalu dikirim sebagai satu kejadian: server yang memutuskan
+   * apakah isinya tag mold, kanban anggota, atau NPK pembuka interlock.
+   * Progres tidak disimpan di browser agar reload tidak dapat menghapus lock.
+   */
+  async function submitMold(value: string) {
+    setBusy(true);
+    bersihkanStatus();
+    seq.current += 1;
+
+    const board = await submitMoldScanAction({
+      lineCode: summary.line.code,
+      code: value,
+      clientRef: `${summary.line.code}-mold-${Date.now()}-${seq.current}`,
+    });
+
+    setCode('');
+    setBusy(false);
+    focusInput();
+
+    if ('error' in board) {
+      setError(board.error);
+      sound.reject();
+      return;
+    }
+
+    setMoldBoard(board);
+    setResult(board.lastResult);
+    if (board.lastResult) {
+      setCounter(board.lastResult.counterToday);
+      setPcs(board.lastResult.pcsToday);
+    }
+
+    if (board.status === 'LOCKED' || board.message.status === 'ERROR') {
+      sound.reject();
+      return;
+    }
+
+    sound.ok();
+    if (board.lastResult?.status === 'ACCEPTED') {
+      const accepted = board.lastResult;
+      setBerhenti(null);
+      setRecent((prev) =>
+        [
+          {
+            id: Date.now(),
+            kind: 'PRODUCTION',
+            rawCode: accepted.rawCode,
+            serialNumber: accepted.serialNumber,
+            qty: accepted.qty,
+            scannedAt: accepted.scannedAt,
+            partNumber: accepted.partNumber,
+            partName: accepted.partName,
+          },
+          ...prev,
+        ].slice(0, MAX_RECENT),
+      );
+    }
+  }
+
+  /**
    * Mengakhiri sesi karena ada yang men-scan kartu login.
    *
    * Kartunya sendiri TIDAK dikirim ke mana pun — yang dilakukan hanya keluar.
@@ -592,15 +679,21 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
   }
 
   const tone =
-    sampleBaru || ditahanBaru || boxSelesai
-      ? 'ok'
-      : !result
-        ? 'idle'
-        : result.status === 'ACCEPTED'
-          ? 'ok'
-          : result.status === 'DUPLICATE'
-            ? 'dup'
-            : 'bad';
+    moldMode && moldBoard?.status === 'LOCKED'
+      ? 'bad'
+      : moldMode && moldBoard?.message.status === 'SUCCESS'
+        ? 'ok'
+        : moldMode && moldBoard?.message.status === 'ERROR'
+          ? 'bad'
+          : sampleBaru || ditahanBaru || boxSelesai
+            ? 'ok'
+            : !result
+              ? 'idle'
+              : result.status === 'ACCEPTED'
+                ? 'ok'
+                : result.status === 'DUPLICATE'
+                  ? 'dup'
+                  : 'bad';
 
   /*
    * Cangkang layar stasiun: kolom berhenti di kiri, sisanya di kanan.
@@ -697,15 +790,21 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
           */}
           <header className="flex items-center justify-between gap-3">
             <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-              {perKanban
-                ? sample
-                  ? 'Scan Kanban'
-                  : 'Scan Master Sample'
-                : fg
-                  ? isiBox !== null && ditahan.length >= isiBox
+              {moldMode
+                ? moldBoard?.status === 'LOCKED'
+                  ? 'Scan NPK Atasan'
+                  : moldBoard?.mold
+                    ? 'Scan Kanban Anggota'
+                    : 'Scan Tag Mold'
+                : perKanban
+                  ? sample
                     ? 'Scan Kanban'
-                    : 'Scan Part'
-                  : 'Scan Part'}
+                    : 'Scan Master Sample'
+                  : fg
+                    ? isiBox !== null && ditahan.length >= isiBox
+                      ? 'Scan Kanban'
+                      : 'Scan Part'
+                    : 'Scan Part'}
             </h2>
             <button
               type="button"
@@ -724,15 +823,21 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
             </button>
           </header>
           <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-            {perKanban
-              ? sample
-                ? 'Satu scan kanban = satu box. Ganti part? Scan master sample yang baru.'
-                : 'Scan master sample yang tertempel di lini dulu. Kanban baru bisa discan sesudahnya.'
-              : fg
-                ? isiBox !== null && ditahan.length >= isiBox
-                  ? 'Box penuh. Scan kanban internal atau kanban customer untuk menutupnya.'
-                  : 'Scan part satu per satu sampai box penuh, lalu scan kanban.'
-                : 'Arahkan barcode ke scanner. Hasilnya muncul besar di sebelah kanan.'}
+            {moldMode
+              ? moldBoard?.status === 'LOCKED'
+                ? 'Line terkunci. Scan NPK JP/Leader pada kotak yang sama untuk melanjutkan.'
+                : moldBoard?.mold
+                  ? 'Satu kanban untuk setiap anggota. Anggota yang sama tidak boleh diulang sebelum set lengkap.'
+                  : 'Scan tag mold terdaftar. Sistem akan memuat seluruh part anggotanya.'
+              : perKanban
+                ? sample
+                  ? 'Satu scan kanban = satu box. Ganti part? Scan master sample yang baru.'
+                  : 'Scan master sample yang tertempel di lini dulu. Kanban baru bisa discan sesudahnya.'
+                : fg
+                  ? isiBox !== null && ditahan.length >= isiBox
+                    ? 'Box penuh. Scan kanban internal atau kanban customer untuk menutupnya.'
+                    : 'Scan part satu per satu sampai box penuh, lalu scan kanban.'
+                  : 'Arahkan barcode ke scanner. Hasilnya muncul besar di sebelah kanan.'}
           </p>
           {perKanban && sample ? (
             <div className="mt-3 flex items-start gap-3 rounded-2xl border border-ok/30 bg-ok/8 px-4 py-3">
@@ -773,12 +878,31 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
               </button>
             </div>
           ) : null}
+          {moldMode && moldBoard?.mold ? (
+            <div className="mt-3 flex items-center gap-3 rounded-2xl border border-ok/30 bg-ok/8 px-4 py-3">
+              <Boxes className="size-5 shrink-0 text-ok" strokeWidth={1.8} aria-hidden />
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                  Mold aktif · Putaran {moldBoard.cycleNo}
+                </div>
+                <div className="tabular truncate text-[16px] font-bold">
+                  {moldBoard.mold.code} — {moldBoard.mold.name}
+                </div>
+                <div className="tabular text-[12px] text-ink-muted">
+                  {moldBoard.members.filter((m) => m.scanned).length}/{moldBoard.members.length}{' '}
+                  anggota
+                </div>
+              </div>
+            </div>
+          ) : null}
           {/* Disebutkan di layar, bukan disimpan sebagai pengetahuan orang
               dalam: operator berikutnya harus tahu kartunya discan ke kotak
               yang sama, bukan lewat tombol keluar. */}
-          <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-            Ganti shift? Scan kartu login di kotak ini untuk keluar.
-          </p>
+          {moldBoard?.status !== 'LOCKED' ? (
+            <p className="mt-1 text-[12px] leading-snug text-ink-muted">
+              Ganti shift? Scan kartu login di kotak ini untuk keluar.
+            </p>
+          ) : null}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -794,24 +918,36 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
               autoCapitalize="off"
               spellCheck={false}
               aria-label={
-                perKanban
-                  ? sample
-                    ? 'Barcode kanban'
-                    : 'Master sample'
-                  : fg
-                    ? 'Barcode part atau kanban'
-                    : 'Barcode part'
+                moldMode
+                  ? moldBoard?.status === 'LOCKED'
+                    ? 'NPK JP atau Leader'
+                    : moldBoard?.mold
+                      ? 'Barcode kanban anggota mold'
+                      : 'Tag mold'
+                  : perKanban
+                    ? sample
+                      ? 'Barcode kanban'
+                      : 'Master sample'
+                    : fg
+                      ? 'Barcode part atau kanban'
+                      : 'Barcode part'
               }
               placeholder={
-                perKanban
-                  ? sample
-                    ? 'Scan kanban'
-                    : 'Scan master sample dulu'
-                  : fg
-                    ? isiBox !== null && ditahan.length >= isiBox
+                moldMode
+                  ? moldBoard?.status === 'LOCKED'
+                    ? 'Scan NPK atasan'
+                    : moldBoard?.mold
+                      ? 'Scan kanban anggota'
+                      : 'Scan tag mold'
+                  : perKanban
+                    ? sample
                       ? 'Scan kanban'
-                      : 'Scan part'
-                    : 'Fokus di sini lalu scan'
+                      : 'Scan master sample dulu'
+                    : fg
+                      ? isiBox !== null && ditahan.length >= isiBox
+                        ? 'Scan kanban'
+                        : 'Scan part'
+                      : 'Fokus di sini lalu scan'
               }
               className="tabular h-12 w-full rounded-2xl border-2 border-line bg-surface px-4 text-[16px] font-semibold outline-none transition-colors duration-200 placeholder:text-[14px] placeholder:font-normal placeholder:text-ink-muted focus:border-ink focus:bg-card"
             />
@@ -855,6 +991,69 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
                     GAGAL KIRIM
                   </div>
                   <p className="max-w-md text-[15px] text-ink-soft">{error}</p>
+                </>
+              ) : moldMode && moldBoard?.status === 'LOCKED' ? (
+                <>
+                  <LockKeyhole className="size-12 text-ng" strokeWidth={1.6} aria-hidden />
+                  <div className="text-[32px] font-extrabold leading-none tracking-tight text-ng">
+                    LINE TERKUNCI
+                  </div>
+                  <p className="max-w-xl text-[15px] font-semibold text-ink-soft">
+                    {moldBoard.message.text}
+                  </p>
+                </>
+              ) : moldMode && moldBoard?.completedCycle ? (
+                <>
+                  <PackageCheck className="size-12 text-ok" strokeWidth={1.6} aria-hidden />
+                  <div className="text-[32px] font-extrabold leading-none tracking-tight text-ok">
+                    SET LENGKAP
+                  </div>
+                  <div className="tabular text-[22px] font-extrabold leading-none">
+                    Putaran {moldBoard.completedCycle.cycleNo} ·{' '}
+                    {moldBoard.completedCycle.members.length} anggota
+                  </div>
+                  <p className="max-w-xl text-[15px] text-ink-soft">{moldBoard.message.text}</p>
+                </>
+              ) : moldMode && moldBoard?.status === 'WAITING_MOLD' ? (
+                <>
+                  <Boxes className="size-12 text-ink-muted" strokeWidth={1.5} aria-hidden />
+                  <div className="text-[28px] font-extrabold leading-tight text-ink-muted">
+                    SCAN TAG MOLD
+                  </div>
+                  <p className="max-w-md text-[15px] text-ink-muted">{moldBoard.message.text}</p>
+                </>
+              ) : moldMode && moldBoard ? (
+                <>
+                  {moldBoard.message.status === 'ERROR' ? (
+                    <XCircle className="size-12 text-ng" strokeWidth={1.6} aria-hidden />
+                  ) : moldBoard.message.status === 'SUCCESS' ? (
+                    <CheckCircle2 className="size-12 text-ok" strokeWidth={1.6} aria-hidden />
+                  ) : (
+                    <Boxes className="size-12 text-ink-muted" strokeWidth={1.5} aria-hidden />
+                  )}
+                  <div
+                    className={cn(
+                      'text-[30px] font-extrabold leading-none tracking-tight',
+                      moldBoard.message.status === 'ERROR'
+                        ? 'text-ng'
+                        : moldBoard.message.status === 'SUCCESS'
+                          ? 'text-ok'
+                          : 'text-ink-muted',
+                    )}
+                  >
+                    {moldBoard.message.status === 'ERROR'
+                      ? 'DITOLAK'
+                      : moldBoard.lastResult?.status === 'ACCEPTED'
+                        ? 'KANBAN OK'
+                        : moldBoard.message.status === 'SUCCESS'
+                          ? 'MOLD AKTIF'
+                          : 'SCAN KANBAN'}
+                  </div>
+                  <div className="tabular text-[20px] font-bold">
+                    {moldBoard.members.filter((m) => m.scanned).length}/{moldBoard.members.length}{' '}
+                    anggota
+                  </div>
+                  <p className="max-w-xl text-[15px] text-ink-soft">{moldBoard.message.text}</p>
                 </>
               ) : boxSelesai ? (
                 <>
@@ -987,22 +1186,22 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
         {/* ── Penghitung ────────────────────────────────────────────────── */}
         <section className="flex flex-col justify-center rounded-card border border-line bg-card p-5 text-center">
           <div className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-            {perKanban ? 'Total pcs hari ini' : 'Total OK hari ini'}
+            {perBox ? 'Total pcs hari ini' : 'Total OK hari ini'}
           </div>
           <motion.div
-            key={perKanban ? pcs : counter}
+            key={perBox ? pcs : counter}
             initial={{ scale: 1.18 }}
             animate={{ scale: 1 }}
             transition={{ duration: durations.slow, ease: easeSoft }}
             className={cn(
               'tabular mt-2 font-extrabold leading-none tracking-tight',
-              perKanban ? 'text-[44px]' : 'text-[56px]',
+              perBox ? 'text-[44px]' : 'text-[56px]',
             )}
           >
-            {perKanban ? pcs : counter}
+            {perBox ? pcs : counter}
           </motion.div>
           <div className="tabular mt-2 text-[13px] text-ink-muted">
-            {perKanban ? `${counter} kanban · ` : ''}Line {summary.line.code}
+            {perBox ? `${counter} kanban · ` : ''}Line {summary.line.code}
           </div>
         </section>
       </div>
@@ -1020,6 +1219,70 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
           Slotnya selalu ada, juga saat sample atau fotonya belum ada, supaya
           kekosongannya terlihat sebagai sesuatu yang harus dibereskan. */}
         {perKanban ? <PanelFotoPart sample={sample} className="min-h-0 flex-1" /> : null}
+
+        {moldMode && moldBoard ? (
+          <section className="scroll-slim min-h-0 flex-1 overflow-y-auto rounded-card border border-line bg-card p-5">
+            <header className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
+                  Anggota mold
+                </h2>
+                <p className="mt-1 text-[14px] font-bold">
+                  {moldBoard.mold
+                    ? `${moldBoard.mold.code} — ${moldBoard.mold.name}`
+                    : 'Belum ada mold aktif'}
+                </p>
+              </div>
+              <span className="tabular rounded-full border border-line px-3 py-1 text-[12px] font-bold">
+                Putaran {moldBoard.completedCycle?.cycleNo ?? moldBoard.cycleNo}
+              </span>
+            </header>
+            {moldBoard.members.length === 0 && !moldBoard.completedCycle ? (
+              <div className="mt-5 rounded-2xl border border-dashed border-line p-8 text-center text-[14px] text-ink-muted">
+                Scan tag mold untuk memuat daftar part anggota.
+              </div>
+            ) : (
+              <ul className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {(moldBoard.completedCycle?.members ?? moldBoard.members).map((member, index) => (
+                  <li
+                    key={member.partId}
+                    className={cn(
+                      'flex min-h-[86px] items-center gap-3 rounded-2xl border px-4 py-3',
+                      member.scanned
+                        ? 'border-ok/30 bg-ok/8'
+                        : 'border-dashed border-line bg-surface',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'grid size-8 shrink-0 place-items-center rounded-full text-[12px] font-extrabold',
+                        member.scanned ? 'bg-ok text-white' : 'bg-card text-ink-muted',
+                      )}
+                    >
+                      {member.scanned ? '✓' : index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="tabular truncate text-[15px] font-bold">
+                        {member.partNumber}
+                      </div>
+                      <div className="truncate text-[12px] text-ink-muted">
+                        {member.backNumber ? `${member.backNumber} · ` : ''}
+                        {member.partName}
+                      </div>
+                      {member.scanned ? (
+                        <div className="tabular mt-1 text-[12px] font-semibold text-ok">
+                          Kanban {member.kanbanSerial ?? '—'} · {member.qty ?? 0} pcs
+                        </div>
+                      ) : (
+                        <div className="mt-1 text-[12px] text-ink-muted">Belum discan</div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : null}
 
         {/* ── Lini FG: isi box (kiri) dan detail loading list (kanan) ──────
           Susunannya mengikuti layar D98E lama: PART SCANNED di kiri, LOADING
@@ -1156,12 +1419,12 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
         <section
           className={cn(
             'flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-card',
-            perKanban || fg ? 'lg:w-[360px] lg:shrink-0' : 'flex-1',
+            perBox || fg ? 'lg:w-[360px] lg:shrink-0' : 'flex-1',
           )}
         >
           <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4">
             <h2 className="text-[15px] font-bold">
-              {perKanban ? 'Kanban terakhir' : 'Scan terakhir'}
+              {perBox ? 'Kanban terakhir' : 'Scan terakhir'}
             </h2>
             <span className="text-[13px] text-ink-muted">{recent.length} terbaru</span>
           </header>
@@ -1197,7 +1460,7 @@ export function ScanStation({ summary }: { summary: StationSummary }) {
                         })}
                       </span>
                       <span className="tabular min-w-0 flex-1 truncate font-semibold">
-                        {perKanban ? `Kanban ${r.serialNumber ?? '—'} · ${r.rawCode}` : r.rawCode}
+                        {perBox ? `Kanban ${r.serialNumber ?? '—'} · ${r.rawCode}` : r.rawCode}
                       </span>
                       <span className="hidden min-w-0 flex-1 truncate text-ink-soft sm:block">
                         {r.partName ?? '—'}

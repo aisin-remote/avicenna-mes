@@ -122,8 +122,8 @@ const SYARAT: Record<ScanMode, SyaratScan> = {
   /*
    * Injection: tag mold dulu, lalu kanban milik ANGGOTA mold itu, dihitung per
    * siklus. Syaratnya sama dengan KANBAN_BOX, tetapi butuh langkah tag mold
-   * dan pemeriksaan keanggotaan yang belum ada — jadi ditandai belum tersedia
-   * supaya tidak diam-diam menerima kanban part mana pun.
+   * dan pemeriksaan keanggotaan. Alurnya ditangani stasiun mold khusus; tiap
+   * kanban tetap dicatat melalui jalur produksi yang sama dengan KANBAN_BOX.
    */
   KANBAN_MOLD: {
     kanbanWajib: true,
@@ -132,7 +132,7 @@ const SYARAT: Record<ScanMode, SyaratScan> = {
     qtyDariKartu: true,
     tolakKartuTerproduksi: true,
     pindahKartu: false,
-    belumTersedia: true,
+    belumTersedia: false,
   },
   /*
    * Assembling BODY: papan dandori dulu, baru master sample, baru kanban.

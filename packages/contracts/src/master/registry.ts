@@ -22,6 +22,7 @@ export const MASTER_ENTITIES = [
   'suppliers',
   'machines',
   'toolings',
+  'tooling-parts',
   'locations',
   'ng-masters',
   'part-pairings',
@@ -329,8 +330,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         options: PART_TYPES,
         required: true,
         inList: true,
-        hint:
-          'Posisi part di rantai pasok. Raw material tidak punya pasangan; barang jadi tidak dibeli.',
+        hint: 'Posisi part di rantai pasok. Raw material tidak punya pasangan; barang jadi tidak dibeli.',
       },
       {
         name: 'sourceType',
@@ -527,6 +527,36 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         inList: true,
       },
       activeField,
+    ],
+  },
+
+  'tooling-parts': {
+    key: 'tooling-parts',
+    label: 'Anggota Tooling',
+    singular: 'Anggota Tooling',
+    icon: 'Boxes',
+    description:
+      'Part anggota mold, dies, atau jig; mode mold memakai daftar ini sebagai satu set scan',
+    searchFields: [],
+    defaultSort: 'id',
+    fields: [
+      plantRef,
+      {
+        name: 'toolingId',
+        label: 'Tooling',
+        kind: 'reference',
+        refEntity: 'toolings',
+        required: true,
+        inList: true,
+      },
+      {
+        name: 'partId',
+        label: 'Part Anggota',
+        kind: 'reference',
+        refEntity: 'parts',
+        required: true,
+        inList: true,
+      },
     ],
   },
 

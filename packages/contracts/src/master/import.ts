@@ -48,6 +48,9 @@ export const KUNCI_ALAMI: Record<MasterEntity, KunciAlami> = {
   locations: { kolom: 'code', perPabrik: true },
   machines: { kolom: 'code', perPabrik: true },
   toolings: { kolom: 'code', perPabrik: true },
+  // Identitas sebenarnya tooling + part; kolom referensi membuat pemeriksaan
+  // kode tunggal dilewati dan UNIQUE database menjaga pasangan lengkapnya.
+  'tooling-parts': { kolom: 'toolingId', perPabrik: false },
   'ng-masters': { kolom: 'code', perPabrik: true },
   // Kosakata seluruh sistem, bukan milik satu pabrik.
   'process-types': { kolom: 'code', perPabrik: false },

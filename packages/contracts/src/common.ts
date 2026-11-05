@@ -239,7 +239,7 @@ export const NAMA_COOKIE_SESI = 'avicenna_token';
  *
  *   KANBAN_MOLD        tag mold dulu, lalu kanban milik ANGGOTA mold itu,
  *                      dihitung per siklus (injection, mold keluarga).
- *                      BELUM ADA ALURNYA.
+ *                      Anggota yang sama sebelum set lengkap mengunci line.
  *
  *   KANBAN_BOX_DANDORI papan dandori dulu, lalu master sample, lalu kanban
  *                      per box (assembling BODY). BELUM ADA ALURNYA.
@@ -286,7 +286,7 @@ export const SCAN_MODE_LABELS: Record<ScanMode, string> = {
   KANBAN_BOX: 'Kanban per box (master sample dulu)',
   PART_TANPA_KANBAN: 'Part saja, hasil jadi tanpa kartu',
   PART_PINDAH_KARTU: 'Part pindah kartu (belum tersedia)',
-  KANBAN_MOLD: 'Tag mold lalu kanban anggota (belum tersedia)',
+  KANBAN_MOLD: 'Mold lalu kanban seluruh anggota',
   KANBAN_BOX_DANDORI: 'Papan dandori, sample, lalu kanban (belum tersedia)',
 };
 

@@ -98,13 +98,19 @@ describe('syarat scan diturunkan dari metode, bukan dari jenis proses', () => {
      * disetel PART_SAJA memang tidak memakai kartu.
      */
     for (const p of KATALOG_UJI.kode) {
-      expect(syaratScan(KATALOG_UJI, 'PART_SAJA', p)).toEqual(syaratScan(KATALOG_UJI, 'PART_SAJA', 'CASTING_WIP'));
-      expect(syaratScan(KATALOG_UJI, 'KANBAN_BOX', p)).toEqual(syaratScan(KATALOG_UJI, 'KANBAN_BOX', 'MELTING'));
+      expect(syaratScan(KATALOG_UJI, 'PART_SAJA', p)).toEqual(
+        syaratScan(KATALOG_UJI, 'PART_SAJA', 'CASTING_WIP'),
+      );
+      expect(syaratScan(KATALOG_UJI, 'KANBAN_BOX', p)).toEqual(
+        syaratScan(KATALOG_UJI, 'KANBAN_BOX', 'MELTING'),
+      );
     }
   });
 
   it('PART_TANPA_KANBAN bersyarat sama dengan PART_SAJA — yang beda artinya di hilir', () => {
-    expect(syaratScan(KATALOG_UJI, 'PART_TANPA_KANBAN')).toEqual(syaratScan(KATALOG_UJI, 'PART_SAJA'));
+    expect(syaratScan(KATALOG_UJI, 'PART_TANPA_KANBAN')).toEqual(
+      syaratScan(KATALOG_UJI, 'PART_SAJA'),
+    );
   });
 
   it('PART_PINDAH_KARTU ditandai belum tersedia supaya scan-nya ditolak', () => {
@@ -137,14 +143,22 @@ describe('metode yang berlaku di sebuah lini', () => {
      * pasti memakai cara yang tidak cocok.
      */
     expect(
-      modeScanBerlaku(KATALOG_UJI, { modeLini: 'KANBAN_MOLD', modeProses: 'KANBAN_BOX', proses: 'INJECTION_WIP' }),
+      modeScanBerlaku(KATALOG_UJI, {
+        modeLini: 'KANBAN_MOLD',
+        modeProses: 'KANBAN_BOX',
+        proses: 'INJECTION_WIP',
+      }),
     ).toBe('KANBAN_MOLD');
   });
 
   it('tanpa penimpa, ikut master proses', () => {
-    expect(modeScanBerlaku(KATALOG_UJI, { modeLini: null, modeProses: 'KANBAN_BOX', proses: 'INJECTION_WIP' })).toBe(
-      'KANBAN_BOX',
-    );
+    expect(
+      modeScanBerlaku(KATALOG_UJI, {
+        modeLini: null,
+        modeProses: 'KANBAN_BOX',
+        proses: 'INJECTION_WIP',
+      }),
+    ).toBe('KANBAN_BOX');
   });
 
   it('tanpa keduanya, jatuh ke bawaan jenis prosesnya', () => {
@@ -153,14 +167,18 @@ describe('metode yang berlaku di sebuah lini', () => {
   });
 
   it('nilai lama di salah satu tingkat tetap diterjemahkan', () => {
-    expect(modeScanBerlaku(KATALOG_UJI, { modeLini: 'PER_KANBAN', proses: 'INJECTION_WIP' })).toBe('KANBAN_BOX');
-    expect(modeScanBerlaku(KATALOG_UJI, { modeProses: 'PER_PIECE', proses: 'MACHINING_FG' })).toBe('PART_KANBAN');
+    expect(modeScanBerlaku(KATALOG_UJI, { modeLini: 'PER_KANBAN', proses: 'INJECTION_WIP' })).toBe(
+      'KANBAN_BOX',
+    );
+    expect(modeScanBerlaku(KATALOG_UJI, { modeProses: 'PER_PIECE', proses: 'MACHINING_FG' })).toBe(
+      'PART_KANBAN',
+    );
   });
 
-  it('metode mold dan dandori dihitung per box, dan ditandai belum tersedia', () => {
+  it('metode mold dihitung per box dan tersedia; dandori masih ditahan', () => {
     expect(scanPerBox('KANBAN_MOLD')).toBe(true);
     expect(scanPerBox('KANBAN_BOX_DANDORI')).toBe(true);
-    expect(syaratScan(KATALOG_UJI, 'KANBAN_MOLD').belumTersedia).toBe(true);
+    expect(syaratScan(KATALOG_UJI, 'KANBAN_MOLD').belumTersedia).toBe(false);
     expect(syaratScan(KATALOG_UJI, 'KANBAN_BOX_DANDORI').belumTersedia).toBe(true);
     expect(duplikatDariBarcode(KATALOG_UJI, 'KANBAN_MOLD')).toBe(false);
   });

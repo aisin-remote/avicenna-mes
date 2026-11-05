@@ -2,6 +2,7 @@
 
 import type {
   BerhentiLini,
+  MoldScanBoard,
   PapanStasiun,
   SampleCheck,
   StationResult,
@@ -43,6 +44,23 @@ export async function submitScanAction(input: {
   }
 }
 
+/** Tag mold, kanban anggota, dan NPK pembuka interlock memakai satu input scanner. */
+export async function submitMoldScanAction(input: {
+  lineCode: string;
+  code: string;
+  clientRef: string;
+}): Promise<MoldScanBoard | { error: string }> {
+  try {
+    return await apiFetch<MoldScanBoard>('/scan/mold', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  } catch (err) {
+    if (err instanceof ApiRequestError) return { error: err.message };
+    return { error: 'Tidak bisa menghubungi server. Periksa jaringan.' };
+  }
+}
+
 /**
  * Memeriksa satu scan tanpa menulis — bentuk jawabannya sama dengan submit.
  *
@@ -57,7 +75,11 @@ export async function periksaScanAction(input: {
   try {
     return await apiFetch<StationResult>('/scan/station/periksa', {
       method: 'POST',
-      body: JSON.stringify({ kind: 'PRODUCTION', rawCode: input.rawCode, lineCode: input.lineCode }),
+      body: JSON.stringify({
+        kind: 'PRODUCTION',
+        rawCode: input.rawCode,
+        lineCode: input.lineCode,
+      }),
     });
   } catch (err) {
     if (err instanceof ApiRequestError) return { error: err.message };
@@ -130,9 +152,7 @@ export async function selesaiBerhentiAction(
  * supaya angka ACTUAL bergerak walau operator tidak menyentuh apa pun — scan
  * bisa datang dari device lain di lini yang sama.
  */
-export async function muatPapanAction(
-  lineCode: string,
-): Promise<PapanStasiun | { error: string }> {
+export async function muatPapanAction(lineCode: string): Promise<PapanStasiun | { error: string }> {
   try {
     return await apiFetch<PapanStasiun>(`/scan/papan?line=${encodeURIComponent(lineCode)}`);
   } catch (err) {

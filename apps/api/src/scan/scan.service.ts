@@ -1354,9 +1354,7 @@ export class ScanService {
         .select()
         .from(parts)
         .where(
-          plantId
-            ? and(eq(bentukBaku, baku), eq(parts.plantId, plantId))
-            : eq(bentukBaku, baku),
+          plantId ? and(eq(bentukBaku, baku), eq(parts.plantId, plantId)) : eq(bentukBaku, baku),
         )
         .limit(1);
       // Nomor part disebut tetapi tidak ada dalam bentuk apa pun: berhenti.
@@ -1626,7 +1624,7 @@ export class ScanService {
    * Nilai lama diterjemahkan di sini, jadi pemanggil — termasuk layar operator
    * yang menerimanya lewat `summary` — tidak perlu tahu nilai lama pernah ada.
    */
-  private async modeScanLini(
+  async modeScanLini(
     plantId: number,
     processType: ScanInput['processType'] & {},
     modeLini?: ScanModeTersimpan | null,
