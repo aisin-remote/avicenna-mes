@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { and, asc, eq, gte, inArray, lte, sql, type Database } from '@avicenna/db';
-import { kanbans, lines, parts, plants } from '@avicenna/db';
-import { kodeKetikKanban, seriKanban, susunKodeKartuKanban } from '@avicenna/domain';
+import { kanbans, lines, locations, parts, plants, routeProcesses } from '@avicenna/db';
+import { kodeKetikKanban, seriKanban, susunKanbanAigsys } from '@avicenna/domain';
 import {
   KARTU_PER_LEMBAR,
   type CetakKanbanInput,
@@ -27,6 +27,11 @@ import type { Principal } from '../auth/auth.types';
  * kartu yang sudah tercetak dan beredar di lantai tetap menyatakan angka yang
  * BENAR-BENAR tercetak di atasnya — sedangkan membacanya ulang membuat layar
  * dan kartu fisik berbeda isi tanpa ada yang menyadari.
+ *
+ * Kode line (work center SAP) dan SLOC tujuan sebaliknya DIBACA dari master
+ * saat dicetak. Keduanya ikut tercetak di QR format AIGSYS, tetapi tidak ada
+ * pembaca — di sini maupun di sistem lama — yang memutuskan apa pun darinya;
+ * kartu yang dicetak ulang setelah line dipindah cukup membawa yang terbaru.
  */
 @Injectable()
 export class KanbanCetakService {
@@ -46,6 +51,7 @@ export class KanbanCetakService {
         plantCode: plants.code,
         lineName: lines.name,
         lineCode: lines.code,
+        lineWorkCenter: lines.sapWorkCenter,
       })
       .from(parts)
       .leftJoin(plants, eq(plants.id, parts.plantId))
@@ -54,6 +60,52 @@ export class KanbanCetakService {
       .limit(1);
     if (!row) throw new NotFoundException(`Part ${partId} tidak ada`);
     return row;
+  }
+
+  /**
+   * SLOC tujuan hasil lini part ini — kode SLOC-nya, mis. `SE1C`.
+   *
+   * Urutannya sama dengan yang dipakai scan produksi dan NG: SLOC transfer
+   * master Rute Proses, lalu SLOC keluar master Rute Proses, lalu SLOC keluar
+   * milik lini. Kalau kartu menyebut SLOC lain dari tempat barangnya benar-benar
+   * dicatat masuk, orang di lantai akan membawa box ke tempat yang salah.
+   */
+  private async slocTujuan(partId: number): Promise<string | null> {
+    const [line] = await this.db
+      .select({
+        plantId: lines.plantId,
+        processType: lines.processType,
+        outputLocationId: lines.outputLocationId,
+      })
+      .from(parts)
+      .innerJoin(lines, eq(lines.id, parts.lineId))
+      .where(eq(parts.id, partId))
+      .limit(1);
+    if (!line) return null;
+
+    const [rute] = await this.db
+      .select({
+        outputLocationId: routeProcesses.outputLocationId,
+        transferLocationId: routeProcesses.transferLocationId,
+      })
+      .from(routeProcesses)
+      .where(
+        and(
+          eq(routeProcesses.plantId, line.plantId),
+          eq(routeProcesses.processType, line.processType),
+          eq(routeProcesses.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    const lokasiId = rute?.transferLocationId ?? rute?.outputLocationId ?? line.outputLocationId;
+    if (!lokasiId) return null;
+    const [lokasi] = await this.db
+      .select({ code: locations.code })
+      .from(locations)
+      .where(eq(locations.id, lokasiId))
+      .limit(1);
+    return lokasi?.code ?? null;
   }
 
   /** Seri dalam rentang yang barisnya sudah ada. */
@@ -80,6 +132,7 @@ export class KanbanCetakService {
 
   async pratinjau(input: CetakKanbanInput): Promise<PratinjauCetakKanban> {
     const part = await this.part(input.partId);
+    const slocTujuan = await this.slocTujuan(part.id);
     const total = input.sampai - input.dari + 1;
     const ada = await this.seriAda(part.id, input.dari, input.sampai);
 
@@ -92,10 +145,10 @@ export class KanbanCetakService {
     const peringatan: string[] = [];
 
     /*
-     * Back number WAJIB. Barcode kartu berbentuk BACKNUMBER|SERIAL, dan seri
+     * Back number WAJIB. Kartu dicari dengan back number + seri, dan seri
      * tidak unik antar part — kartu tanpa back number akan menemukan part lain
      * yang kebetulan punya seri yang sama saat discan. Lihat catatan di
-     * `susunKodeKartuKanban`.
+     * `susunKanbanAigsys`.
      */
     if (!part.backNumber?.trim()) {
       penghalang.push(
@@ -124,12 +177,55 @@ export class KanbanCetakService {
       );
     }
 
+    /*
+     * Line, work center, dan SLOC tujuan MENGHALANGI: ketiganya kolom di QR
+     * format AIGSYS, dan pembaca berspasi menghitung KOLOM — satu kolom kosong
+     * menggeser back number dan seri, dan kartunya terbaca sebagai kartu lain.
+     */
     if (!part.lineName) {
-      peringatan.push('Part ini belum ditautkan ke line, jadi kolom line di kartu dicetak kosong.');
+      penghalang.push(
+        `${part.partNumber} belum ditautkan ke line. Kode line dan SLOC tujuan tercetak di QR ` +
+          'kartu — isi dulu line-nya di Master Data › Part.',
+      );
+    } else {
+      if (!part.lineWorkCenter?.trim()) {
+        penghalang.push(
+          `Line ${part.lineName} belum punya work center SAP. Kode itu tercetak di QR kartu ` +
+            'sebagai kode line (mis. JEAS0547) — isi dulu di Master Data › Line.',
+        );
+      }
+      if (!slocTujuan) {
+        penghalang.push(
+          `Line ${part.lineName} belum punya SLOC tujuan. SLOC itu tercetak di QR kartu — isi ` +
+            'SLOC keluar di Master Data › Line atau Rute Proses.',
+        );
+      }
+    }
+
+    /*
+     * Yang lengkap belum tentu MUAT: back number lima karakter atau SLOC yang
+     * kepanjangan akan menggeser kolom sesudahnya. Pemeriksaannya dipinjam dari
+     * penyusunnya sendiri, dengan seri terbesar rentang ini, supaya yang lolos
+     * di sini pasti tersusun saat dicetak.
+     */
+    if (penghalang.length === 0) {
+      try {
+        susunKanbanAigsys({
+          workCenter: part.lineWorkCenter!,
+          partNumber: part.partNumber,
+          sloc: slocTujuan!,
+          backNumber: part.backNumber!,
+          serialNumber: seriKanban(input.sampai),
+          qtyPerBox: part.qtyPerBox!,
+        });
+      } catch (err) {
+        penghalang.push(`${(err as Error).message} — kolom ini tidak muat di QR kartu format lama.`);
+      }
     }
 
     return {
       part,
+      slocTujuan,
       dari: input.dari,
       sampai: input.sampai,
       total,
@@ -213,6 +309,17 @@ export class KanbanCetakService {
    */
   async daftarCetak(input: CetakKanbanInput): Promise<KartuKanbanCetak[]> {
     const part = await this.part(input.partId);
+    const slocTujuan = await this.slocTujuan(part.id);
+    /*
+     * Master bisa berubah di antara "Buat & cetak" dan halaman ini dimuat.
+     * Ditolak utuh, dengan sebab yang sama seperti di pratinjau, daripada
+     * mencetak kartu dengan kolom kosong.
+     */
+    if (!part.lineWorkCenter?.trim() || !slocTujuan) {
+      throw new NotFoundException(
+        `${part.partNumber}: work center SAP atau SLOC tujuan line-nya kosong — periksa di layar Cetak Kanban`,
+      );
+    }
     const rows = await this.db
       .select({
         kanbanId: kanbans.id,
@@ -238,6 +345,8 @@ export class KanbanCetakService {
       partName: part.partName,
       backNumber: part.backNumber,
       lineName: part.lineName,
+      lineWorkCenter: part.lineWorkCenter!,
+      slocTujuan,
       /* Dari KARTUNYA, bukan dari master part: itulah angka yang tercetak. */
       qtyPerBox: r.qtyPerBox,
       plantCode: part.plantCode,
@@ -249,8 +358,10 @@ export class KanbanCetakService {
        * tidak pemeriksaan qty di scan.service akan memperingatkan setiap kartu
        * yang baru keluar dari printer.
        */
-      kode: susunKodeKartuKanban({
+      kode: susunKanbanAigsys({
+        workCenter: part.lineWorkCenter!,
         partNumber: part.partNumber,
+        sloc: slocTujuan,
         backNumber: part.backNumber ?? '',
         serialNumber: r.serialNumber,
         qtyPerBox: r.qtyPerBox,
@@ -275,6 +386,7 @@ export class KanbanCetakService {
         plantCode: plants.code,
         lineName: lines.name,
         lineCode: lines.code,
+        lineWorkCenter: lines.sapWorkCenter,
         jumlahKartu: sql<number>`(
           select count(*) from ${kanbans} where ${kanbans.partId} = ${parts.id}
         )`,

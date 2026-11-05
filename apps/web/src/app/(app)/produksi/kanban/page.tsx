@@ -1,6 +1,11 @@
 import Form from 'next/form';
 import { TriangleAlert, Info, Layers } from 'lucide-react';
-import { KARTU_LEBAR_MM, KARTU_PER_CETAK_MAKS, KARTU_PER_LEMBAR } from '@avicenna/contracts';
+import {
+  KARTU_LEBAR_MM,
+  KARTU_PER_CETAK_MAKS,
+  KARTU_PER_LEMBAR,
+  SERI_KANBAN_MAKS,
+} from '@avicenna/contracts';
 import type { PratinjauCetakKanban } from '@avicenna/contracts';
 import { listPartKartu, pratinjauCetakKanban } from '@/lib/kanban-cetak-api';
 import { PageHeader } from '@/components/ui/page-header';
@@ -42,7 +47,8 @@ export default async function CetakKanbanPage({
     } catch {
       galat =
         'Rentangnya tidak bisa dihitung. Periksa seri awal dan akhir — ' +
-        `sekali cetak paling banyak ${KARTU_PER_CETAK_MAKS} kartu.`;
+        `sekali cetak paling banyak ${KARTU_PER_CETAK_MAKS} kartu, dan seri paling besar ` +
+        `${SERI_KANBAN_MAKS}.`;
     }
   }
 
@@ -59,7 +65,7 @@ export default async function CetakKanbanPage({
           icon={Layers}
           title="Pilih part dan rentang seri"
           subtitle={
-            `Kartu ${KARTU_LEBAR_MM / 10} × 7,4 cm — empat lajur mendatar per lembar A4 · ` +
+            `Kartu ${KARTU_LEBAR_MM / 10} × 7,4 cm — ${KARTU_PER_LEMBAR} kartu per lembar A4 · ` +
             `paling banyak ${KARTU_PER_CETAK_MAKS} kartu sekali cetak`
           }
         />
@@ -92,7 +98,7 @@ export default async function CetakKanbanPage({
               name="dari"
               type="number"
               min={1}
-              max={999999}
+              max={SERI_KANBAN_MAKS}
               required
               defaultValue={q.dari ?? '1'}
               className="tabular h-11 w-[120px] rounded-2xl border border-line bg-card px-3 text-[14px] outline-none focus:border-ink"
@@ -105,7 +111,7 @@ export default async function CetakKanbanPage({
               name="sampai"
               type="number"
               min={1}
-              max={999999}
+              max={SERI_KANBAN_MAKS}
               required
               defaultValue={q.sampai ?? ''}
               className="tabular h-11 w-[120px] rounded-2xl border border-line bg-card px-3 text-[14px] outline-none focus:border-ink"
@@ -134,7 +140,10 @@ export default async function CetakKanbanPage({
             title={`${pratinjau.part.partNumber} — ${pratinjau.part.partName}`}
             subtitle={[
               pratinjau.part.backNumber ?? 'tanpa back number',
-              pratinjau.part.lineName ?? 'tanpa line',
+              pratinjau.part.lineName
+                ? `${pratinjau.part.lineName} (${pratinjau.part.lineWorkCenter ?? 'work center kosong'})`
+                : 'tanpa line',
+              pratinjau.slocTujuan ? `SLOC tujuan ${pratinjau.slocTujuan}` : 'SLOC tujuan kosong',
               pratinjau.part.qtyPerBox ? `${pratinjau.part.qtyPerBox} pcs/box` : 'isi box kosong',
             ].join(' · ')}
           />

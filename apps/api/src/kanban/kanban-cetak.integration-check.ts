@@ -7,10 +7,14 @@ import {
   getDb,
   inArray,
   kanbans,
+  lines,
+  locations,
   parts,
   plants,
+  routeProcesses,
   type Database,
 } from '@avicenna/db';
+import { bacaKanban, susunKanbanAigsys } from '@avicenna/domain';
 import { KanbanCetakService } from './kanban-cetak.service';
 
 /**
@@ -41,12 +45,63 @@ async function main() {
     await db.transaction(async (tx) => {
       const cetak = new KanbanCetakService(tx as unknown as Database);
 
+      /*
+       * Line dan SLOC sendiri, supaya isi QR yang diharapkan tidak bergantung
+       * pada master pabrik yang kebetulan ada. Kode SLOC empat karakter, sama
+       * seperti SLOC SAP sungguhan.
+       */
+      const [slocLine, slocRute, slocTransfer] = await tx
+        .insert(locations)
+        .values(
+          ['ZQ1C', 'ZQ2C', 'ZQ3C'].map((code) => ({
+            plantId: pabrik.id,
+            code,
+            name: `Uji cetak ${code}`,
+            kind: 'FINISH_GOOD' as const,
+          })),
+        )
+        .returning({ id: locations.id });
+      const [lineUji] = await tx
+        .insert(lines)
+        .values({
+          plantId: pabrik.id,
+          code: 'UJI-CETAK-LINE',
+          name: 'Uji Cetak Line',
+          processType: 'CASTING_FG',
+          sapWorkCenter: 'ZQ0547',
+          outputLocationId: slocLine!.id,
+        })
+        .returning({ id: lines.id });
+
+      /*
+       * Rute proses (UNIT, CASTING_FG) dikosongkan dulu supaya SLOC tujuan
+       * jatuh ke milik line — urutan cadangannya diuji di langkah 10.
+       */
+      const [ruteAda] = await tx
+        .select({ id: routeProcesses.id })
+        .from(routeProcesses)
+        .where(
+          and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.processType, 'CASTING_FG')),
+        )
+        .limit(1);
+      const [rute] = ruteAda
+        ? await tx
+            .update(routeProcesses)
+            .set({ outputLocationId: null, transferLocationId: null, isActive: true })
+            .where(eq(routeProcesses.id, ruteAda.id))
+            .returning({ id: routeProcesses.id })
+        : await tx
+            .insert(routeProcesses)
+            .values({ plantId: pabrik.id, processType: 'CASTING_FG' })
+            .returning({ id: routeProcesses.id });
+
       const [partSiap] = await tx
         .insert(parts)
         .values({
           plantId: pabrik.id,
           partNumber: 'UJI-CETAK-001',
           backNumber: 'ZZ01',
+          lineId: lineUji!.id,
           name: 'Uji cetak kanban',
           processType: 'CASTING_FG',
           partType: 'FINISHED_GOOD',
@@ -60,6 +115,7 @@ async function main() {
         .values({
           plantId: pabrik.id,
           partNumber: 'UJI-CETAK-002',
+          lineId: lineUji!.id,
           name: 'Uji cetak tanpa back number',
           processType: 'CASTING_FG',
           partType: 'FINISHED_GOOD',
@@ -73,7 +129,7 @@ async function main() {
       assert.equal(awal.total, 10);
       assert.equal(awal.sudahAda, 0);
       assert.equal(awal.akanDibuat, 10);
-      assert.equal(awal.lembar, 3, '10 kartu = 3 lembar A4 (4 per lembar)');
+      assert.equal(awal.lembar, 2, '10 kartu = 2 lembar A4 (8 per lembar)');
       assert.equal(awal.penghalang.length, 0, awal.penghalang.join('; '));
       catat('pratinjau menghitung total, yang sudah ada, dan jumlah lembar');
 
@@ -140,11 +196,25 @@ async function main() {
         ['0001', '0002', '0003'],
         'diurutkan sebagai ANGKA, bukan teks',
       );
-      assert.equal(
-        daftar[0]?.kode,
-        'AVK1|UJI-CETAK-001|ZZ01|0001|60',
-        'isi QR = AVK1|PART|BACK|SERI|QTY',
-      );
+      const kodeAigsys = (seri: string, qtyPerBox: number) =>
+        susunKanbanAigsys({
+          workCenter: 'ZQ0547',
+          partNumber: 'UJI-CETAK-001',
+          sloc: 'ZQ1C',
+          backNumber: 'ZZ01',
+          serialNumber: seri,
+          qtyPerBox,
+        });
+      assert.equal(daftar[0]?.kode, kodeAigsys('0001', 60), 'isi QR = format AIGSYS sistem lama');
+      assert.equal(daftar[0]?.kode.length, 230, 'QR 230 karakter, spasi di belakang ikut');
+      assert.equal(daftar[0]?.kode.substr(123, 4), '0001', 'seri di posisi 123 seperti kartu lama');
+      assert.equal(daftar[0]?.kode.substr(20, 8), 'JEZQ0547', 'kode line = JE + work center SAP');
+      assert.equal(daftar[0]?.kode.substr(63, 7), 'ZQ1C000', 'SLOC tujuan + 000');
+      const baca = bacaKanban(daftar[0]!.kode, { scanMode: 'KANBAN_BOX' });
+      assert.equal(baca.backNumber, 'ZZ01');
+      assert.equal(baca.serialNumber, '0001');
+      assert.equal(daftar[0]?.lineWorkCenter, 'ZQ0547');
+      assert.equal(daftar[0]?.slocTujuan, 'ZQ1C');
       assert.equal(daftar[0]?.kodeKetik, 'ZZ01|0001', 'teks di bawah QR = bentuk ketik manual');
       assert.equal(daftar[2]?.qtyPerBox, 99, 'yang tercetak adalah angka milik KARTUNYA');
       /*
@@ -152,7 +222,7 @@ async function main() {
        * lama yang isinya 99 akan membawa 60 di barcodenya — pemeriksaan kartu
        * basi di scan.service lalu memperingatkan kartu yang justru benar.
        */
-      assert.equal(daftar[2]?.kode, 'AVK1|UJI-CETAK-001|ZZ01|0003|99', 'qty di QR dari kartunya');
+      assert.equal(daftar[2]?.kode, kodeAigsys('0003', 99), 'qty di QR dari kartunya');
       assert.equal(daftar[0]?.partName, 'Uji cetak kanban');
       catat('daftar cetak membawa kode barcode, nama part, dan angka milik kartunya');
 
@@ -200,6 +270,46 @@ async function main() {
       // Seri 11-15 hanya PRATINJAU di langkah 4, tidak pernah dibuat.
       assert.deepEqual({ min: rentang.min, maks: rentang.maks }, { min: 1, maks: 10 });
       catat('seri bukan angka dilewati, rentang terpakai tetap terbaca benar');
+
+      /* ── 10. SLOC tujuan: transfer -> keluar rute proses -> keluar line ── */
+      assert.equal(awal.slocTujuan, 'ZQ1C', 'rute proses kosong: SLOC keluar milik line');
+      await tx
+        .update(routeProcesses)
+        .set({ outputLocationId: slocRute!.id })
+        .where(eq(routeProcesses.id, rute!.id));
+      assert.equal(
+        (await cetak.pratinjau({ partId: partSiap!.id, dari: 1, sampai: 1 })).slocTujuan,
+        'ZQ2C',
+        'SLOC keluar rute proses mengalahkan milik line',
+      );
+      await tx
+        .update(routeProcesses)
+        .set({ transferLocationId: slocTransfer!.id })
+        .where(eq(routeProcesses.id, rute!.id));
+      assert.equal(
+        (await cetak.pratinjau({ partId: partSiap!.id, dari: 1, sampai: 1 })).slocTujuan,
+        'ZQ3C',
+        'SLOC transfer = tempat box berakhir',
+      );
+      catat('SLOC tujuan mengikuti urutan yang sama dengan scan produksi');
+
+      /* ── 11. Yang tidak bisa disusun ke QR menghalangi ────────────────── */
+      await tx.update(lines).set({ sapWorkCenter: null }).where(eq(lines.id, lineUji!.id));
+      const tanpaWc = await cetak.pratinjau({ partId: partSiap!.id, dari: 1, sampai: 1 });
+      assert.ok(tanpaWc.penghalang.some((p) => /work center/.test(p)), tanpaWc.penghalang.join('; '));
+      await assert.rejects(
+        () => cetak.daftarCetak({ partId: partSiap!.id, dari: 1, sampai: 1 }),
+        /work center/,
+        'halaman cetak juga menolak, bukan mencetak kolom kosong',
+      );
+      await tx.update(lines).set({ sapWorkCenter: 'ZQ0547' }).where(eq(lines.id, lineUji!.id));
+      await tx.update(parts).set({ backNumber: 'ZZ015' }).where(eq(parts.id, partSiap!.id));
+      const backPanjang = await cetak.pratinjau({ partId: partSiap!.id, dari: 1, sampai: 1 });
+      assert.ok(
+        backPanjang.penghalang.some((p) => /Back number "ZZ015"/.test(p)),
+        backPanjang.penghalang.join('; '),
+      );
+      catat('work center kosong atau back number lima karakter menghalangi pencetakan');
 
       throw new BatalkanSaja();
     });
