@@ -86,10 +86,7 @@ export class MoldScanService {
       .limit(1);
     if (!line) throw new BadRequestException(`Line ${lineCode} tidak ditemukan.`);
 
-    if (
-      (await this.scanService.modeScanLini(line.plantId, line.processType, line.scanMode)) !==
-      'KANBAN_MOLD'
-    ) {
+    if ((await this.scanService.modeScanLini(line.processType, line.scanMode)) !== 'KANBAN_MOLD') {
       throw new BadRequestException(`Line ${line.code} tidak memakai mode scan mold.`);
     }
 

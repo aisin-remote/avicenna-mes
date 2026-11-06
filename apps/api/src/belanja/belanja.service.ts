@@ -175,7 +175,7 @@ export class BelanjaService {
    * yang tidak punya kartu — dan belanja menjadi mustahil diselesaikan. Tanpa
    * penyaring kedua, hal yang sama terjadi pada part WIP antar-proses.
    */
-  private async komponenBelanja(plantId: number, fgPartId: number): Promise<KomponenBelanja[]> {
+  private async komponenBelanja(fgPartId: number): Promise<KomponenBelanja[]> {
     const hariIni = toLocalDateKey(new Date());
 
     const rows = await this.db
@@ -186,14 +186,9 @@ export class BelanjaService {
         qtyPer: partPairings.qtyPer,
         sourceType: parts.sourceType,
         processType: parts.processType,
-        modeProses: routeProcesses.scanMode,
       })
       .from(partPairings)
       .innerJoin(parts, eq(parts.id, partPairings.componentPartId))
-      .leftJoin(
-        routeProcesses,
-        and(eq(routeProcesses.plantId, plantId), eq(routeProcesses.processType, parts.processType)),
-      )
       .where(
         and(
           eq(partPairings.parentPartId, fgPartId),
@@ -206,7 +201,7 @@ export class BelanjaService {
     const dipakai: KomponenBelanja[] = [];
     for (const r of rows) {
       if (r.sourceType !== 'MANUFACTURED') continue;
-      const mode = modeScanBerlaku(katalog, { modeProses: r.modeProses, proses: r.processType });
+      const mode = modeScanBerlaku(katalog, { proses: r.processType });
       if (!syaratScan(katalog, mode, r.processType).kanbanWajib) continue;
       dipakai.push({
         partId: r.partId,
@@ -242,7 +237,7 @@ export class BelanjaService {
   /** Menyusun keadaan sesi dari kartu FG dan daftar id kartu WIP. */
   private async sesi(plantId: number, fg: KartuDb, wipIds: number[]): Promise<SesiBelanja> {
     const kartuWip = wipIds.length > 0 ? await this.kartuPerId(this.db, plantId, wipIds) : [];
-    const komponen = await this.komponenBelanja(plantId, fg.partId);
+    const komponen = await this.komponenBelanja(fg.partId);
     const hasil = periksaBelanja({
       kartuFg: this.kartuBelanja(fg),
       komponen,
@@ -383,7 +378,7 @@ export class BelanjaService {
      * Operator tidak bisa membedakannya sendiri, dan yang harus memperbaiki
      * keduanya bukan dia.
      */
-    const komponen = await this.komponenBelanja(plantId, kartu.partId);
+    const komponen = await this.komponenBelanja(kartu.partId);
     if (komponen.length === 0) {
       return {
         hasil: 'DITOLAK',
@@ -554,7 +549,7 @@ export class BelanjaService {
           }
         }
 
-        const komponen = await this.komponenBelanja(pabrik.id, fgKartu.partId);
+        const komponen = await this.komponenBelanja(fgKartu.partId);
         const hasil = periksaBelanja({
           kartuFg: this.kartuBelanja(fgKartu),
           komponen,

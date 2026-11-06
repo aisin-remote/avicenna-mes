@@ -138,39 +138,31 @@ describe('dasar pemeriksaan duplikat', () => {
 describe('metode yang berlaku di sebuah lini', () => {
   it('penimpa lini mengalahkan master proses', () => {
     /*
-     * Injection dan assembling BODY berada di pabrik yang sama dengan metode
-     * proses yang sama, tetapi caranya berbeda. Tanpa penimpa, salah satunya
-     * pasti memakai cara yang tidak cocok.
+     * Satu lini boleh berbeda dari lini lain pada proses yang sama. KATALOG_UJI
+     * menyebut INJECTION_WIP sebagai KANBAN_BOX, jadi hasilnya hanya bisa datang
+     * dari penimpa.
      */
     expect(
       modeScanBerlaku(KATALOG_UJI, {
         modeLini: 'KANBAN_MOLD',
-        modeProses: 'KANBAN_BOX',
         proses: 'INJECTION_WIP',
       }),
     ).toBe('KANBAN_MOLD');
   });
 
-  it('tanpa penimpa, ikut master proses', () => {
+  it('tanpa penimpa, ikut master jenis proses', () => {
     expect(
-      modeScanBerlaku(KATALOG_UJI, {
-        modeLini: null,
-        modeProses: 'KANBAN_BOX',
-        proses: 'INJECTION_WIP',
-      }),
+      modeScanBerlaku(KATALOG_UJI, { modeLini: null, proses: 'INJECTION_WIP' }),
     ).toBe('KANBAN_BOX');
-  });
-
-  it('tanpa keduanya, jatuh ke bawaan jenis prosesnya', () => {
     expect(modeScanBerlaku(KATALOG_UJI, { proses: 'MACHINING_FG' })).toBe('PART_KANBAN');
     expect(modeScanBerlaku(KATALOG_UJI, { proses: 'CASTING_WIP' })).toBe('PART_SAJA');
   });
 
-  it('nilai lama di salah satu tingkat tetap diterjemahkan', () => {
+  it('nilai lama di penimpa lini tetap diterjemahkan', () => {
     expect(modeScanBerlaku(KATALOG_UJI, { modeLini: 'PER_KANBAN', proses: 'INJECTION_WIP' })).toBe(
       'KANBAN_BOX',
     );
-    expect(modeScanBerlaku(KATALOG_UJI, { modeProses: 'PER_PIECE', proses: 'MACHINING_FG' })).toBe(
+    expect(modeScanBerlaku(KATALOG_UJI, { modeLini: 'PER_PIECE', proses: 'MACHINING_FG' })).toBe(
       'PART_KANBAN',
     );
   });

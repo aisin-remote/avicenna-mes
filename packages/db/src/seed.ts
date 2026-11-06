@@ -899,12 +899,9 @@ async function main() {
     ['plantId', 'processType'],
     pasangan.map((k) => {
       const [plantId, processType] = k.split('|');
-      const proses = processType as (typeof routeProcesses.$inferInsert)['processType'];
       return {
         plantId: Number(plantId),
-        processType: proses,
-        // Bawaan per jenis proses; yang berlaku tetap isi masternya.
-        scanMode: katalog.modeScan(proses),
+        processType: processType as (typeof routeProcesses.$inferInsert)['processType'],
       };
     }),
   );

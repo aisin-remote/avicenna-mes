@@ -30,7 +30,7 @@ export type { ScanMode, ScanModeTersimpan };
 /**
  * Apa yang harus ada pada sebuah scan produksi, menurut METODE SCAN lini itu.
  *
- * Seluruhnya diturunkan dari satu nilai di TM_ROUTE_PROCESS. Dulu separuhnya
+ * Seluruhnya diturunkan dari satu nilai di TM_PROCESS_TYPE. Dulu separuhnya
  * disimpulkan dari jenis proses (daftar lini FG yang ditanam di kode), jadi
  * lini FG yang ternyata tidak memakai kartu mustahil dinyatakan tanpa
  * menyunting kode.

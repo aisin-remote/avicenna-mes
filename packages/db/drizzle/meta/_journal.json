@@ -148,6 +148,20 @@
       "when": 1793693317572,
       "tag": "0020_skinny_network",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793854594194,
+      "tag": "0021_metode_scan_hanya_di_jenis_proses",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793945775719,
+      "tag": "0022_rute_per_work_center",
+      "breakpoints": true
     }
   ]
 }

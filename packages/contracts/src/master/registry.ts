@@ -263,9 +263,8 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         optionLabels: SCAN_MODE_LABELS,
         inList: true,
         hint:
-          'Kosongkan untuk mengikuti master Rute Proses. Isi hanya bila lini ini berbeda ' +
-          'dari lini lain pada proses yang sama — mis. injection (tag mold) dan assembling ' +
-          'BODY (papan dandori) di pabrik yang sama.',
+          'Kosongkan untuk mengikuti master Jenis Proses. Isi hanya bila lini ini berbeda ' +
+          'dari lini lain pada proses yang sama.',
       },
       {
         name: 'inputLocationId',
@@ -761,14 +760,17 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       },
       {
         name: 'scanMode',
-        label: 'Metode Scan Bawaan',
+        label: 'Metode Scan',
         kind: 'select',
         options: SCAN_MODES,
         optionLabels: SCAN_MODE_LABELS,
         required: true,
         defaultValue: 'PART_SAJA',
         inList: true,
-        hint: 'Bawaan untuk lini proses ini. Rute Proses per pabrik boleh menimpanya.',
+        hint:
+          'Menentukan seluruh syarat scan di lini proses ini: wajib kanban atau tidak, ' +
+          'unit ditempel ke kartu atau tidak, dan jumlah diambil dari kartu atau dari barcode. ' +
+          'Master Line boleh menimpanya per lini.',
       },
       {
         name: 'sortOrder',
@@ -807,19 +809,6 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         optionsFrom: 'process-types',
         required: true,
         inList: true,
-      },
-      {
-        name: 'scanMode',
-        label: 'Metode Scan',
-        kind: 'select',
-        options: SCAN_MODES,
-        optionLabels: SCAN_MODE_LABELS,
-        required: true,
-        defaultValue: 'PART_SAJA',
-        inList: true,
-        hint:
-          'Menentukan seluruh syarat scan di lini ini: wajib kanban atau tidak, ' +
-          'unit ditempel ke kartu atau tidak, dan jumlah diambil dari kartu atau dari barcode.',
       },
       {
         name: 'inputLocationId',

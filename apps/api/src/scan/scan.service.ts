@@ -243,14 +243,12 @@ export class ScanService {
     /*
      * Mode scan dibaca DI SINI, sebelum barcode diurai: aturan mana yang boleh
      * membaca barcode bergantung padanya (nomor part polos hanya sah di mode
-     * per-kanban). Master per prosesnya dibaca sekali lagi di bawah bersama
-     * SLOC — murah, dan lebih jelas daripada mengoper hasilnya melintasi
-     * seluruh fungsi.
+     * per-kanban).
      */
     const prosesAwal = normalized.processType ?? line?.processType ?? null;
     const modeAwal: ScanMode =
       line && prosesAwal
-        ? await this.modeScanLini(line.plantId, prosesAwal, line.scanMode)
+        ? await this.modeScanLini(prosesAwal, line.scanMode)
         : 'PART_SAJA';
     const konteksBarcode = {
       processType: prosesAwal,
@@ -504,10 +502,9 @@ export class ScanService {
      * akan pernah bisa dikirim.
      */
     /*
-     * METODE SCAN proses ini, dari master Rute Proses.
+     * METODE SCAN proses ini, dari master Jenis Proses.
      *
-     * Dari master per proses, dengan bawaan per jenis proses bila barisnya
-     * belum ada. Semua syarat kanban di bawah diturunkan dari sini lewat
+     * Semua syarat kanban di bawah diturunkan dari sini lewat
      * syaratScan(), bukan dari "apakah ini lini FG" — aturan FG/WIP itu milik
      * UNIT, sedangkan di BODY setiap lini men-scan kanban.
      */
@@ -516,7 +513,6 @@ export class ScanService {
     const katalog = await this.processTypes.katalog();
     const modeScan: ScanMode = modeScanBerlaku(katalog, {
       modeLini: line?.scanMode,
-      modeProses: aturanProses?.scanMode,
       proses: processType,
     });
     const syarat = processType ? syaratScan(katalog, modeScan, processType) : null;
@@ -1610,12 +1606,12 @@ export class ScanService {
     return line?.processType;
   }
 
-  /** Metode scan yang berlaku di lini ini — dari master per proses, atau bawaannya. */
+  /** Metode scan yang berlaku di lini ini — penimpa di Line, atau master Jenis Proses. */
   private async modeScanFor(input: ScanInput): Promise<ScanMode> {
     if (!input.lineCode) return 'PART_SAJA';
     const line = await this.findLine(input.lineCode);
     if (!line) return 'PART_SAJA';
-    return this.modeScanLini(line.plantId, line.processType, line.scanMode);
+    return this.modeScanLini(line.processType, line.scanMode);
   }
 
   /**
@@ -1625,24 +1621,11 @@ export class ScanService {
    * yang menerimanya lewat `summary` — tidak perlu tahu nilai lama pernah ada.
    */
   async modeScanLini(
-    plantId: number,
     processType: ScanInput['processType'] & {},
     modeLini?: ScanModeTersimpan | null,
   ): Promise<ScanMode> {
-    const [aturan] = await this.db
-      .select({ scanMode: routeProcesses.scanMode })
-      .from(routeProcesses)
-      .where(
-        and(
-          eq(routeProcesses.plantId, plantId),
-          eq(routeProcesses.processType, processType),
-          eq(routeProcesses.isActive, true),
-        ),
-      )
-      .limit(1);
     return modeScanBerlaku(await this.processTypes.katalog(), {
       modeLini,
-      modeProses: aturan?.scanMode,
       proses: processType,
     });
   }
@@ -1782,7 +1765,7 @@ export class ScanService {
     const line = await this.findLine(lineCode);
     if (!line) throw new BadRequestException(`${REJECT_MESSAGES.LINE_NOT_FOUND} (${lineCode})`);
 
-    const mode = await this.modeScanLini(line.plantId, line.processType, line.scanMode);
+    const mode = await this.modeScanLini(line.processType, line.scanMode);
     if (mode !== 'KANBAN_BOX') {
       throw new BadRequestException(
         `Lini ${line.code} men-scan per barang, bukan per kanban — tidak memakai master sample.`,
@@ -1854,7 +1837,7 @@ export class ScanService {
          * atau master sample lalu kanban (PER_KANBAN). Diputuskan server, bukan
          * ditebak layar dari nama pabriknya.
          */
-        scanMode: await this.modeScanLini(line.plantId, line.processType, line.scanMode),
+        scanMode: await this.modeScanLini(line.processType, line.scanMode),
       },
       ...(await this.hitunganUntukHasil(lineCode)),
       berhenti: await this.berhentiTerbuka(line.id),

@@ -88,7 +88,7 @@ const LABEL_PEMILIK: Record<KanbanOwner, string> = {
  *  3. Hasilnya harus terdengar, karena operator sering tidak menatap layar.
  *
  * Tiga alur di satu layar, dipilih HANYA dari metode scan lini itu
- * (`summary.line.scanMode`, isi master Rute Proses):
+ * (`summary.line.scanMode`, isi master Jenis Proses atau penimpanya di Line):
  *  - PART_SAJA / PART_TANPA_KANBAN: tiap scan adalah satu barang berseri.
  *  - PART_KANBAN: mengikuti layar Casting Dowa di avicenna lama —
  *    part ditahan satu per satu sampai box penuh (isi box dari master part,

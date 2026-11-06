@@ -261,7 +261,6 @@ async function main() {
           await tx.insert(routeProcesses).values({
             plantId: elec.id,
             processType: proses,
-            scanMode: fgLini ? 'PART_KANBAN' : 'PART_SAJA',
             inputLocationId: wip?.id ?? null,
             outputLocationId: keluar?.id ?? null,
           });
@@ -306,8 +305,6 @@ async function main() {
           await tx.insert(routeProcesses).values({
             plantId: p.id,
             processType: pasangan as (typeof routeProcesses.$inferInsert)['processType'],
-            // Lini FG menempel kanban — lihat modeScanBawaan().
-            scanMode: r.scanMode === 'KANBAN_BOX' ? 'KANBAN_BOX' : 'PART_KANBAN',
             inputLocationId: r.inputLocationId,
             outputLocationId: fgSloc?.id ?? r.outputLocationId,
           });

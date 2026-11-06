@@ -210,7 +210,7 @@ export const NAMA_COOKIE_SESI = 'avicenna_token';
 /**
  * ─── METODE SCAN sebuah proses ──────────────────────────────────────────────
  *
- * Satu kolom di TM_ROUTE_PROCESS (per pabrik per proses) yang menentukan
+ * Satu kolom di TM_PROCESS_TYPE (per jenis proses) yang menentukan
  * SELURUH syarat scan di lini itu. Sebelumnya hanya dua nilai, dan "wajib
  * kanban atau tidak" disimpulkan dari NAMA jenis prosesnya lewat daftar yang
  * ditanam di kode — sehingga menambah variasi menuntut menyunting kode, bukan
@@ -246,10 +246,15 @@ export const NAMA_COOKIE_SESI = 'avicenna_token';
  *
  * ── Per LINI, bukan hanya per proses ────────────────────────────────────────
  *
- * Metodenya ditentukan di master Rute Proses (per pabrik per proses) dan boleh
- * DITIMPA per lini di master Line. Injection dan assembling BODY berada di
- * pabrik yang sama tetapi caranya berbeda — tanpa penimpa per lini, keduanya
- * terpaksa berbagi satu metode yang tidak cocok untuk salah satunya.
+ * Metodenya ditentukan di master Jenis Proses dan boleh DITIMPA per lini di
+ * master Line, untuk lini yang berbeda dari lini lain pada proses yang sama.
+ *
+ * ── Kenapa tidak ada tingkat per pabrik ─────────────────────────────────────
+ *
+ * Kolom yang sama dulu ada juga di TM_ROUTE_PROCESS, isinya salinan saat seed.
+ * Salinan yang tertinggal diam-diam mengalahkan masternya: line injection tetap
+ * KANBAN_BOX padahal jenis prosesnya sudah KANBAN_MOLD, dan layarnya tidak
+ * pernah menampilkan alur mold. Rute Proses kini hanya mengurus SLOC dan SAP.
  */
 export const SCAN_MODES = [
   'PART_SAJA',
@@ -335,29 +340,27 @@ export function scanPerBox(mode: ScanModeTersimpan | null | undefined): boolean 
 /**
  * Metode yang berlaku di sebuah lini.
  *
- * Urutannya: penimpa di master Line, lalu master Rute Proses, lalu bawaan
- * jenis prosesnya. Ditulis sekali di sini supaya layar operator, dashboard,
+ * Urutannya: penimpa di master Line, lalu master Jenis Proses. Ditulis sekali
+ * di sini supaya layar operator, dashboard,
  * dan pencatat scan tidak pernah berbeda pendapat soal lini yang sama.
  */
 export function modeScanBerlaku(
   katalog: KatalogProses,
   input: {
     modeLini?: ScanModeTersimpan | null;
-    modeProses?: ScanModeTersimpan | null;
     proses?: ProcessType | null;
   },
 ): ScanMode {
-  return normalkanModeScan(katalog, input.modeLini ?? input.modeProses ?? null, input.proses);
+  return normalkanModeScan(katalog, input.modeLini ?? null, input.proses);
 }
 
 /**
- * Metode bawaan sebuah jenis proses — dipakai saat baris master belum ada.
+ * Metode sebuah jenis proses, sebelum penimpa di master Line.
  *
  * Injection, painting, dan assembling body adalah proses plant BODY, dan di
  * sana barang tidak berseri: satu scan = satu box (bella, prdreport). Proses
  * UNIT yang menghasilkan barang jadi menempelkan kartu; sisanya part saja.
  *
- * Hanya BAWAAN. Yang berlaku adalah isi TM_ROUTE_PROCESS per pabrik.
  */
 export function modeScanBawaan(katalog: KatalogProses, p: ProcessType): ScanModeTersimpan {
   return katalog.modeScan(p);
