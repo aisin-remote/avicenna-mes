@@ -960,22 +960,72 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
   'part-processes': {
     key: 'part-processes',
     /*
-     * JUNCTION: part ini lewat proses apa, urutan ke berapa. Tidak lebih.
-     * SLOC dan bendera SAP-nya ada di 'route-processes', per proses.
+     * Rute per work center: part ini dikerjakan di mana, dari SLOC mana ke mana,
+     * dengan metode apa. Production Version sengaja tidak ditawarkan di sini
+     * selama belum dipakai; kolomnya tetap ada dan akan diisi tarik SAP.
      */
     label: 'Rute Proses per Part',
     singular: 'Langkah Rute Part',
     icon: 'Route',
-    description: 'Proses yang dilalui tiap part, beserta urutannya',
+    description: 'Work center yang dilalui tiap part, beserta SLOC, urutan, dan metode scannya',
     searchFields: [],
     defaultSort: 'partId',
     fields: [
       plantRef,
       {
         name: 'partId',
-        label: 'Part',
+        label: 'Part Number',
         kind: 'reference',
         refEntity: 'parts',
+        required: true,
+        inList: true,
+      },
+      {
+        name: 'lineId',
+        label: 'Work Center',
+        kind: 'reference',
+        refEntity: 'lines',
+        inList: true,
+        hint: 'Boleh kosong hanya untuk Delivery.',
+      },
+      {
+        name: 'sapProductionEnabled',
+        label: 'SAP',
+        kind: 'boolean',
+        inList: true,
+        defaultValue: false,
+        hint: 'Hasil produksi langkah ini dikirim ke SAP. Nonaktif = dokumen ditahan.',
+      },
+      {
+        name: 'inputLocationId',
+        label: 'Asal',
+        kind: 'reference',
+        refEntity: 'locations',
+        inList: true,
+        hint: 'SLOC asal barang.',
+      },
+      {
+        name: 'outputLocationId',
+        label: 'Tujuan',
+        kind: 'reference',
+        refEntity: 'locations',
+        inList: true,
+        hint: 'SLOC tujuan hasil produksi.',
+      },
+      {
+        name: 'seqNo',
+        label: 'Sequence',
+        kind: 'number',
+        required: true,
+        inList: true,
+        hint: 'Beri jarak (10, 20, 30) supaya langkah baru bisa disisipkan tanpa menomori ulang.',
+      },
+      {
+        name: 'scanMode',
+        label: 'Mode',
+        kind: 'select',
+        options: SCAN_MODES,
+        optionLabels: SCAN_MODE_LABELS,
         required: true,
         inList: true,
       },
@@ -984,37 +1034,17 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         label: 'Proses',
         kind: 'select',
         optionsFrom: 'process-types',
-        required: true,
         inList: true,
+        hint: 'Kosongkan supaya dihitung dari Work Center dan Tujuan. Wajib diisi bila Work Center kosong.',
       },
       {
-        name: 'seqNo',
-        label: 'Urutan',
-        kind: 'number',
-        required: true,
+        name: 'isPrimary',
+        label: 'Utama',
+        kind: 'boolean',
         inList: true,
-        hint: 'Beri jarak (10, 20, 30) supaya langkah baru bisa disisipkan tanpa menomori ulang.',
+        defaultValue: false,
+        hint: 'Work center yang akan tercetak di QR kanban. Satu per part.',
       },
-      {
-        name: 'lineId',
-        label: 'Line',
-        kind: 'reference',
-        refEntity: 'lines',
-        inList: true,
-        hint: 'Boleh kosong bila prosesnya dikerjakan beberapa line yang setara.',
-      },
-      {
-        name: 'productionVersion',
-        label: 'Production Version',
-        kind: 'text',
-        max: 8,
-        inList: true,
-        hint:
-          'PV SAP untuk LANGKAH ini, mis. 0002. PV adalah pasangan BOM + routing dan ' +
-          'berbeda per langkah — satu part bisa punya beberapa. Kosong = ikut nilai di ' +
-          'master Part. Jangan ditebak: SAP menurunkan plant dan SLOC dari PV.',
-      },
-
       activeField,
     ],
   },

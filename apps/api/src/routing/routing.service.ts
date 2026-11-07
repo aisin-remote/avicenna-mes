@@ -1,388 +1,135 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { eq, and, asc, inArray, count, type Database } from '@avicenna/db';
-import { partProcesses, routeProcesses, parts, plants, lines } from '@avicenna/db';
-import type { ProcessType } from '@avicenna/contracts';
-import { periksaRute } from '@avicenna/domain';
+import { Injectable } from '@nestjs/common';
+import { eq, type Database } from '@avicenna/db';
+import { lines, locations, partProcesses, parts, plants } from '@avicenna/db';
+import type { BarisRutePart, DaftarRutePart } from '@avicenna/contracts';
+import { masalahBarisRute } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 import { ProcessTypeService } from '../master/process-type.service';
 
-export interface BarisMatriks {
-  partId: number;
-  partNumber: string;
-  backNumber: string | null;
-  name: string;
-  project: string | null;
-  plantId: number;
-  plantCode: string | null;
-  /** processType -> urutan. Tidak ada kunci = part tidak melewati proses itu. */
-  rute: Record<string, number>;
-  /**
-   * Masalah pada rute ini, kosong bila wajar.
-   *
-   * Ikut dihitung saat MEMBACA, bukan hanya saat menyimpan: rute bisa tersimpan
-   * sebelum sebuah aturan ada, atau menjadi tidak wajar karena jenis proses
-   * berubah. Rute rusak yang tidak terlihat akan tetap rusak sampai ada yang
-   * kebetulan membukanya.
-   */
-  masalah: string[];
+export interface SaringanRutePart {
+  page: number;
+  perPage: number;
+  q?: string;
+  plantId?: number;
+  project?: string;
+  /** Hanya baris yang masih perlu dilengkapi. */
+  perluDilengkapi?: boolean;
 }
 
 /**
- * Rute proses per part.
+ * Daftar rute per part untuk layar master.
  *
- * ── Kenapa disimpan dan diubah sebagai SATU rute utuh ───────────────────────
+ * Penulisannya lewat master generik (formulir dan unggah Excel). Yang ada di
+ * sini hanya bacaan yang tidak bisa dilayani master generik: kolom dari part
+ * dan line, serta kelengkapan yang dihitung per part.
  *
- * Rute adalah urutan, bukan kumpulan baris lepas. Menyunting baris satu per
- * satu membuka keadaan setengah jadi yang tidak masuk akal: part yang sedang
- * punya dua langkah bernomor sama, atau punya Machining tetapi Casting-nya
- * sudah terhapus. Validasi scan membaca rute pada saat yang sama operator
- * men-scan, jadi keadaan setengah jadi itu benar-benar terlihat di lantai
- * produksi.
- *
- * Karena itu penyimpanan mengganti SELURUH rute satu part dalam satu transaksi.
+ * Seluruh baris dimuat lalu disaring di memori, karena kelengkapan dihitung dari
+ * seluruh langkah part dan ringkasannya harus tetap menghitung semua baris.
+ * Tabelnya master, bukan transaksi: jumlahnya ratusan baris.
  */
 @Injectable()
 export class RoutingService {
-  private readonly logger = new Logger(RoutingService.name);
-
   constructor(
     @InjectDb() private readonly db: Database,
     private readonly processTypes: ProcessTypeService,
   ) {}
 
-  /** Seluruh part beserta rutenya — bahan layar matriks. */
-  async matriks(plantId?: number): Promise<{
-    proses: readonly ProcessType[];
-    /** Nama tiap proses untuk kepala kolom — layar tidak lagi punya petanya. */
-    label: Record<string, string>;
-    /** Proses yang lininya menghasilkan finish good — dipakai layar menandainya. */
-    finishGood: readonly ProcessType[];
-    /** plantId -> processType -> push SAP aktif. Dari TM_ROUTE_PROCESS. */
-    sapAktif: Record<number, Record<string, boolean>>;
-    /**
-     * plantId -> proses yang TERDAFTAR di master Rute Proses (Integrasi).
-     * Inilah yang menentukan kolom mana yang boleh diklik untuk part pabrik itu.
-     */
-    prosesTerdaftar: Record<number, ProcessType[]>;
-    /**
-     * plantId -> proses yang DIPAKAI (lini atau rute part) tetapi tidak ada di
-     * master. Tetap ditampilkan dengan tanda: proses yang masih dipakai tidak
-     * boleh lenyap dari layar hanya karena barisnya dihapus dari master.
-     */
-    prosesTakTerdaftar: Record<number, Array<{ processType: ProcessType; lini: number; rute: number }>>;
-    baris: BarisMatriks[];
-  }> {
-    const daftarPart = await this.db
-      .select({
-        partId: parts.id,
-        partNumber: parts.partNumber,
-        backNumber: parts.backNumber,
-        name: parts.name,
-        project: parts.project,
-        plantId: parts.plantId,
-        plantCode: plants.code,
-      })
-      .from(parts)
-      .leftJoin(plants, eq(parts.plantId, plants.id))
-      .where(
-        plantId ? and(eq(parts.isActive, true), eq(parts.plantId, plantId)) : eq(parts.isActive, true),
-      )
-      .orderBy(plants.code, parts.project, parts.partNumber);
+  async daftarRute(s: SaringanRutePart): Promise<DaftarRutePart> {
+    const [rows, lokasi, katalog, partAktif] = await Promise.all([
+      this.db
+        .select({
+          id: partProcesses.id,
+          plantId: partProcesses.plantId,
+          plantCode: plants.code,
+          partId: partProcesses.partId,
+          partNumber: parts.partNumber,
+          backNumber: parts.backNumber,
+          partName: parts.name,
+          project: parts.project,
+          lineId: partProcesses.lineId,
+          lineCode: lines.code,
+          workCenter: lines.sapWorkCenter,
+          processType: partProcesses.processType,
+          seqNo: partProcesses.seqNo,
+          inputLocationId: partProcesses.inputLocationId,
+          outputLocationId: partProcesses.outputLocationId,
+          scanMode: partProcesses.scanMode,
+          sapProductionEnabled: partProcesses.sapProductionEnabled,
+          isPrimary: partProcesses.isPrimary,
+          isActive: partProcesses.isActive,
+        })
+        .from(partProcesses)
+        .innerJoin(parts, eq(partProcesses.partId, parts.id))
+        .leftJoin(plants, eq(partProcesses.plantId, plants.id))
+        .leftJoin(lines, eq(partProcesses.lineId, lines.id))
+        .orderBy(plants.code, parts.project, parts.partNumber, partProcesses.seqNo),
+      this.db.select({ id: locations.id, code: locations.code }).from(locations),
+      this.processTypes.katalog(),
+      this.db.select({ id: parts.id }).from(parts).where(eq(parts.isActive, true)),
+    ]);
 
-    const katalog = await this.processTypes.katalog();
-    const finishGood = katalog.kode.filter((p: string) => katalog.menghasilkanFinishGood(p));
-    if (daftarPart.length === 0) {
-      return { proses: katalog.kode, label: Object.fromEntries(katalog.daftar.map((j) => [j.code, j.label])), finishGood, sapAktif: {}, prosesTerdaftar: {}, prosesTakTerdaftar: {}, baris: [] };
-    }
+    const kodeLokasi = new Map(lokasi.map((l) => [l.id, l.code]));
+    const punyaRute = new Set(rows.map((r) => r.partId));
 
-    const langkah = await this.db
-      .select({
-        partId: partProcesses.partId,
-        processType: partProcesses.processType,
-        seqNo: partProcesses.seqNo,
-      })
-      .from(partProcesses)
-      .where(
-        and(
-          inArray(
-            partProcesses.partId,
-            daftarPart.map((p) => p.partId),
-          ),
-          eq(partProcesses.isActive, true),
-        ),
-      )
-      .orderBy(asc(partProcesses.seqNo));
-
-    const perPart = new Map<number, Record<string, number>>();
-    for (const l of langkah) {
-      const r = perPart.get(l.partId) ?? {};
-      r[l.processType] = l.seqNo;
-      perPart.set(l.partId, r);
+    const langkahAktif = new Map<number, typeof rows>();
+    for (const r of rows) {
+      if (!r.isActive) continue;
+      langkahAktif.set(r.partId, [...(langkahAktif.get(r.partId) ?? []), r]);
     }
 
     /*
-     * Penanda SAP per PROSES per pabrik — bukan per part.
+     * Tanpa UTAMA adalah kekurangan part, jadi ditempel di langkah terakhirnya
+     * saja. Menempelkannya ke semua langkah membuatnya terbaca seperti empat.
      *
-     * Pengaturannya ada di TM_ROUTE_PROCESS; matriks hanya menampilkannya
-     * sebagai tanda baca-saja di kolom, supaya leader tahu proses mana yang
-     * terhubung SAP tanpa membuka menu Integrasi.
+     * `periksaRute` sengaja tidak dipakai: aturannya menuntut langkah Delivery,
+     * sedangkan rute per work center berakhir di SLOC FG tanpa baris Delivery.
      */
-    const aturan = await this.db
-      .select({
-        plantId: routeProcesses.plantId,
-        processType: routeProcesses.processType,
-        productionEnabled: routeProcesses.sapProductionEnabled,
-        transferEnabled: routeProcesses.sapTransferEnabled,
-      })
-      .from(routeProcesses)
-      .where(eq(routeProcesses.isActive, true));
-    const sapAktif: Record<number, Record<string, boolean>> = {};
-    const prosesTerdaftar: Record<number, ProcessType[]> = {};
-    for (const a of aturan) {
-      (sapAktif[a.plantId] ??= {})[a.processType] = a.productionEnabled || a.transferEnabled;
-      (prosesTerdaftar[a.plantId] ??= []).push(a.processType);
-    }
-
-    /*
-     * Proses yang dipakai tetapi tidak terdaftar di master.
-     *
-     * Master Rute Proses (Integrasi) menentukan kolom matriks. Tetapi menghapus
-     * barisnya tidak menghapus lini yang berjenis proses itu, rute part yang
-     * melewatinya, maupun scan yang sudah tercatat — dan kolom yang hilang
-     * membuat rute part tampak lebih pendek dari kenyataan. Yang dipakai tetap
-     * ditampilkan, dengan tanda dan angka supaya orang tahu sebabnya.
-     */
-    const liniPerPabrik = await this.db
-      .select({ plantId: lines.plantId, processType: lines.processType, n: count() })
-      .from(lines)
-      .where(eq(lines.isActive, true))
-      .groupBy(lines.plantId, lines.processType);
-
-    const pabrikPart = new Map(daftarPart.map((p) => [p.partId, p.plantId]));
-    const rutePerPabrik = new Map<string, number>();
-    for (const l of langkah) {
-      const k = `${pabrikPart.get(l.partId)}|${l.processType}`;
-      rutePerPabrik.set(k, (rutePerPabrik.get(k) ?? 0) + 1);
-    }
-
-    const prosesTakTerdaftar: Record<number, Array<{ processType: ProcessType; lini: number; rute: number }>> = {};
-    const kandidat = new Map<string, { plantId: number; processType: ProcessType; lini: number; rute: number }>();
-    for (const l of liniPerPabrik) {
-      kandidat.set(`${l.plantId}|${l.processType}`, {
-        plantId: l.plantId, processType: l.processType, lini: Number(l.n), rute: 0,
-      });
-    }
-    for (const [k, n] of rutePerPabrik) {
-      const [plantId, processType] = k.split('|');
-      const ada = kandidat.get(k);
-      if (ada) ada.rute = n;
-      else kandidat.set(k, { plantId: Number(plantId), processType: processType as ProcessType, lini: 0, rute: n });
-    }
-    for (const c of kandidat.values()) {
-      if (prosesTerdaftar[c.plantId]?.includes(c.processType)) continue;
-      (prosesTakTerdaftar[c.plantId] ??= []).push({ processType: c.processType, lini: c.lini, rute: c.rute });
-    }
-
-    return {
-      proses: katalog.kode,
-      label: Object.fromEntries(katalog.daftar.map((j) => [j.code, j.label])),
-      finishGood,
-      sapAktif,
-      prosesTerdaftar,
-      prosesTakTerdaftar,
-      baris: daftarPart.map((p) => {
-        const rute = perPart.get(p.partId) ?? {};
-        return {
-          ...p,
-          rute,
-          masalah: periksaRute(
-            katalog,
-            Object.entries(rute).map(([processType, seqNo]) => ({
-              processType: processType as ProcessType,
-              seqNo,
-            })),
-          ),
-        };
-      }),
-    };
-  }
-
-  /**
-   * Mengganti seluruh rute satu part.
-   *
-   * `proses` diberikan TERURUT sesuai jalannya barang. Nomor urut dibangkitkan
-   * di sini dengan jarak 10, bukan diterima dari pemanggil: nomor hanya alat
-   * pengurut, dan membiarkan layar menentukannya berarti dua layar bisa
-   * memakai skema penomoran yang berbeda pada tabel yang sama.
-   */
-  async simpanRute(
-    partId: number,
-    proses: ProcessType[],
-  ): Promise<{ partId: number; jumlah: number; masalah: string[] }> {
-    const [part] = await this.db
-      .select({ id: parts.id, plantId: parts.plantId, partNumber: parts.partNumber })
-      .from(parts)
-      .where(eq(parts.id, partId))
-      .limit(1);
-    if (!part) throw new BadRequestException(`Part id=${partId} tidak ditemukan`);
-
-    const katalog = await this.processTypes.katalog();
-    const unik = [...new Set(proses)];
-    if (unik.length !== proses.length) {
-      throw new BadRequestException('Satu proses tidak boleh muncul dua kali dalam satu rute');
-    }
-    for (const p of unik) {
-      if (!katalog.cari(p)) {
-        throw new BadRequestException(`Jenis proses "${p}" tidak dikenal`);
-      }
-
-    /*
-     * Proses yang BARU ditambahkan harus terdaftar di master Rute Proses
-     * (Integrasi) untuk pabrik part itu. Yang sudah ada di rute lama boleh
-     * tetap — mencabutnya harus tetap bisa, walau masternya sudah dihapus.
-     *
-     * Diperiksa di server, bukan hanya dengan menonaktifkan tombol di layar:
-     * endpoint ini bisa dipanggil langsung.
-     */
-    const terdaftar = new Set(
-      (
-        await this.db
-          .select({ processType: routeProcesses.processType })
-          .from(routeProcesses)
-          .where(and(eq(routeProcesses.plantId, part.plantId), eq(routeProcesses.isActive, true)))
-      ).map((r) => r.processType),
-    );
-    const sebelumnya = new Set(
-      (await this.db.select({ processType: partProcesses.processType }).from(partProcesses).where(eq(partProcesses.partId, partId)))
-        .map((r) => r.processType),
-    );
-    const tidakTerdaftar = unik.filter((p) => !terdaftar.has(p) && !sebelumnya.has(p));
-    if (tidakTerdaftar.length > 0) {
-      throw new BadRequestException(
-        `Proses ${tidakTerdaftar.join(', ')} tidak terdaftar untuk pabrik ini. ` +
-          'Daftarkan dulu di Integrasi › Rute Proses.',
-      );
-    }
-    }
-
-    /*
-     * Aturan lini finish good jadi PERINGATAN, bukan penolakan.
-     *
-     * Dulu ditolak, dan itu membuat rute ber-FG mustahil disusun: matriks
-     * menyimpan tiap klik, sedangkan satu langkah FG tanpa Delivery ditolak
-     * ("tidak seharusnya melewati lini finish good") dan satu Delivery tanpa
-     * FG juga ditolak ("tidak akan punya kanban"). Mana pun yang diklik lebih
-     * dulu, rutenya buntu — orang tidak bisa menyusun MACHINING_FG →
-     * DELIVERY sama sekali.
-     *
-     * Rute yang belum lengkap adalah keadaan yang WAJAR saat menyunting, jadi
-     * yang benar adalah menyimpannya lalu menandainya. Peringatannya ikut
-     * kembali ke layar dan tetap terlihat di kolom keterangan matriks sampai
-     * rutenya dibereskan. Yang tetap ditolak hanyalah yang merusak data:
-     * proses kembar, proses tak dikenal, dan proses yang belum terdaftar di
-     * master Rute Proses pabrik itu.
-     */
-    const masalah = periksaRute(
-      katalog,
-      unik.map((processType, i) => ({ processType, seqNo: (i + 1) * 10 })),
-    );
-
-    /*
-     * ── Langkah yang lininya ada di PABRIK LAIN ───────────────────────────────
-     *
-     * Ada part yang setelah selesai di Antena (Electric) lanjut dirakit di
-     * Assembling Body — pabrik yang berbeda. Rute seperti itu BISA disimpan di
-     * sini, tetapi hasilnya tidak seperti yang orang sangka: setiap langkah
-     * dicap `part.plantId` (lihat insert di bawah), jadi langkah Assembling
-     * Body tercatat milik pabrik Electric. SLOC-nya pun ikut dari rute pabrik
-     * itu — FG90 alih-alih FG70 — sehingga barang jadinya diterima di pabrik
-     * yang salah, dan di SAP itu plant yang salah.
-     *
-     * Jadi keadaannya dilaporkan, bukan ditolak: rute yang belum bisa
-     * dinyatakan utuh tetap perlu disimpan sambil menunggu keputusan model
-     * lintas pabriknya. Yang penting ia tidak DIAM.
-     *
-     * Hanya proses yang PUNYA lini yang diperiksa. Proses tanpa lini di mana
-     * pun masih wajar — pabrik Electric belum punya lini sama sekali, dan
-     * menuduhnya "milik pabrik lain" akan salah.
-     */
-    if (unik.length > 0) {
-      const liniProses = await this.db
-        .select({ processType: lines.processType, plantId: lines.plantId })
-        .from(lines)
-        .where(and(inArray(lines.processType, unik), eq(lines.isActive, true)));
-      const pabrikLiniPerProses = new Map<ProcessType, Set<number>>();
-      for (const l of liniProses) {
-        let pabrik = pabrikLiniPerProses.get(l.processType);
-        if (!pabrik) {
-          pabrik = new Set<number>();
-          pabrikLiniPerProses.set(l.processType, pabrik);
-        }
-        pabrik.add(l.plantId);
-      }
-      const namaPabrik = new Map(
-        (await this.db.select({ id: plants.id, code: plants.code }).from(plants)).map((p) => [
-          p.id,
-          p.code,
-        ]),
-      );
-      for (const proses of unik) {
-        const pabrik = pabrikLiniPerProses.get(proses);
-        if (!pabrik || pabrik.size === 0 || pabrik.has(part.plantId)) continue;
-        const lain = [...pabrik].map((id) => namaPabrik.get(id) ?? id).join(', ');
-        masalah.push(
-          `${proses} tidak punya lini di pabrik part ini — lininya ada di ${lain}. ` +
-            'Rute lintas pabrik belum didukung: langkah ini akan tercatat milik pabrik part, ' +
-            'beserta SLOC pabrik itu',
-        );
+    const barisTanpaUtama = new Set<number>();
+    for (const langkah of langkahAktif.values()) {
+      const punyaWorkCenter = langkah.some((l) => l.lineId !== null);
+      if (punyaWorkCenter && !langkah.some((l) => l.isPrimary)) {
+        barisTanpaUtama.add(langkah[langkah.length - 1]!.id);
       }
     }
 
-    /*
-     * Hapus lalu tulis ulang, di dalam SATU transaksi.
-     *
-     * Menyandingkan yang lama dengan yang baru terdengar lebih hemat, tetapi
-     * unique index (partId, seqNo) membuatnya bergantung pada urutan operasi:
-     * menggeser langkah ke atas menabrak baris yang belum sempat dipindahkan.
-     * Mengganti seluruhnya menghindari seluruh kelas persoalan itu, dan
-     * jumlah barisnya per part hanya segelintir.
-     */
-    await this.db.transaction(async (tx) => {
-      const lama = await tx.select().from(partProcesses).where(eq(partProcesses.partId, partId));
-      const perProses = new Map(lama.map((l) => [l.processType, l]));
-      await tx.delete(partProcesses).where(eq(partProcesses.partId, partId));
-      if (unik.length === 0) return;
-      await tx.insert(partProcesses).values(
-        unik.map((processType, i) => {
-          const sebelum = perProses.get(processType);
-          return {
-            plantId: part.plantId,
-            partId,
-            processType,
-            seqNo: (i + 1) * 10,
-            lineId: sebelum?.lineId ?? null,
-            isActive: sebelum?.isActive ?? true,
-          };
-        }),
-      );
+    const semua: BarisRutePart[] = rows.map((r) => {
+      const masalah = r.isActive ? masalahBarisRute(r) : [];
+      if (barisTanpaUtama.has(r.id)) masalah.push('Belum ada work center utama untuk QR kanban');
+      return {
+        ...r,
+        processLabel: katalog.label(r.processType),
+        inputLocationCode: r.inputLocationId === null ? null : (kodeLokasi.get(r.inputLocationId) ?? null),
+        outputLocationCode: r.outputLocationId === null ? null : (kodeLokasi.get(r.outputLocationId) ?? null),
+        // Langkah nonaktif tidak dipakai scan, jadi tidak ada yang perlu dilengkapi.
+        masalah,
+      };
     });
 
-    this.logger.log(
-      `rute ${part.partNumber}: ${unik.join(' → ') || '(dikosongkan)'}` +
-        (masalah.length > 0 ? ` — belum wajar: ${masalah.join('; ')}` : ''),
+    const q = s.q?.trim().toUpperCase();
+    const tersaring = semua.filter(
+      (b) =>
+        (!s.plantId || b.plantId === s.plantId) &&
+        (!s.project || b.project === s.project) &&
+        (!s.perluDilengkapi || b.masalah.length > 0) &&
+        (!q ||
+          [b.partNumber, b.backNumber, b.partName, b.lineCode, b.workCenter].some((t) =>
+            t?.toUpperCase().includes(q),
+          )),
     );
-    return { partId, jumlah: unik.length, masalah };
-  }
 
-  /** Lini aktif per jenis proses — kepala kolom matriks. */
-  async liniPerProses(): Promise<Record<string, string[]>> {
-    const rows = await this.db
-      .select({ processType: lines.processType, code: lines.code })
-      .from(lines)
-      .where(eq(lines.isActive, true))
-      .orderBy(lines.sortOrder);
-    const peta: Record<string, string[]> = {};
-    for (const r of rows) (peta[r.processType] ??= []).push(r.code);
-    return peta;
+    const total = tersaring.length;
+    const totalPages = Math.max(1, Math.ceil(total / s.perPage));
+    const page = Math.min(s.page, totalPages);
+
+    return {
+      data: tersaring.slice((page - 1) * s.perPage, page * s.perPage),
+      meta: { page, perPage: s.perPage, total, totalPages },
+      ringkasan: {
+        baris: semua.length,
+        perluDilengkapi: semua.filter((b) => b.masalah.length > 0).length,
+        partTanpaRute: partAktif.filter((p) => !punyaRute.has(p.id)).length,
+      },
+      projects: [...new Set(semua.flatMap((b) => (b.project ? [b.project] : [])))].sort(),
+    };
   }
 }

@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { and, or, like, eq, asc, desc, count, inArray, sql, type Database } from '@avicenna/db';
-import { getMasterTable, locations, parts, toolings } from '@avicenna/db';
+import { getMasterTable, lines, locations, partProcesses, parts, toolings } from '@avicenna/db';
 import { sebabGalatDb } from '@avicenna/db';
 import {
   getEntityDef,
@@ -21,6 +21,7 @@ import {
   periksaHasilProduksi,
   periksaTransferSloc,
   productionVersionKartu,
+  prosesDariWorkCenter,
 } from '@avicenna/domain';
 import { InjectDb } from '../db/db.module';
 import { ProcessTypeService } from './process-type.service';
@@ -531,6 +532,103 @@ export class MasterService {
     values.productionVersion = hasil.versi;
   }
 
+  /**
+   * Mengisi jenis proses rute yang dikosongkan, dari work center dan tujuannya.
+   *
+   * Proses yang diisi tangan tidak ditimpa: scan masih mencocokkan proses line
+   * dengan proses di rute, jadi menghitung ulang saat menyunting kolom lain bisa
+   * membuat scan yang tadinya lolos menjadi ditolak.
+   *
+   * Publik karena unggah Excel memakainya juga. Kolomnya NOT NULL, dan tanpa ini
+   * satu sel kosong membatalkan seluruh berkas dengan galat database.
+   */
+  async lengkapiProsesRute(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ): Promise<string | null> {
+    if (entity !== 'part-processes' || values.processType) return null;
+    if (barisLama && values.processType === undefined) return null;
+
+    const nilai = (nama: string) =>
+      (values[nama] !== undefined ? values[nama] : barisLama?.[nama]) as number | null | undefined;
+
+    const lineId = nilai('lineId');
+    if (!lineId) return 'Proses wajib diisi bila Work Center kosong.';
+
+    const [line] = await this.db
+      .select({ processType: lines.processType })
+      .from(lines)
+      .where(eq(lines.id, Number(lineId)))
+      .limit(1);
+    if (!line) return 'Work Center yang dipilih tidak ditemukan.';
+
+    const tujuanId = nilai('outputLocationId');
+    const [tujuan] = tujuanId
+      ? await this.db
+          .select({ kind: locations.kind })
+          .from(locations)
+          .where(eq(locations.id, Number(tujuanId)))
+          .limit(1)
+      : [];
+
+    values.processType = prosesDariWorkCenter(
+      await this.processTypes.katalog(),
+      line.processType,
+      tujuan?.kind,
+    );
+    return null;
+  }
+
+  /** Part hanya punya satu kartu, jadi hanya satu work center yang bisa tercetak. */
+  private async pastikanSatuUtama(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ) {
+    if (entity !== 'part-processes' || values.isPrimary !== true) return;
+
+    const partId = values.partId ?? barisLama?.partId;
+    if (partId == null) return;
+    const [lain] = await this.db
+      .select({ id: partProcesses.id, lineCode: lines.code, seqNo: partProcesses.seqNo })
+      .from(partProcesses)
+      .leftJoin(lines, eq(partProcesses.lineId, lines.id))
+      .where(and(eq(partProcesses.partId, Number(partId)), eq(partProcesses.isPrimary, true)))
+      .limit(1);
+    if (!lain || lain.id === barisLama?.id) return;
+
+    throw new BadRequestException({
+      statusCode: 400,
+      error: 'ValidationError',
+      message: 'Data yang dikirim tidak valid',
+      details: [
+        {
+          field: 'isPrimary',
+          message:
+            `Part ini sudah punya work center utama (${lain.lineCode ?? `sequence ${lain.seqNo}`}). ` +
+            'Lepaskan tanda Utama di baris itu dulu.',
+        },
+      ],
+    });
+  }
+
+  /** Dipanggil formulir: kegagalan menjadi galat di kolom Proses. */
+  private async pastikanProsesRute(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ) {
+    const galat = await this.lengkapiProsesRute(entity, values, barisLama);
+    if (!galat) return;
+    throw new BadRequestException({
+      statusCode: 400,
+      error: 'ValidationError',
+      message: 'Data yang dikirim tidak valid',
+      details: [{ field: 'processType', message: galat }],
+    });
+  }
+
   /*
    * Katalog di memori dikosongkan begitu masternya berubah.
    *
@@ -552,6 +650,8 @@ export class MasterService {
     await this.pastikanRuteProsesWajar(entity, parsed.data as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, parsed.data as Record<string, unknown>);
     await this.pastikanProductionVersion(entity, parsed.data as Record<string, unknown>);
+    await this.pastikanProsesRute(entity, parsed.data as Record<string, unknown>);
+    await this.pastikanSatuUtama(entity, parsed.data as Record<string, unknown>);
 
     const table = this.table(entity);
     try {
@@ -582,6 +682,8 @@ export class MasterService {
     await this.pastikanRuteProsesWajar(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanProductionVersion(entity, values, barisLama as Record<string, unknown>);
+    await this.pastikanProsesRute(entity, values, barisLama as Record<string, unknown>);
+    await this.pastikanSatuUtama(entity, values, barisLama as Record<string, unknown>);
 
     try {
       await this.db.update(table).set(values).where(eq(table.id, id));
@@ -671,6 +773,12 @@ function translateDbError(err: unknown, entity: MasterEntity): Error {
   const sebab = sebabGalatDb(err);
   const def = getEntityDef(entity);
 
+  if (sebab === 'DUPLIKAT' && entity === 'part-processes') {
+    return new ConflictException(
+      'Part ini sudah punya langkah dengan proses atau sequence yang sama. ' +
+        'Work center alternatif belum bisa dimasukkan sampai scan siap menanganinya.',
+    );
+  }
   if (sebab === 'DUPLIKAT') {
     return new ConflictException(
       `${def.singular} dengan kode tersebut sudah ada. Gunakan kode lain.`,

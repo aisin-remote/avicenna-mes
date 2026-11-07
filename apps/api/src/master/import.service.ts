@@ -14,6 +14,7 @@ import {
   type HasilImpor,
 } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
+import { MasterService } from './master.service';
 
 /** Baris pertama berkas adalah judul, jadi data pertama ada di baris 2. */
 const BARIS_JUDUL = 1;
@@ -22,7 +23,10 @@ const BARIS_JUDUL = 1;
 export class MasterImportService {
   private readonly logger = new Logger(MasterImportService.name);
 
-  constructor(@InjectDb() private readonly db: Database) {}
+  constructor(
+    @InjectDb() private readonly db: Database,
+    private readonly master: MasterService,
+  ) {}
 
   /* ──────────────────────────────────────────────────────────────────────────
    * TEMPLATE
@@ -294,7 +298,18 @@ export class MasterImportService {
         continue;
       }
 
-      siap.push({ baris: nomor, nilai: hasil.data as Record<string, unknown> });
+      const nilaiSiap = hasil.data as Record<string, unknown>;
+      const galatProses = await this.master.lengkapiProsesRute(entity, nilaiSiap);
+      if (galatProses) {
+        ditolak.push({
+          baris: nomor,
+          kolom: kolom.find((k) => k.name === 'processType')?.header ?? null,
+          sebab: galatProses,
+        });
+        continue;
+      }
+
+      siap.push({ baris: nomor, nilai: nilaiSiap });
     }
 
     await this.buangYangSudahAda(entity, siap, ditolak);

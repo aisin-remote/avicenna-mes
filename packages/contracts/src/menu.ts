@@ -271,21 +271,12 @@ const MENU_TETAP: MenuDef[] = [
  *
  * Rute proses adalah DUA master dengan dua pengurus berbeda:
  *
- *   master.part-processes    Rute Proses per Part   Master Data  -> matriks
- *                            (leader produksi: part ini lewat proses apa)
+ *   master.part-processes    Rute Proses per Part   Master Data
+ *                            (rute tiap part per work center)
  *   master.route-processes   Rute Proses            Integrasi    -> CRUD per proses
  *                            (PPIC/IT: SLOC masuk/keluar/transfer, bendera SAP)
- *
- * Kunci `master.part-processes` SENGAJA tetap menunjuk matriks. Kunci itulah
- * yang tersimpan di TM_ROLE_MENU sejak awal, dan saat itu artinya "matriks".
- * Mengalihkannya berarti setiap leader yang dulu diberi hak matriks tiba-tiba
- * melihat layar lain dan kehilangan matriksnya — tanpa satu pun perubahan di
- * layar hak akses.
  */
 const MENU_MASTER_TIMPA: Partial<Record<MasterEntity, Partial<MenuDef>>> = {
-  // Matriks per part — kunci lama dipertahankan supaya hak yang sudah
-  // diberikan ke leader tetap membuka layar yang sama.
-  'part-processes': { label: 'Rute Proses per Part', href: '/master/part-processes/matriks' },
   // Pengaturan per proses — urusan PPIC/IT, jadi di menu Integrasi.
   'route-processes': { label: 'Rute Proses', group: 'Integrasi', sortOrder: 20 },
   /*

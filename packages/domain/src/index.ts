@@ -12,6 +12,7 @@ export * from './stock';
 export * from './shift';
 export * from './work-time';
 export * from './process-chain';
+export * from './rute-work-center';
 export * from './production-summary';
 export * from './bom';
 export * from './backflush';

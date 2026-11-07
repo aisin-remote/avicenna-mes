@@ -1,15 +1,7 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Put, Query } from '@nestjs/common';
-import { z } from 'zod';
-import { processTypeSchema } from '@avicenna/contracts';
+import { Controller, Get, Query } from '@nestjs/common';
+import { PER_HALAMAN } from '@avicenna/contracts';
 import { RoutingService } from './routing.service';
 import { ProcessTypeService } from '../master/process-type.service';
-import { ZodValidationPipe } from '../common/zod-validation.pipe';
-
-const ruteSchema = z.object({
-  /** Terurut sesuai jalannya barang. Kosong berarti rutenya dihapus. */
-  proses: z.array(processTypeSchema).max(20),
-});
-type RuteInput = z.infer<typeof ruteSchema>;
 
 @Controller('routing')
 export class RoutingController {
@@ -36,30 +28,24 @@ export class RoutingController {
     return { data: katalog.daftar.map((j) => ({ ...j })) };
   }
 
-
-  /** Matriks part × proses — bentuk yang sama dengan tabel rute di lapangan. */
-  @Get('matrix')
-  matriks(@Query('plantId') plantId?: string) {
-    const id = Number(plantId);
-    return this.routing.matriks(Number.isFinite(id) && id > 0 ? id : undefined);
-  }
-
-  @Get('lines')
-  lines() {
-    return this.routing.liniPerProses();
-  }
-
-  /*
-   * Tidak ada lagi endpoint pengaturan SAP per langkah part. Pengaturannya per
-   * PROSES, dikelola lewat master generik: /master/route-processes.
-   */
-
-  /** Mengganti seluruh rute satu part sekaligus. */
-  @Put('part/:partId')
-  simpan(
-    @Param('partId', ParseIntPipe) partId: number,
-    @Body(new ZodValidationPipe(ruteSchema)) body: RuteInput,
+  /** Daftar rute per part, sebentuk dengan tabel rute PPIC. */
+  @Get('rute')
+  rute(
+    @Query('page') page?: string,
+    @Query('perPage') perPage?: string,
+    @Query('q') q?: string,
+    @Query('plantId') plantId?: string,
+    @Query('project') project?: string,
+    @Query('kelengkapan') kelengkapan?: string,
   ) {
-    return this.routing.simpanRute(partId, body.proses);
+    const minta = Number(perPage);
+    return this.routing.daftarRute({
+      page: Math.max(1, Number(page) || 1),
+      perPage: (PER_HALAMAN as readonly number[]).includes(minta) ? minta : PER_HALAMAN[0],
+      q,
+      plantId: Number(plantId) || undefined,
+      project: project || undefined,
+      perluDilengkapi: kelengkapan === 'kurang',
+    });
   }
 }
