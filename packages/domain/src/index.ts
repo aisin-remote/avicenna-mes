@@ -13,6 +13,7 @@ export * from './shift';
 export * from './work-time';
 export * from './process-chain';
 export * from './rute-work-center';
+export * from './pohon-bom';
 export * from './production-summary';
 export * from './bom';
 export * from './backflush';

@@ -24,6 +24,7 @@ import {
   kelasHasilSap,
   periksaHasilProduksi,
   periksaTransferSloc,
+  transferMenunggu,
 } from '@avicenna/domain';
 import type { LocationKind } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
@@ -549,24 +550,22 @@ export class SapOutboxService {
         docType === 'PRODUCTION' && sourceTable === 'TT_HISTORY_SCAN' && !scan?.lineCode;
       let menungguProduksi: string | null = null;
       if (docType === 'TRANSFER' && sourceTable === 'TT_HISTORY_SCAN') {
-        if (!kebijakan?.productionEnabled) {
-          menungguProduksi = 'push hasil produksi tidak aktif untuk rute ini';
-        } else {
-          const [produksi] = await this.db
-            .select({ status: sapOutbox.status })
-            .from(sapOutbox)
-            .where(
-              and(
-                eq(sapOutbox.sourceTable, sourceTable),
-                eq(sapOutbox.sourceId, sourceId),
-                eq(sapOutbox.docType, 'PRODUCTION'),
-              ),
-            )
-            .limit(1);
-          if (produksi?.status !== 'CONFIRMED') {
-            menungguProduksi = 'menunggu hasil produksi dikonfirmasi SAP';
-          }
-        }
+        const [produksi] = await this.db
+          .select({ status: sapOutbox.status })
+          .from(sapOutbox)
+          .where(
+            and(
+              eq(sapOutbox.sourceTable, sourceTable),
+              eq(sapOutbox.sourceId, sourceId),
+              eq(sapOutbox.docType, 'PRODUCTION'),
+            ),
+          )
+          .limit(1);
+        menungguProduksi = transferMenunggu({
+          jenis: jenisScan,
+          productionEnabled: kebijakan?.productionEnabled,
+          statusProduksi: produksi?.status,
+        });
       }
       const lengkap =
         siap &&
@@ -686,6 +685,7 @@ export class SapOutboxService {
   /** Melepas dokumen yang tertahan, setelah movement type-nya diputuskan. */
   async releaseHeld(): Promise<{ dilepas: number }> {
     const tertahan = await this.db.select().from(sapOutbox).where(eq(sapOutbox.status, 'HELD'));
+    const katalog = await this.processTypes.katalog();
 
     let dilepas = 0;
     for (const row of tertahan) {
@@ -747,7 +747,18 @@ export class SapOutboxService {
             ),
           )
           .limit(1);
-        if (produksi?.status !== 'CONFIRMED') continue;
+        const [scan] = await this.db
+          .select({ processType: scanEvents.processType, meta: scanEvents.meta })
+          .from(scanEvents)
+          .where(eq(scanEvents.id, row.sourceId))
+          .limit(1);
+        const menunggu = transferMenunggu({
+          jenis: katalog.cari(scan?.processType),
+          productionEnabled: (scan?.meta as { sapRoute?: { productionEnabled?: boolean } } | null)
+            ?.sapRoute?.productionEnabled,
+          statusProduksi: produksi?.status,
+        });
+        if (menunggu) continue;
       }
       if (row.docType === 'PRODUCTION' && !('lineCode' in payload && payload.lineCode)) continue;
       const jenis = lines.map((l) => l.mutationType);

@@ -66,7 +66,7 @@ function identifierAman(nama: string): string {
   return `[${nama}]`;
 }
 
-function tabelAman(penuh: string): string {
+export function tabelAman(penuh: string): string {
   return penuh.replace(/[[\]]/g, '').split('.').map(identifierAman).join('.');
 }
 

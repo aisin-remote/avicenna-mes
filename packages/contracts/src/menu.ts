@@ -311,6 +311,15 @@ const MENU_KHUSUS: MenuDef[] = [
     group: 'Produksi',
     sortOrder: 5,
   },
+  {
+    key: 'master.part-fg',
+    label: 'Part FG & Turunan',
+    href: '/master/part-fg',
+    icon: 'Network',
+    group: 'Master Data',
+    // Tepat sebelum Rute Proses per Part: keduanya dibuka bersamaan.
+    sortOrder: (MENU_MASTER.find((m) => m.key === 'master.part-processes')?.sortOrder ?? 900) - 1,
+  },
 ];
 
 export const MENU_ITEMS: readonly MenuDef[] = [...MENU_TETAP, ...MENU_KHUSUS, ...MENU_MASTER].sort(

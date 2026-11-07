@@ -343,3 +343,20 @@ export function periksaTransferSloc(opsi: {
       '(yang ada hanya WH -> WP, PP-PE-01) — perlu dikonfirmasi tim SAP',
   };
 }
+
+/**
+ * Alasan dokumen transfer scan harus menunggu dokumen produksinya; null = boleh.
+ *
+ * Proses tanpa padanan di modul PP (Melting) tidak pernah punya dokumen produksi,
+ * jadi menunggunya berarti tertahan selamanya. Transfernya berdiri sendiri.
+ */
+export function transferMenunggu(opsi: {
+  jenis: Pick<JenisProses, 'sapClass'> | undefined;
+  productionEnabled: boolean | undefined;
+  statusProduksi: string | null | undefined;
+}): string | null {
+  if (opsi.jenis && kelasHasilSap(opsi.jenis.sapClass) === null) return null;
+  if (!opsi.productionEnabled) return 'push hasil produksi tidak aktif untuk rute ini';
+  if (opsi.statusProduksi !== 'CONFIRMED') return 'menunggu hasil produksi dikonfirmasi SAP';
+  return null;
+}

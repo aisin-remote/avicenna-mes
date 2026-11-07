@@ -35,7 +35,8 @@ export class RoutingService {
     private readonly processTypes: ProcessTypeService,
   ) {}
 
-  async daftarRute(s: SaringanRutePart): Promise<DaftarRutePart> {
+  /** Seluruh baris rute beserta kelengkapannya. Dipakai juga halaman Part FG. */
+  async semuaBaris(): Promise<{ semua: BarisRutePart[]; partTanpaRute: number }> {
     const [rows, lokasi, katalog, partAktif] = await Promise.all([
       this.db
         .select({
@@ -58,6 +59,9 @@ export class RoutingService {
           outputLocationId: partProcesses.outputLocationId,
           transferLocationId: partProcesses.transferLocationId,
           scanMode: partProcesses.scanMode,
+          sapTransferEnabled: partProcesses.sapTransferEnabled,
+          sapTransferMovementType: partProcesses.sapTransferMovementType,
+          requirePairing: partProcesses.requirePairing,
           sapProductionEnabled: partProcesses.sapProductionEnabled,
           isPrimary: partProcesses.isPrimary,
           isActive: partProcesses.isActive,
@@ -123,6 +127,12 @@ export class RoutingService {
       };
     });
 
+    return { semua, partTanpaRute: partAktif.filter((p) => !punyaRute.has(p.id)).length };
+  }
+
+  async daftarRute(s: SaringanRutePart): Promise<DaftarRutePart> {
+    const { semua, partTanpaRute } = await this.semuaBaris();
+
     const q = s.q?.trim().toUpperCase();
     const tersaring = semua.filter(
       (b) =>
@@ -145,7 +155,7 @@ export class RoutingService {
       ringkasan: {
         baris: semua.length,
         perluDilengkapi: semua.filter((b) => b.masalah.length > 0).length,
-        partTanpaRute: partAktif.filter((p) => !punyaRute.has(p.id)).length,
+        partTanpaRute,
       },
       projects: [...new Set(semua.flatMap((b) => (b.project ? [b.project] : [])))].sort(),
     };

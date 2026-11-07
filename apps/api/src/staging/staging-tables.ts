@@ -372,6 +372,12 @@ export const PARTS_SLOC = {
  * lihat tafsirStatus(). Menguji `= 'E'` untuk gagal akan membaca peringatan,
  * abort, DAN baris yang masih terbang sebagai berhasil.
  */
+/**
+ * BOM SAP. Bukan di database staging utama, jadi namanya lengkap dengan database.
+ * Hanya dibaca: pemiliknya SAP.
+ */
+export const TABEL_BOM = env('STAGING_TABLE_BOM', 'A_DB_MRP.dbo.TM_BOM_SAP');
+
 export const FLAG = {
   /**
    * CHR_VALIDATE — satu-satunya gerbang penjemput.

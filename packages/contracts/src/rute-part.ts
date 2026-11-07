@@ -26,6 +26,14 @@ export interface BarisRutePart {
   /** SLOC tempat hasil dipindah lagi setelah produksi. */
   transferLocationCode: string | null;
   scanMode: string | null;
+  /*
+   * Seluruh kolom formulir harus ada di sini. Formulir menyimpan semua kolomnya
+   * sekaligus, jadi yang tidak ikut terbaca akan tersimpan kosong.
+   */
+  transferLocationId: number | null;
+  sapTransferEnabled: boolean;
+  sapTransferMovementType: string | null;
+  requirePairing: boolean;
   sapProductionEnabled: boolean;
   isPrimary: boolean;
   isActive: boolean;

@@ -36,7 +36,8 @@ export interface StatusStaging {
  *
  * Hanya worker. Tidak ada controller yang menyentuh kolam ini di jalur request
  * pengguna, kecuali endpoint diagnostik yang memang dipakai orang untuk
- * memeriksa sambungan.
+ * memeriksa sambungan, dan bacaan BOM di halaman Part FG yang menyebut sebabnya
+ * bila staging mati.
  */
 @Injectable()
 export class StagingDbService implements OnModuleDestroy {
