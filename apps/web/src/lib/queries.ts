@@ -5,7 +5,7 @@ import {
   lines,
   plants,
   locations,
-  routeProcesses,
+  partProcesses,
   customers,
   suppliers,
   kanbans,
@@ -160,7 +160,7 @@ export interface AreaBelanja {
  * Pabrik yang belum punya satu pun proses berpenanda "Wajib Belanja" tetap
  * ditampilkan: belanja di sana tetap bisa dicatat, hanya belum menginterlock
  * apa pun. Menyembunyikannya membuat orang mengira menunya rusak, padahal yang
- * kurang satu centang di master Rute Proses.
+ * kurang satu centang di master Rute Proses per Part.
  */
 export async function listAreaBelanja(): Promise<AreaBelanja[]> {
   const db = getDb();
@@ -172,9 +172,9 @@ export async function listAreaBelanja(): Promise<AreaBelanja[]> {
       .where(eq(plants.isActive, true))
       .orderBy(plants.code),
     db
-      .select({ plantId: routeProcesses.plantId, processType: routeProcesses.processType })
-      .from(routeProcesses)
-      .where(and(eq(routeProcesses.requirePairing, true), eq(routeProcesses.isActive, true))),
+      .selectDistinct({ plantId: partProcesses.plantId, processType: partProcesses.processType })
+      .from(partProcesses)
+      .where(and(eq(partProcesses.requirePairing, true), eq(partProcesses.isActive, true))),
   ]);
 
   return barisPabrik.map((pabrik) => ({

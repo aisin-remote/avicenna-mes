@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { katalogProses, type JenisProses } from '@avicenna/contracts';
-import { masalahBarisRute, prosesDariWorkCenter } from './rute-work-center';
+import { masalahBarisRute, pilihBarisRute, prosesDariWorkCenter } from './rute-work-center';
 
 const jenis = (code: string, processGroup: string, sapClass: string): JenisProses =>
   ({ code, label: code, processGroup, sapClass, scanMode: 'PART_SAJA', isActive: true, sortOrder: 0 }) as JenisProses;
@@ -33,6 +33,32 @@ describe('prosesDariWorkCenter', () => {
 
   it('kelompok tanpa pasangan kelas tidak mengarang proses', () => {
     expect(prosesDariWorkCenter(katalog, 'MOUNTING', 'FINISH_GOOD')).toBe('MOUNTING');
+  });
+});
+
+describe('pilihBarisRute', () => {
+  const dc08 = { id: 1, lineId: 8, processType: 'CASTING_WIP' };
+  const dc01 = { id: 2, lineId: 1, processType: 'CASTING_WIP' };
+  const tanpaLine = { id: 3, lineId: null, processType: 'MACHINING_WIP' };
+
+  it('memilih baris milik line, termasuk work center alternatif', () => {
+    expect(pilihBarisRute([dc08, dc01], 1, 'CASTING_FG')).toBe(dc01);
+    expect(pilihBarisRute([dc08, dc01], 8, 'CASTING_FG')).toBe(dc08);
+  });
+
+  it('baris tanpa line dipakai hanya bila prosesnya sama', () => {
+    expect(pilihBarisRute([tanpaLine], 5, 'MACHINING_WIP')).toBe(tanpaLine);
+    expect(pilihBarisRute([tanpaLine], 5, 'CASTING_WIP')).toBeUndefined();
+  });
+
+  it('baris milik line lain berarti di luar rute', () => {
+    expect(pilihBarisRute([dc08], 1, 'CASTING_WIP')).toBeUndefined();
+    expect(pilihBarisRute([], 1, 'CASTING_WIP')).toBeUndefined();
+  });
+
+  it('scan tanpa line tidak memakai baris yang punya line', () => {
+    expect(pilihBarisRute([dc08, tanpaLine], null, 'MACHINING_WIP')).toBe(tanpaLine);
+    expect(pilihBarisRute([dc08], undefined, 'CASTING_WIP')).toBeUndefined();
   });
 });
 

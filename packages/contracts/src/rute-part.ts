@@ -23,6 +23,8 @@ export interface BarisRutePart {
   inputLocationCode: string | null;
   outputLocationId: number | null;
   outputLocationCode: string | null;
+  /** SLOC tempat hasil dipindah lagi setelah produksi. */
+  transferLocationCode: string | null;
   scanMode: string | null;
   sapProductionEnabled: boolean;
   isPrimary: boolean;

@@ -50,6 +50,8 @@ describe('katalog menu', () => {
     // Entitas master baru yang tidak muncul di menu adalah halaman yang ada
     // tetapi tidak pernah dilihat siapa pun.
     for (const e of MASTER_ENTITIES) {
+      // Rute Proses sudah diganti rute per work center; tabelnya menunggu dihapus.
+      if (e === 'route-processes') continue;
       expect(isMenuKey(`master.${e}`), `menu untuk entitas ${e}`).toBe(true);
     }
   });

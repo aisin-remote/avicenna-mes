@@ -80,6 +80,8 @@ export const stationResultSchema = z.object({
    * sebelum meminta kartu. Hanya terisi pada ACCEPTED.
    */
   qtyPerKanban: z.number().nullable().optional(),
+  /** Metode part ini di work center ini. Hanya terisi pada ACCEPTED. */
+  scanMode: z.string().optional(),
   /** Pemilik kartu yang ditempel: INTERNAL, atau CUSTOMER untuk direct kanban. */
   kanbanOwner: z.enum(['INTERNAL', 'CUSTOMER']).nullable().optional(),
   /**
@@ -182,6 +184,8 @@ export interface StationSummary {
     plantName: string | null;
     /** Metode efektif setelah penimpa line/rute diterapkan; layar memilih alurnya dari nilai ini. */
     scanMode: ScanMode;
+    /** Ada part di line ini yang ditutup kartu, walau bawaan line-nya tidak. */
+    menerimaKartu: boolean;
   };
   counterToday: number;
   pcsToday: number;
@@ -228,8 +232,8 @@ export interface SampleCheck {
    * box, karena barangnya tidak berseri dan kartu baru discan setelah box penuh.
    */
   photoPath: string | null;
-  /** false = part ini belum punya rute sama sekali, jadi lininya tidak bisa diperiksa. */
-  ruteDiperiksa: boolean;
+  /** true = part ini tidak terdaftar di work center ini. Scan tetap jalan, dokumen SAP ditahan. */
+  diLuarRute: boolean;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

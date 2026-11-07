@@ -135,7 +135,14 @@ export function TabelRutePart({
                     </td>
                     <td className={kelasSel}>{r.sapProductionEnabled ? 'Ya' : 'Tidak'}</td>
                     <td className={kelasSel}>{r.inputLocationCode ?? <Kosong />}</td>
-                    <td className={kelasSel}>{r.outputLocationCode ?? <Kosong />}</td>
+                    <td className={kelasSel}>
+                      {r.outputLocationCode ?? <Kosong />}
+                      {r.transferLocationCode ? (
+                        <div className="whitespace-nowrap text-[12px] text-ink-muted">
+                          lalu ke {r.transferLocationCode}
+                        </div>
+                      ) : null}
+                    </td>
                     <td className={cn(kelasSel, 'tabular')}>
                       {r.seqNo}
                       {r.isActive ? null : <div className="text-[12px]">Non-aktif</div>}

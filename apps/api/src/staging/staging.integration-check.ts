@@ -45,7 +45,6 @@ import {
   lines,
   parts,
   partProcesses,
-  routeProcesses,
   kanbans,
   users,
   sapOutbox,
@@ -227,25 +226,8 @@ async function main() {
     },
   ];
 
+  // Pengaturannya menempel di tiap baris rute part; lihat pembuatan rute di bawah.
   for (const a of aturan) {
-    const nilai = {
-      plantId: pabrik.id,
-      processType: a.proses,
-      inputLocationId: WP.id,
-      outputLocationId: a.output,
-      transferLocationId: a.transfer,
-      sapProductionEnabled: a.produksi,
-      sapTransferEnabled: a.transferAktif,
-      sapTransferMovementType: a.mvt,
-      isActive: true,
-    };
-    const [ada] = await db
-      .select({ id: routeProcesses.id })
-      .from(routeProcesses)
-      .where(and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.processType, a.proses)))
-      .limit(1);
-    if (ada) await db.update(routeProcesses).set(nilai).where(eq(routeProcesses.id, ada.id));
-    else await db.insert(routeProcesses).values(nilai);
     console.log(
       `  rute ${a.proses.padEnd(20)} keluar=${a.output === WH.id ? 'WH80' : a.output === WP.id ? 'WP80' : 'FG80'}` +
         `  transfer=${a.transfer ? 'WP80' : '-'}  push produksi=${a.produksi ? 'ya' : 'tidak'}` +
@@ -303,12 +285,19 @@ async function main() {
     await db.delete(partProcesses).where(eq(partProcesses.partId, partId));
     let seq = 10;
     for (const [proses, kodeLini] of m.rute) {
+      const a = aturan.find((x) => x.proses === proses);
       await db.insert(partProcesses).values({
         plantId: pabrik.id,
         partId,
         processType: proses,
         seqNo: seq,
         lineId: lini(kodeLini).id,
+        inputLocationId: WP.id,
+        outputLocationId: a?.output ?? null,
+        transferLocationId: a?.transfer ?? null,
+        sapProductionEnabled: a?.produksi ?? false,
+        sapTransferEnabled: a?.transferAktif ?? false,
+        sapTransferMovementType: a?.mvt ?? null,
         isActive: true,
       });
       seq += 10;

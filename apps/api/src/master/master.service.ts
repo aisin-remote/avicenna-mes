@@ -266,7 +266,7 @@ export class MasterService {
     values: Record<string, unknown>,
     barisLama?: Record<string, unknown>,
   ) {
-    if (entity !== 'route-processes') return;
+    if (entity !== 'route-processes' && entity !== 'part-processes') return;
 
     const nilai = <T>(nama: string): T | null | undefined =>
       (values[nama] !== undefined ? values[nama] : barisLama?.[nama]) as T | null | undefined;
@@ -384,7 +384,7 @@ export class MasterService {
     values: Record<string, unknown>,
     barisLama?: Record<string, unknown>,
   ) {
-    if (entity !== 'lines' && entity !== 'route-processes') return;
+    if (entity !== 'lines' && entity !== 'route-processes' && entity !== 'part-processes') return;
 
     const nilai = <T>(nama: string): T | null | undefined =>
       (values[nama] !== undefined ? values[nama] : barisLama?.[nama]) as T | null | undefined;
@@ -433,7 +433,7 @@ export class MasterService {
       }
     }
 
-    if (entity === 'route-processes') {
+    if (entity === 'route-processes' || entity === 'part-processes') {
       const pushProduksi = Boolean(nilai<boolean>('sapProductionEnabled'));
       const pushTransfer = Boolean(nilai<boolean>('sapTransferEnabled'));
 
@@ -648,9 +648,10 @@ export class MasterService {
     await this.pastikanSatuPabrik(entity, parsed.data as Record<string, unknown>);
     await this.pastikanAnggotaTooling(entity, parsed.data as Record<string, unknown>);
     await this.pastikanRuteProsesWajar(entity, parsed.data as Record<string, unknown>);
+    // Proses harus sudah terisi: aturan blueprint di bawah membacanya.
+    await this.pastikanProsesRute(entity, parsed.data as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, parsed.data as Record<string, unknown>);
     await this.pastikanProductionVersion(entity, parsed.data as Record<string, unknown>);
-    await this.pastikanProsesRute(entity, parsed.data as Record<string, unknown>);
     await this.pastikanSatuUtama(entity, parsed.data as Record<string, unknown>);
 
     const table = this.table(entity);
@@ -680,9 +681,9 @@ export class MasterService {
     await this.pastikanSatuPabrik(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanAnggotaTooling(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanRuteProsesWajar(entity, values, barisLama as Record<string, unknown>);
+    await this.pastikanProsesRute(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanProductionVersion(entity, values, barisLama as Record<string, unknown>);
-    await this.pastikanProsesRute(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanSatuUtama(entity, values, barisLama as Record<string, unknown>);
 
     try {
@@ -775,8 +776,8 @@ function translateDbError(err: unknown, entity: MasterEntity): Error {
 
   if (sebab === 'DUPLIKAT' && entity === 'part-processes') {
     return new ConflictException(
-      'Part ini sudah punya langkah dengan proses atau sequence yang sama. ' +
-        'Work center alternatif belum bisa dimasukkan sampai scan siap menanganinya.',
+      'Part ini sudah terdaftar di work center tersebut. Ubah baris yang ada, atau pilih ' +
+        'work center lain.',
     );
   }
   if (sebab === 'DUPLIKAT') {

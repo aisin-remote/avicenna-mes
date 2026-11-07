@@ -3,6 +3,7 @@ import { eq, type Database } from '@avicenna/db';
 import { lines, locations, partProcesses, parts, plants } from '@avicenna/db';
 import type { BarisRutePart, DaftarRutePart } from '@avicenna/contracts';
 import { masalahBarisRute } from '@avicenna/domain';
+import { modeScanBerlaku, scanPerBox } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
 import { ProcessTypeService } from '../master/process-type.service';
 
@@ -49,10 +50,13 @@ export class RoutingService {
           lineId: partProcesses.lineId,
           lineCode: lines.code,
           workCenter: lines.sapWorkCenter,
+          lineProcess: lines.processType,
+          lineMode: lines.scanMode,
           processType: partProcesses.processType,
           seqNo: partProcesses.seqNo,
           inputLocationId: partProcesses.inputLocationId,
           outputLocationId: partProcesses.outputLocationId,
+          transferLocationId: partProcesses.transferLocationId,
           scanMode: partProcesses.scanMode,
           sapProductionEnabled: partProcesses.sapProductionEnabled,
           isPrimary: partProcesses.isPrimary,
@@ -94,9 +98,23 @@ export class RoutingService {
 
     const semua: BarisRutePart[] = rows.map((r) => {
       const masalah = r.isActive ? masalahBarisRute(r) : [];
+      /*
+       * Layar stasiun memilih alur per box atau per barang dari line, sebelum
+       * part-nya dikenal. Metode yang lain jenis akan selalu ditolak saat scan.
+       */
+      if (r.isActive && r.lineProcess && r.scanMode) {
+        const bawaanLine = modeScanBerlaku(katalog, { modeLini: r.lineMode, proses: r.lineProcess });
+        if (scanPerBox(r.scanMode) !== scanPerBox(bawaanLine)) {
+          masalah.push(
+            `Mode ${r.scanMode} tidak bisa dipakai di ${r.lineCode}, yang layarnya ${bawaanLine}`,
+          );
+        }
+      }
       if (barisTanpaUtama.has(r.id)) masalah.push('Belum ada work center utama untuk QR kanban');
       return {
         ...r,
+        transferLocationCode:
+          r.transferLocationId === null ? null : (kodeLokasi.get(r.transferLocationId) ?? null),
         processLabel: katalog.label(r.processType),
         inputLocationCode: r.inputLocationId === null ? null : (kodeLokasi.get(r.inputLocationId) ?? null),
         outputLocationCode: r.outputLocationId === null ? null : (kodeLokasi.get(r.outputLocationId) ?? null),

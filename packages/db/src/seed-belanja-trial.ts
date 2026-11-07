@@ -1,7 +1,7 @@
 import './load-env';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDb, closeDb } from './client';
-import { lines, parts, partProcesses, routeProcesses } from './schema/master';
+import { lines, parts, partProcesses } from './schema/master';
 import { plants } from './schema/org';
 import { partPairings } from './schema/supply';
 import { kanbans, kanbanPairings, KANBAN_STATUSES } from './schema/kanban';
@@ -257,7 +257,7 @@ async function main() {
         lineId: petaLini.get(p.lineCode)!,
         isActive: true,
       })
-      .onConflictDoNothing({ target: [partProcesses.partId, partProcesses.processType] });
+      .onConflictDoNothing();
   }
 
   /* ── Part Pairing ────────────────────────────────────────────────────────────────── */
@@ -348,10 +348,16 @@ async function main() {
   const dinyalakan: string[] = [];
   for (const proses of PROSES_WAJIB_BELANJA) {
     const hasil = await db
-      .update(routeProcesses)
+      .update(partProcesses)
       .set({ requirePairing: true })
-      .where(and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.processType, proses)))
-      .returning({ proses: routeProcesses.processType });
+      .where(
+        and(
+          eq(partProcesses.plantId, pabrik.id),
+          eq(partProcesses.processType, proses),
+          inArray(partProcesses.partId, [...petaPart.values()]),
+        ),
+      )
+      .returning({ proses: partProcesses.processType });
     if (hasil.length) dinyalakan.push(proses);
     else console.warn(`[belanja-trial] rute BODY/${proses} tidak ada — bendera dilewati`);
   }
@@ -406,12 +412,6 @@ async function bersihkan(db: ReturnType<typeof getDb>, plantId: number) {
   await db.delete(partPairings).where(inArray(partPairings.componentPartId, ids));
   await db.delete(partProcesses).where(inArray(partProcesses.partId, ids));
 
-  for (const proses of PROSES_WAJIB_BELANJA) {
-    await db
-      .update(routeProcesses)
-      .set({ requirePairing: false })
-      .where(and(eq(routeProcesses.plantId, plantId), eq(routeProcesses.processType, proses)));
-  }
 
   /*
    * Part paling akhir, dan BOLEH gagal.

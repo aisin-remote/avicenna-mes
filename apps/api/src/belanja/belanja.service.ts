@@ -21,7 +21,7 @@ import {
   kanbans,
   parts,
   plants,
-  routeProcesses,
+  partProcesses,
 } from '@avicenna/db';
 import {
   bacaKanban,
@@ -302,9 +302,15 @@ export class BelanjaService {
     const pabrik = await this.pabrikDari(plantCode);
 
     const wajib = await this.db
-      .select({ processType: routeProcesses.processType })
-      .from(routeProcesses)
-      .where(and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.requirePairing, true)));
+      .selectDistinct({ processType: partProcesses.processType })
+      .from(partProcesses)
+      .where(
+        and(
+          eq(partProcesses.plantId, pabrik.id),
+          eq(partProcesses.requirePairing, true),
+          eq(partProcesses.isActive, true),
+        ),
+      );
 
     const menunggu = await this.db
       .select({
@@ -854,13 +860,13 @@ export class BelanjaService {
     const [induk] = await this.db
       .select({ id: partPairings.id })
       .from(partPairings)
-      .innerJoin(parts, eq(parts.id, partPairings.parentPartId))
       .innerJoin(
-        routeProcesses,
+        partProcesses,
         and(
-          eq(routeProcesses.plantId, plantId),
-          eq(routeProcesses.processType, parts.processType),
-          eq(routeProcesses.requirePairing, true),
+          eq(partProcesses.plantId, plantId),
+          eq(partProcesses.partId, partPairings.parentPartId),
+          eq(partProcesses.requirePairing, true),
+          eq(partProcesses.isActive, true),
         ),
       )
       .where(

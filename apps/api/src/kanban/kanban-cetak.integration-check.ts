@@ -11,7 +11,7 @@ import {
   locations,
   parts,
   plants,
-  routeProcesses,
+  partProcesses,
   type Database,
 } from '@avicenna/db';
 import { bacaKanban, susunKanbanAigsys } from '@avicenna/domain';
@@ -74,27 +74,9 @@ async function main() {
         .returning({ id: lines.id });
 
       /*
-       * Rute proses (UNIT, CASTING_FG) dikosongkan dulu supaya SLOC tujuan
-       * jatuh ke milik line — urutan cadangannya diuji di langkah 10.
+       * Baris rute dibuat tanpa SLOC dulu supaya SLOC tujuan jatuh ke milik
+       * line — urutan cadangannya diuji di langkah 10.
        */
-      const [ruteAda] = await tx
-        .select({ id: routeProcesses.id })
-        .from(routeProcesses)
-        .where(
-          and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.processType, 'CASTING_FG')),
-        )
-        .limit(1);
-      const [rute] = ruteAda
-        ? await tx
-            .update(routeProcesses)
-            .set({ outputLocationId: null, transferLocationId: null, isActive: true })
-            .where(eq(routeProcesses.id, ruteAda.id))
-            .returning({ id: routeProcesses.id })
-        : await tx
-            .insert(routeProcesses)
-            .values({ plantId: pabrik.id, processType: 'CASTING_FG' })
-            .returning({ id: routeProcesses.id });
-
       const [partSiap] = await tx
         .insert(parts)
         .values({
@@ -109,6 +91,18 @@ async function main() {
           qtyPerKanban: 60,
         })
         .returning({ id: parts.id });
+
+      const [rute] = await tx
+        .insert(partProcesses)
+        .values({
+          plantId: pabrik.id,
+          partId: partSiap!.id,
+          processType: 'CASTING_FG',
+          seqNo: 10,
+          lineId: lineUji!.id,
+          isPrimary: true,
+        })
+        .returning({ id: partProcesses.id });
 
       const [partTanpaBack] = await tx
         .insert(parts)
@@ -272,20 +266,20 @@ async function main() {
       catat('seri bukan angka dilewati, rentang terpakai tetap terbaca benar');
 
       /* ── 10. SLOC tujuan: transfer -> keluar rute proses -> keluar line ── */
-      assert.equal(awal.slocTujuan, 'ZQ1C', 'rute proses kosong: SLOC keluar milik line');
+      assert.equal(awal.slocTujuan, 'ZQ1C', 'baris rute kosong: SLOC keluar milik line');
       await tx
-        .update(routeProcesses)
+        .update(partProcesses)
         .set({ outputLocationId: slocRute!.id })
-        .where(eq(routeProcesses.id, rute!.id));
+        .where(eq(partProcesses.id, rute!.id));
       assert.equal(
         (await cetak.pratinjau({ partId: partSiap!.id, dari: 1, sampai: 1 })).slocTujuan,
         'ZQ2C',
-        'SLOC keluar rute proses mengalahkan milik line',
+        'tujuan baris rute mengalahkan milik line',
       );
       await tx
-        .update(routeProcesses)
+        .update(partProcesses)
         .set({ transferLocationId: slocTransfer!.id })
-        .where(eq(routeProcesses.id, rute!.id));
+        .where(eq(partProcesses.id, rute!.id));
       assert.equal(
         (await cetak.pratinjau({ partId: partSiap!.id, dari: 1, sampai: 1 })).slocTujuan,
         'ZQ3C',

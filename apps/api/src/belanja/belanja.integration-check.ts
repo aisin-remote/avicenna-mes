@@ -12,7 +12,7 @@ import {
   kanbans,
   parts,
   plants,
-  routeProcesses,
+  partProcesses,
   type Database,
 } from '@avicenna/db';
 import { susunKodeKartuKanban } from '@avicenna/domain';
@@ -144,15 +144,13 @@ async function main() {
         )
         .returning({ id: kanbans.id, serialNumber: kanbans.serialNumber });
 
-      await tx
-        .update(routeProcesses)
-        .set({ requirePairing: true })
-        .where(
-          and(
-            eq(routeProcesses.plantId, pabrik.id),
-            eq(routeProcesses.processType, 'ASSEMBLING_BODY_FG'),
-          ),
-        );
+      await tx.insert(partProcesses).values({
+        plantId: pabrik.id,
+        partId: partFg!.id,
+        processType: 'ASSEMBLING_BODY_FG',
+        seqNo: 10,
+        requirePairing: true,
+      });
 
       /* ── 1. Membuka sesi dengan kartu FG ───────────────────────────────── */
       const buka = await belanja.scan({
@@ -414,12 +412,13 @@ async function main() {
       catat('scan produksi induk menutup pasangan dan mengosongkan daftar tunggu');
 
       /* ── 9. Berjenjang: painting juga wajib belanja ──────────────────── */
-      await tx
-        .update(routeProcesses)
-        .set({ requirePairing: true })
-        .where(
-          and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.processType, 'PAINTING_FG')),
-        );
+      await tx.insert(partProcesses).values({
+        plantId: pabrik.id,
+        partId: partWip!.id,
+        processType: 'PAINTING_FG',
+        seqNo: 10,
+        requirePairing: true,
+      });
 
       const [partInj] = await tx
         .insert(parts)

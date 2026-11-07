@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Info, Route } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Route } from 'lucide-react';
 import { getEntityDef, PER_HALAMAN, type DaftarRutePart } from '@avicenna/contracts';
 import { apiFetch } from '@/lib/api';
 import { getMasterOptions, type RefOption } from '@/lib/master-api';
@@ -66,14 +66,6 @@ export default async function RutePartPage({ searchParams }: { searchParams: Pro
       />
 
       <Reveal>
-        <p className="mb-4 flex items-start gap-2 rounded-card border border-line bg-card px-4 py-3 text-[14px] text-ink-soft">
-          <Info className="mt-0.5 size-4 shrink-0 text-ink-muted" strokeWidth={2} aria-hidden />
-          <span>
-            Scan masih memakai SLOC, izin SAP, dan metode dari Rute Proses, Line, dan Jenis Proses.
-            Kolom di tabel ini baru berlaku setelah scan per work center diaktifkan untuk line-nya.
-          </span>
-        </p>
-
         {ringkasan.perluDilengkapi > 0 || ringkasan.partTanpaRute > 0 ? (
           <p className="mb-4 flex items-start gap-2 rounded-card border border-warn/40 bg-warn/10 px-4 py-3 text-[14px] text-warn">
             <Route className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
@@ -90,7 +82,7 @@ export default async function RutePartPage({ searchParams }: { searchParams: Pro
               {ringkasan.partTanpaRute > 0 ? (
                 <>
                   <strong>{ringkasan.partTanpaRute} part aktif belum punya rute.</strong> Scan part
-                  itu tetap diterima tanpa pemeriksaan urutan proses.
+                  itu tetap diterima dengan peringatan, dan dokumen SAP-nya ditahan.
                 </>
               ) : null}
             </span>

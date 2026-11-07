@@ -25,6 +25,33 @@ export function prosesDariWorkCenter(
   return kandidat.length === 1 ? kandidat[0]!.code : prosesLine;
 }
 
+/** Bagian baris rute yang menentukan apakah ia berlaku untuk sebuah scan. */
+export interface BarisRuteUntukPilih {
+  lineId: number | null;
+  processType: string;
+}
+
+/**
+ * Baris rute yang berlaku untuk scan part di sebuah line.
+ *
+ * Yang pertama dicari baris milik line itu. Baris tanpa line dipakai bila
+ * prosesnya sama, supaya rute lama yang work center-nya belum diisi tidak
+ * berubah perilakunya. Scan tanpa line (alat genggam) dicocokkan dari prosesnya.
+ *
+ * Kosong berarti part ini di luar rute line tersebut.
+ */
+export function pilihBarisRute<T extends BarisRuteUntukPilih>(
+  rute: readonly T[],
+  lineId: number | null | undefined,
+  proses: string | null | undefined,
+): T | undefined {
+  if (lineId) {
+    const milikLine = rute.find((r) => r.lineId === lineId);
+    if (milikLine) return milikLine;
+  }
+  return rute.find((r) => r.lineId === null && r.processType === proses);
+}
+
 /** Bagian baris rute yang menentukan kelengkapannya. */
 export interface BarisRuteUntukPeriksa {
   processType: string;

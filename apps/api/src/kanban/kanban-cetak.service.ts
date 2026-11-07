@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { and, asc, eq, gte, inArray, lte, sql, type Database } from '@avicenna/db';
-import { kanbans, lines, locations, parts, plants, routeProcesses } from '@avicenna/db';
+import { kanbans, lines, locations, partProcesses, parts, plants } from '@avicenna/db';
 import { kodeKetikKanban, seriKanban, susunKanbanAigsys } from '@avicenna/domain';
 import {
   KARTU_PER_LEMBAR,
@@ -59,46 +59,69 @@ export class KanbanCetakService {
       .where(eq(parts.id, partId))
       .limit(1);
     if (!row) throw new NotFoundException(`Part ${partId} tidak ada`);
-    return row;
+
+    // Work center di QR = baris UTAMA rute; line di master part sebagai cadangan.
+    const utama = await this.barisUtama(partId);
+    if (!utama?.lineId) return row;
+    const [lineUtama] = await this.db
+      .select({ name: lines.name, code: lines.code, sapWorkCenter: lines.sapWorkCenter })
+      .from(lines)
+      .where(eq(lines.id, utama.lineId))
+      .limit(1);
+    return lineUtama
+      ? {
+          ...row,
+          lineName: lineUtama.name,
+          lineCode: lineUtama.code,
+          lineWorkCenter: lineUtama.sapWorkCenter,
+        }
+      : row;
   }
 
-  /**
-   * SLOC tujuan hasil lini part ini — kode SLOC-nya, mis. `SE1C`.
-   *
-   * Urutannya sama dengan yang dipakai scan produksi dan NG: SLOC transfer
-   * master Rute Proses, lalu SLOC keluar master Rute Proses, lalu SLOC keluar
-   * milik lini. Kalau kartu menyebut SLOC lain dari tempat barangnya benar-benar
-   * dicatat masuk, orang di lantai akan membawa box ke tempat yang salah.
-   */
-  private async slocTujuan(partId: number): Promise<string | null> {
-    const [line] = await this.db
+  private async barisUtama(partId: number) {
+    const [baris] = await this.db
       .select({
-        plantId: lines.plantId,
-        processType: lines.processType,
-        outputLocationId: lines.outputLocationId,
+        lineId: partProcesses.lineId,
+        outputLocationId: partProcesses.outputLocationId,
+        transferLocationId: partProcesses.transferLocationId,
       })
-      .from(parts)
-      .innerJoin(lines, eq(lines.id, parts.lineId))
-      .where(eq(parts.id, partId))
-      .limit(1);
-    if (!line) return null;
-
-    const [rute] = await this.db
-      .select({
-        outputLocationId: routeProcesses.outputLocationId,
-        transferLocationId: routeProcesses.transferLocationId,
-      })
-      .from(routeProcesses)
+      .from(partProcesses)
       .where(
         and(
-          eq(routeProcesses.plantId, line.plantId),
-          eq(routeProcesses.processType, line.processType),
-          eq(routeProcesses.isActive, true),
+          eq(partProcesses.partId, partId),
+          eq(partProcesses.isPrimary, true),
+          eq(partProcesses.isActive, true),
         ),
       )
       .limit(1);
+    return baris;
+  }
 
-    const lokasiId = rute?.transferLocationId ?? rute?.outputLocationId ?? line.outputLocationId;
+  /**
+   * SLOC tujuan hasil part ini — kode SLOC-nya, mis. `SE1C`.
+   *
+   * Urutannya sama dengan yang dipakai scan produksi dan NG: transfer baris rute,
+   * tujuan baris rute, lalu SLOC keluar milik line. Kalau kartu menyebut SLOC lain
+   * dari tempat barangnya benar-benar dicatat masuk, orang di lantai akan membawa
+   * box ke tempat yang salah.
+   */
+  private async slocTujuan(partId: number): Promise<string | null> {
+    const rute = await this.barisUtama(partId);
+    const [partLine] = await this.db
+      .select({ lineId: parts.lineId })
+      .from(parts)
+      .where(eq(parts.id, partId))
+      .limit(1);
+    const lineId = rute?.lineId ?? partLine?.lineId;
+    const [line] = lineId
+      ? await this.db
+          .select({ outputLocationId: lines.outputLocationId })
+          .from(lines)
+          .where(eq(lines.id, lineId))
+          .limit(1)
+      : [];
+
+    const lokasiId = rute?.transferLocationId ?? rute?.outputLocationId ?? line?.outputLocationId;
     if (!lokasiId) return null;
     const [lokasi] = await this.db
       .select({ code: locations.code })
@@ -197,7 +220,7 @@ export class KanbanCetakService {
       if (!slocTujuan) {
         penghalang.push(
           `Line ${part.lineName} belum punya SLOC tujuan. SLOC itu tercetak di QR kartu — isi ` +
-            'SLOC keluar di Master Data › Line atau Rute Proses.',
+            'Tujuan di Master Data › Rute Proses per Part, atau SLOC keluar di Master Data › Line.',
         );
       }
     }

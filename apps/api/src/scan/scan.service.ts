@@ -23,7 +23,6 @@ import {
   mutations,
   plants,
   partProcesses,
-  routeProcesses,
   locations,
   kanbans,
   kanbanItems,
@@ -50,8 +49,7 @@ import {
   productionDateKey,
   productionDayWindow,
   statusLini,
-  prosesSebelumnya,
-  prosesAdaDiRute,
+  pilihBarisRute,
   grupProses,
   prosesDalamGrup,
   bolehScanDi,
@@ -78,6 +76,7 @@ import type {
   KanbanOwner,
   MulaiBerhentiInput,
   ScanInput,
+  ProcessType,
   ScanModeTersimpan,
   ScanResult,
   StationResult,
@@ -133,6 +132,7 @@ interface HasilIngest {
   loadingList: StationResult['loadingList'];
   /** Catatan yang perlu dibaca operator meski scannya diterima. */
   peringatan: string | null;
+  scanMode?: ScanMode;
 }
 
 /** Label DN yang sudah diperiksa: loading list dan barisnya untuk part ini. */
@@ -319,118 +319,56 @@ export class ScanService {
 
     const prodDate = productionDateKey(normalized.scannedAt);
     /*
-     * Proses ditentukan LINI tempat scan terjadi, bukan atribut part.
+     * Rute dibaca per part + work center, karena satu line bisa mengerjakan part
+     * WIP dan FG sekaligus. Proses, SLOC, metode, dan izin SAP semuanya dari
+     * baris yang terpilih.
      *
-     * TM_PARTS.CHR_PROCESS_TYPE adalah peninggalan dari masa satu part = satu
-     * proses. Sejak rute menjadi data (TM_PROCESS_PARTS), sebuah part melewati
-     * banyak proses, dan yang menentukan proses mana adalah lini fisiknya.
-     *
-     * Urutan lama mendahulukan part, sehingga scan di lini Melting dianggap
-     * scan Casting — dan operator di lini pertama ditolak dengan alasan "belum
-     * ada scan Melting", persis proses yang sedang ia kerjakan. Part hanya
-     * dipakai bila scan memang datang tanpa lini (mis. dari alat genggam).
+     * Tidak ada pemeriksaan tahap sebelumnya: part number berubah di tiap tahap,
+     * jadi riwayat kode yang sama tidak bisa menjawabnya.
      */
-    const processType = normalized.processType ?? line?.processType ?? part?.processType ?? null;
-
-    /*
-     * Pemeriksaan rute — memakai RUTE PART, bukan rantai global.
-     *
-     * Rute tiap part berbeda. TCC A melewati Melting, Casting, Machining,
-     * Assembling, lalu Delivery; CSH A hanya Melting, Casting, Delivery. Aturan
-     * global tidak bisa menyatakan bahwa proses sebelum Delivery adalah
-     * Assembling untuk yang satu dan Casting untuk yang lain.
-     */
-    if (processType && part) {
-      const rute = await this.db
-        .select()
-        .from(partProcesses)
-        .where(and(eq(partProcesses.partId, part.id), eq(partProcesses.isActive, true)));
-
-      if (rute.length === 0) {
-        /*
-         * Part tanpa rute TIDAK ditolak.
-         *
-         * Tabel rute masih terisi bertahap; menolak semua part yang belum
-         * punya rute berarti menghentikan produksi pada hari pemasangan.
-         * Scan-nya tetap lengkap dan mutasinya tetap benar — yang dilewati
-         * hanya pemeriksaan urutan. Dicatat sebagai peringatan supaya
-         * kekosongannya terlihat, bukan diam.
-         */
-        this.logger.warn(
-          `part ${part.partNumber} belum punya rute di TM_PROCESS_PARTS — urutan proses tidak diperiksa`,
-        );
-      } else {
-        // Part yang dibawa ke lini yang bukan rutenya adalah kekeliruan nyata:
-        // tanpa ini, part CSH yang discan di lini machining akan menambah stok
-        // barang jadi yang tidak pernah dibuat.
-        if (!prosesAdaDiRute(rute, processType)) {
-          throw new ScanRejected(
-            'PROCESS_NOT_IN_ROUTE',
-            `${REJECT_MESSAGES.PROCESS_NOT_IN_ROUTE} (${part.partNumber} tidak melewati ${processType})`,
-          );
-        }
-
-        const sebelumnya = prosesSebelumnya(rute, processType);
-        if (sebelumnya) {
-          const pernah = await this.db
-            .select({ id: scanEvents.id })
-            .from(scanEvents)
-            .where(
-              and(
-                eq(scanEvents.rawCode, normalized.rawCode),
-                eq(scanEvents.processType, sebelumnya),
-              ),
-            )
-            .limit(1);
-
-          if (pernah.length === 0) {
-            throw new ScanRejected(
-              'MISSING_PREVIOUS_PROCESS',
-              `${REJECT_MESSAGES.MISSING_PREVIOUS_PROCESS} (belum ada scan ${sebelumnya})`,
-            );
-          }
-        }
-      }
-    }
-
-    /*
-     * SLOC dan kebijakan SAP diambil PER PROSES (TM_ROUTE_PROCESS), bukan per
-     * langkah tiap part.
-     *
-     * Sempat per part × proses. Dengan 13 part × ~4 langkah itu 50-an baris
-     * pengaturan yang isinya nyaris sama, dan satu yang terlewat membuat satu
-     * part diam-diam tidak pernah sampai ke SAP. Di pabrik ini SLOC memang
-     * ditentukan prosesnya — semua hasil casting masuk gudang yang sama.
-     *
-     * Urutan cadangan: master proses -> lini. Kosong di master berarti "pakai
-     * milik lini", bukan "tidak ada SLOC".
-     */
-    const [aturanProses] = processType
+    const rute = part
       ? await this.db
           .select()
-          .from(routeProcesses)
-          .where(
-            and(
-              eq(routeProcesses.plantId, plantId),
-              eq(routeProcesses.processType, processType),
-              eq(routeProcesses.isActive, true),
-            ),
-          )
-          .limit(1)
+          .from(partProcesses)
+          .where(and(eq(partProcesses.partId, part.id), eq(partProcesses.isActive, true)))
       : [];
+    const barisRute = pilihBarisRute(
+      rute,
+      line?.id,
+      normalized.processType ?? line?.processType ?? part?.processType,
+    );
+    const processType =
+      normalized.processType ??
+      barisRute?.processType ??
+      line?.processType ??
+      part?.processType ??
+      null;
 
-    const inputLocationId = aturanProses?.inputLocationId ?? line?.inputLocationId ?? null;
-    const outputLocationId = aturanProses?.outputLocationId ?? line?.outputLocationId ?? null;
-    const transferLocationId = aturanProses?.transferLocationId ?? null;
+    /*
+     * Di luar rute tetap diterima dengan peringatan: barangnya sudah jadi, dan
+     * menolaknya menghentikan line karena data master. Pengaturannya memakai
+     * milik line, dan dokumen SAP-nya ditahan sampai rutenya didaftarkan.
+     */
+    const diLuarRute = normalized.kind === 'PRODUCTION' && Boolean(line && part && !barisRute);
+    if (diLuarRute) {
+      this.logger.warn(
+        `part ${part?.partNumber} tidak terdaftar di work center ${line?.code} — dokumen SAP ditahan`,
+      );
+    }
+
+    const inputLocationId = barisRute?.inputLocationId ?? line?.inputLocationId ?? null;
+    const outputLocationId = barisRute?.outputLocationId ?? line?.outputLocationId ?? null;
+    const transferLocationId = barisRute?.transferLocationId ?? null;
     /*
      * Kebijakan DISALIN ke meta scan (lihat insert di bawah). Outbox SAP dan
      * pencatatan NG membaca salinan itu, bukan master — supaya mengubah
      * pengaturan hari ini tidak mengubah nasib scan kemarin yang belum terkirim.
      */
     const sapRoute = {
-      productionEnabled: aturanProses?.sapProductionEnabled ?? false,
-      transferEnabled: aturanProses?.sapTransferEnabled ?? false,
-      transferMovementType: aturanProses?.sapTransferMovementType ?? null,
+      productionEnabled: barisRute?.sapProductionEnabled ?? false,
+      transferEnabled: barisRute?.sapTransferEnabled ?? false,
+      transferMovementType: barisRute?.sapTransferMovementType ?? null,
+      ...(diLuarRute ? { diLuarRute: true } : {}),
       inputLocationId,
       outputLocationId,
       transferLocationId,
@@ -441,7 +379,7 @@ export class ScanService {
        * Galat SLOC menyebut SEBABNYA, bukan hanya "tidak valid".
        *
        * Ini galat pengaturan, bukan galat operator: yang harus dibereskan ada
-       * di Integrasi › Rute Proses. Pesan yang hanya berbunyi "SLOC rute belum
+       * di Master Data › Rute Proses per Part. Pesan yang hanya berbunyi "SLOC rute belum
        * lengkap" membuat leader menebak di antara empat kemungkinan — dan
        * selama menebak, seluruh lini proses itu berhenti. Pernah terjadi: SLOC
        * Transfer diisi sama dengan SLOC Keluar, dan SETIAP scan casting
@@ -469,7 +407,7 @@ export class ScanService {
 
       if ((sapRoute.productionEnabled || transferLocationId) && !outputLocationId) {
         tolakSloc(
-          'SLOC Keluar kosong padahal push produksi atau transfer aktif — isi SLOC Keluar di Integrasi › Rute Proses',
+          'SLOC Keluar kosong padahal push produksi atau transfer aktif — isi Tujuan di Master Data › Rute Proses per Part',
         );
       }
       if (sapRoute.transferEnabled && !transferLocationId) {
@@ -502,29 +440,22 @@ export class ScanService {
      * akan pernah bisa dikirim.
      */
     /*
-     * METODE SCAN proses ini, dari master Jenis Proses.
+     * METODE SCAN part ini di work center ini; kosong atau di luar rute memakai
+     * milik line, lalu master Jenis Proses.
      *
      * Semua syarat kanban di bawah diturunkan dari sini lewat
      * syaratScan(), bukan dari "apakah ini lini FG" — aturan FG/WIP itu milik
      * UNIT, sedangkan di BODY setiap lini men-scan kanban.
      */
-    // Penimpa lini didahulukan: satu pabrik bisa punya dua lini dengan cara
-    // berbeda pada proses yang sama (injection vs assembling BODY).
     const katalog = await this.processTypes.katalog();
     const modeScan: ScanMode = modeScanBerlaku(katalog, {
-      modeLini: line?.scanMode,
+      modeLini: barisRute?.scanMode ?? line?.scanMode,
       proses: processType,
     });
     const syarat = processType ? syaratScan(katalog, modeScan, processType) : null;
 
-    /*
-     * Apakah proses ini mewajibkan belanja lebih dulu.
-     *
-     * Dari master Rute Proses per (pabrik + proses), bukan dari daftar project
-     * di dalam kode seperti di bella — menyalakannya untuk proses berikutnya
-     * tidak boleh menuntut deploy.
-     */
-    const wajibBelanja = aturanProses?.requirePairing ?? false;
+    // Menyalakannya untuk part berikutnya cukup di master, tanpa deploy.
+    const wajibBelanja = barisRute?.requirePairing ?? false;
 
     /*
      * Metode yang dikenal tetapi alurnya belum dibangun ditolak di sini.
@@ -804,6 +735,7 @@ export class ScanService {
         : (parsed.serialNumber ?? null);
 
     const hasilDasar: HasilIngest = {
+      scanMode: modeScan,
       duplicated: false,
       partId: part?.id,
       productionDate: prodDate,
@@ -811,7 +743,16 @@ export class ScanService {
       serialNumber: seriScan,
       kanbanOwner: kanbanTerpilih?.owner ?? null,
       loadingList: labelDn ? await this.ringkasanLoadingList(labelDn.deliveryId) : null,
-      peringatan: peringatanKartu,
+      peringatan:
+        [
+          peringatanKartu,
+          diLuarRute
+            ? `${part?.partNumber} tidak terdaftar di work center ${line?.code}. ` +
+              'Scan tercatat, dokumen SAP ditahan.'
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || null,
     };
 
     /*
@@ -1464,7 +1405,12 @@ export class ScanService {
       const already = await this.db
         .select({ id: scanEvents.id })
         .from(scanEvents)
-        .where(and(eq(scanEvents.rawCode, input.rawCode), eq(scanEvents.processType, processType)))
+        .where(
+          and(
+            eq(scanEvents.rawCode, input.rawCode),
+            inArray(scanEvents.processType, await this.prosesDiLine(input.lineCode, processType)),
+          ),
+        )
         .limit(1);
 
       if (already.length > 0) {
@@ -1542,6 +1488,8 @@ export class ScanService {
         serialNumber: outcome.serialNumber,
         // Layar FG: berapa unit harus ditahan sebelum kartu discan.
         qtyPerKanban: part?.qtyPerKanban ?? null,
+        // Line campuran: part ini menunggu kartu atau langsung tercatat.
+        scanMode: outcome.scanMode,
         kanbanOwner: outcome.kanbanOwner,
         loadingList: outcome.loadingList ?? null,
         ...(await this.hitunganUntukHasil(input.lineCode)),
@@ -1598,6 +1546,22 @@ export class ScanService {
     };
   }
 
+  /**
+   * Proses milik line ini beserta proses rute yang dikerjakan di sana.
+   *
+   * Line campuran mencatat scan di proses barisnya, bukan proses line, jadi
+   * pencarian duplikat harus mencakup semuanya.
+   */
+  private async prosesDiLine(lineCode: string | undefined, proses: ProcessType) {
+    const line = lineCode ? await this.findLine(lineCode) : undefined;
+    if (!line) return [proses];
+    const rute = await this.db
+      .selectDistinct({ processType: partProcesses.processType })
+      .from(partProcesses)
+      .where(and(eq(partProcesses.lineId, line.id), eq(partProcesses.isActive, true)));
+    return [...new Set([proses, ...rute.map((r) => r.processType)])];
+  }
+
   /** Jenis proses yang berlaku untuk scan ini: dari input, atau dari line-nya. */
   private async processTypeFor(input: ScanInput) {
     if (input.processType) return input.processType;
@@ -1628,6 +1592,27 @@ export class ScanService {
       modeLini,
       proses: processType,
     });
+  }
+
+  /** Apakah ada part di line ini yang ditutup kartu, walau bawaan line-nya tidak. */
+  private async lineMenerimaKartu(line: {
+    id: number;
+    processType: ProcessType;
+    scanMode: ScanModeTersimpan | null;
+  }): Promise<boolean> {
+    if ((await this.modeScanLini(line.processType, line.scanMode)) === 'PART_KANBAN') return true;
+    const rute = await this.db
+      .select({ processType: partProcesses.processType, scanMode: partProcesses.scanMode })
+      .from(partProcesses)
+      .where(and(eq(partProcesses.lineId, line.id), eq(partProcesses.isActive, true)));
+    const katalog = await this.processTypes.katalog();
+    return rute.some(
+      (r) =>
+        modeScanBerlaku(katalog, {
+          modeLini: r.scanMode ?? line.scanMode,
+          proses: r.processType,
+        }) === 'PART_KANBAN',
+    );
   }
 
   private async partById(id: number) {
@@ -1790,15 +1775,9 @@ export class ScanService {
     }
 
     const rute = await this.db
-      .select({ processType: partProcesses.processType })
+      .select({ lineId: partProcesses.lineId, processType: partProcesses.processType })
       .from(partProcesses)
       .where(and(eq(partProcesses.partId, part.id), eq(partProcesses.isActive, true)));
-
-    if (rute.length > 0 && !rute.some((r) => r.processType === line.processType)) {
-      throw new BadRequestException(
-        `${part.partNumber} tidak melewati ${line.processType} menurut rutenya. Periksa sample yang tertempel.`,
-      );
-    }
 
     return {
       partId: part.id,
@@ -1809,7 +1788,7 @@ export class ScanService {
       qtyPerKanban: part.qtyPerKanban,
       /** Foto part untuk dicocokkan operator dengan barang di tangannya. */
       photoPath: part.photoPath ?? null,
-      ruteDiperiksa: rute.length > 0,
+      diLuarRute: !pilihBarisRute(rute, line.id, line.processType),
     };
   }
 
@@ -1838,6 +1817,7 @@ export class ScanService {
          * ditebak layar dari nama pabriknya.
          */
         scanMode: await this.modeScanLini(line.processType, line.scanMode),
+        menerimaKartu: await this.lineMenerimaKartu(line),
       },
       ...(await this.hitunganUntukHasil(lineCode)),
       berhenti: await this.berhentiTerbuka(line.id),

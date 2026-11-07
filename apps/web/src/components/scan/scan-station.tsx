@@ -147,8 +147,11 @@ export function ScanStation({
    * Dibaca dari METODE SCAN, bukan dari jenis prosesnya. Dulu dari
    * `menghasilkanFinishGood(processType)` — sehingga lini FG yang ternyata
    * tidak memakai kartu mustahil dinyatakan tanpa menyunting kode.
+   *
+   * Metodenya per part, jadi line campuran ikut alur ini: server menjawab metode
+   * tiap part saat diperiksa, dan part tanpa kartu langsung tercatat.
    */
-  const fg = summary.line.scanMode === 'PART_KANBAN';
+  const fg = summary.line.menerimaKartu;
   /*
    * Unit yang menunggu kartunya. Di memori layar, bukan localStorage — sistem
    * lama menyimpannya di sana dan part yang tertinggal dari shift kemarin ikut
@@ -318,6 +321,11 @@ export function ScanStation({
       return;
     }
 
+    await kirimScan(value);
+  }
+
+  /** Mengirim satu scan yang langsung tercatat, tanpa menunggu kartu. */
+  async function kirimScan(value: string) {
     setBusy(true);
     setError(null);
     setSampleBaru(null);
@@ -437,6 +445,17 @@ export function ScanStation({
     }
 
     const pertama = ditahan[0];
+    if (res.scanMode !== 'PART_KANBAN') {
+      if (pertama) {
+        tolakDiLayar(
+          `${res.partNumber ?? 'Part ini'} tidak memakai kartu, sedangkan box ini berisi ` +
+            `${pertama.partNumber ?? '?'}. Selesaikan box ini dulu.`,
+        );
+        return;
+      }
+      await kirimScan(value);
+      return;
+    }
     if (pertama && pertama.partNumber !== res.partNumber) {
       setError(
         `Part berbeda: box ini berisi ${pertama.partNumber ?? '?'}, yang discan ${res.partNumber ?? '?'}. ` +
@@ -836,7 +855,7 @@ export function ScanStation({
                 : fg
                   ? isiBox !== null && ditahan.length >= isiBox
                     ? 'Box penuh. Scan kanban internal atau kanban customer untuk menutupnya.'
-                    : 'Scan part satu per satu sampai box penuh, lalu scan kanban.'
+                    : 'Part yang memakai kartu ditahan sampai box penuh, lalu scan kanban. Part lain langsung tercatat.'
                   : 'Arahkan barcode ke scanner. Hasilnya muncul besar di sebelah kanan.'}
           </p>
           {perKanban && sample ? (
@@ -1102,9 +1121,9 @@ export function ScanStation({
                     {sampleBaru.partName}
                   </div>
                   <p className="max-w-md text-[14px] text-ink-muted">
-                    {sampleBaru.ruteDiperiksa
-                      ? 'Sekarang scan kanban.'
-                      : 'Part ini belum punya rute, jadi lininya tidak bisa diperiksa. Sekarang scan kanban.'}
+                    {sampleBaru.diLuarRute
+                      ? `Perhatian: part ini tidak terdaftar di ${summary.line.code}, dokumen SAP-nya akan ditahan. Periksa sample, lalu scan kanban.`
+                      : 'Sekarang scan kanban.'}
                   </p>
                 </>
               ) : !result ? (

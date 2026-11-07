@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { eq, and, sql, desc, count, inArray, type Database } from '@avicenna/db';
+import { eq, and, or, isNull, sql, desc, count, inArray, type Database } from '@avicenna/db';
 import {
   sapOutbox,
   deliveries,
@@ -33,6 +33,12 @@ import { ProcessTypeService } from '../master/process-type.service';
 
 /** Jeda sebelum sebuah dokumen dianggap lengkap. Lihat catatan di collect(). */
 const SETTLE_SECONDS = 60;
+
+/**
+ * Awal alasan dokumen yang ditahan karena part-nya di luar rute work center.
+ * releaseHeld() mengenalinya dari sini dan melepasnya begitu rutenya didaftarkan.
+ */
+const TAHAN_DI_LUAR_RUTE = 'di luar rute: ';
 
 /** Berapa dokumen dikumpulkan sekali jalan. */
 const BATCH = 200;
@@ -251,7 +257,13 @@ export class SapOutboxService {
               partProcesses,
               and(
                 eq(partProcesses.partId, scanEvents.partId),
-                eq(partProcesses.processType, scanEvents.processType),
+                or(
+                  eq(partProcesses.lineId, scanEvents.lineId),
+                  and(
+                    isNull(partProcesses.lineId),
+                    eq(partProcesses.processType, scanEvents.processType),
+                  ),
+                ),
               ),
             )
             .leftJoin(users, eq(scanEvents.userId, users.id))
@@ -264,6 +276,7 @@ export class SapOutboxService {
         productionEnabled?: boolean;
         transferEnabled?: boolean;
         transferMovementType?: string | null;
+        diLuarRute?: boolean;
       };
     } | null;
     const kebijakan = metaScan?.sapRoute;
@@ -561,8 +574,13 @@ export class SapOutboxService {
         !kurangKonteks &&
         !menungguProduksi &&
         !receivingHold &&
-        !transferTakSah;
+        !transferTakSah &&
+        !kebijakan?.diLuarRute;
       const alasanTahan = [
+        kebijakan?.diLuarRute
+          ? `${TAHAN_DI_LUAR_RUTE}part ini tidak terdaftar di work center scan-nya — ` +
+            'daftarkan di Master Data › Rute Proses per Part dengan SAP aktif'
+          : null,
         receivingHold,
         transferTakSah?.alasan ?? null,
         siap ? null : `movement type belum diputuskan untuk: ${belum.join(', ')}`,
@@ -673,6 +691,8 @@ export class SapOutboxService {
     for (const row of tertahan) {
       if (row.sourceTable === 'TT_DELIVERY_ORDER' || row.sourceTable === 'TT_DELIVERY') continue;
       if (row.lastError?.startsWith('pendorong untuk ')) continue;
+      if (row.lastError?.startsWith(TAHAN_DI_LUAR_RUTE) && !(await this.ruteSudahTerdaftar(row.sourceId)))
+        continue;
       const payload = row.payload as {
         lines?: Array<{
           mutationType: string;
@@ -765,6 +785,25 @@ export class SapOutboxService {
     }
     if (dilepas > 0) this.logger.log(`${dilepas} dokumen tertahan dilepas ke antrean kirim`);
     return { dilepas };
+  }
+
+  /** Apakah part scan ini kini terdaftar di work center scan-nya, dengan SAP aktif. */
+  private async ruteSudahTerdaftar(scanEventId: number): Promise<boolean> {
+    const [baris] = await this.db
+      .select({ id: partProcesses.id })
+      .from(scanEvents)
+      .innerJoin(
+        partProcesses,
+        and(
+          eq(partProcesses.partId, scanEvents.partId),
+          eq(partProcesses.lineId, scanEvents.lineId),
+          eq(partProcesses.isActive, true),
+          eq(partProcesses.sapProductionEnabled, true),
+        ),
+      )
+      .where(eq(scanEvents.id, scanEventId))
+      .limit(1);
+    return Boolean(baris);
   }
 
   /**

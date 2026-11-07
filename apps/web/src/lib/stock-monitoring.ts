@@ -546,10 +546,10 @@ export async function stockMonitor(params: StockMonitorParams) {
     : [];
   const routeByPart = new Map<number, string[]>();
   for (const r of routeRows) {
-    routeByPart.set(r.partId, [
-      ...(routeByPart.get(r.partId) ?? []),
-      katalog.label(r.processType),
-    ]);
+    // Work center alternatif berbagi proses: labelnya cukup sekali.
+    const label = katalog.label(r.processType);
+    const ada = routeByPart.get(r.partId) ?? [];
+    if (!ada.includes(label)) routeByPart.set(r.partId, [...ada, label]);
   }
 
   const summary = balanceSummaryRows[0];

@@ -273,12 +273,8 @@ const MENU_TETAP: MenuDef[] = [
  *
  *   master.part-processes    Rute Proses per Part   Master Data
  *                            (rute tiap part per work center)
- *   master.route-processes   Rute Proses            Integrasi    -> CRUD per proses
- *                            (PPIC/IT: SLOC masuk/keluar/transfer, bendera SAP)
  */
 const MENU_MASTER_TIMPA: Partial<Record<MasterEntity, Partial<MenuDef>>> = {
-  // Pengaturan per proses — urusan PPIC/IT, jadi di menu Integrasi.
-  'route-processes': { label: 'Rute Proses', group: 'Integrasi', sortOrder: 20 },
   /*
    * Daftar jenis prosesnya sendiri, satu tingkat di atas Rute Proses: yang ini
    * menentukan proses APA SAJA yang ada, yang itu menentukan pabrik mana
@@ -288,7 +284,11 @@ const MENU_MASTER_TIMPA: Partial<Record<MasterEntity, Partial<MenuDef>>> = {
   'process-types': { label: 'Jenis Proses', group: 'Integrasi', sortOrder: 15 },
 };
 
-const MENU_MASTER: MenuDef[] = MASTER_ENTITIES.map((key, i) => ({
+/*
+ * Rute Proses tidak dibaca lagi: semuanya sudah per work center. Tabelnya masih
+ * ada sampai peralihan terbukti berjalan, tetapi tidak ditawarkan sebagai menu.
+ */
+const MENU_MASTER: MenuDef[] = MASTER_ENTITIES.filter((key) => key !== 'route-processes').map((key, i) => ({
   key: `master.${key}`,
   label: ENTITY_DEFS[key].label,
   href: `/master/${key}`,

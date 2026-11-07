@@ -125,6 +125,8 @@ export interface SapRoutePolicy {
   productionEnabled?: boolean;
   transferEnabled?: boolean;
   transferMovementType?: string | null;
+  /** Part ini tidak terdaftar di work center scan-nya: dokumennya ditahan untuk ditinjau. */
+  diLuarRute?: boolean;
 }
 
 export function bolehKirimDokumenRute(
@@ -133,6 +135,8 @@ export function bolehKirimDokumenRute(
   policy?: SapRoutePolicy,
 ): boolean {
   if (sourceTable !== 'TT_HISTORY_SCAN') return true;
+  // Dibuat dokumennya supaya bisa ditahan dan ditinjau, bukan dilewati diam-diam.
+  if (docType === 'PRODUCTION' && policy?.diLuarRute) return true;
   if (docType === 'PRODUCTION') return policy?.productionEnabled === true;
   if (docType === 'TRANSFER') return policy?.transferEnabled === true;
   return true;
