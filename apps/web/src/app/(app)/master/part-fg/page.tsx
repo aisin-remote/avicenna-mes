@@ -6,7 +6,9 @@ import { getMasterOptions, type RefOption } from '@/lib/master-api';
 import { katalogProsesServer } from '@/lib/process-types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
+import { PilihCari } from '@/components/ui/pilih-cari';
 import { TabelPohonFg } from '@/components/master/tabel-pohon-fg';
+import { TombolSalinBom } from '@/components/master/tombol-salin-bom';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,24 +49,21 @@ export default async function PartFgPage({
         action="/master/part-fg"
         className="mb-4 flex flex-wrap items-end gap-3 rounded-card border border-line bg-card p-4"
       >
-        <label className="block min-w-[280px] flex-1">
+        <div className="block min-w-[280px] flex-1">
           <span className="mb-1.5 block text-[13px] font-semibold">Part FG</span>
-          <select
+          <PilihCari
+            key={fg}
             name="fg"
             defaultValue={fg}
             required
-            className="h-11 w-full rounded-2xl border border-line bg-card px-3 text-[14px] outline-none focus:border-ink"
-          >
-            <option value="">— pilih part FG —</option>
-            {daftar.daftar.map((p) => (
-              <option key={p.partNumber} value={p.partNumber}>
-                {p.partNumber}
-                {p.backNumber ? ` (${p.backNumber})` : ''}
-                {p.name ? ` — ${p.name}` : ' — belum di master'} · {p.jumlahKomponen} turunan
-              </option>
-            ))}
-          </select>
-        </label>
+            placeholder="— pilih part FG —"
+            pilihan={daftar.daftar.map((p) => ({
+              value: p.partNumber,
+              label: `${p.partNumber}${p.backNumber ? ` (${p.backNumber})` : ''}`,
+              keterangan: `${p.name ?? 'belum di master'} · ${p.jumlahKomponen} turunan`,
+            }))}
+          />
+        </div>
         <button
           type="submit"
           className="h-11 rounded-full border border-line px-5 text-[14px] font-semibold transition-colors hover:bg-surface"
@@ -72,6 +71,8 @@ export default async function PartFgPage({
           Buka
         </button>
       </Form>
+
+      {daftar.tersedia ? <TombolSalinBom /> : null}
 
       {galat ? (
         <p className="mb-4 flex items-start gap-2 rounded-card border border-ng/45 bg-ng/5 px-4 py-3 text-[14px] text-ng">

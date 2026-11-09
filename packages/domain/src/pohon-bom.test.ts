@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { akarBom, ratakanPohonBom, type BarisBomSap } from './pohon-bom';
+import { akarBom, pasanganDariBom, ratakanPohonBom, type BarisBomSap } from './pohon-bom';
 
 const b = (induk: string, komponen: string, v: Partial<BarisBomSap> = {}): BarisBomSap => ({
   induk,
@@ -43,5 +43,52 @@ describe('ratakanPohonBom', () => {
 
   it('part yang tidak ada di BOM menghasilkan kosong', () => {
     expect(ratakanPohonBom([b('F', 'F')], 'Z')).toEqual([]);
+  });
+});
+
+describe('pasanganDariBom', () => {
+  const master: Record<string, number> = { FG: 1, MA: 2, DC: 3, ING: 4, SUB: 5 };
+  const cari = (pn: string) => (master[pn] ? { id: master[pn]!, plantId: 9 } : undefined);
+
+  it('phantom diurai: komponennya dipasangkan langsung ke induk phantom, qty dikalikan', () => {
+    const data = [
+      b('FG', 'FG'),
+      b('FG', 'MA'),
+      b('MA', 'DC'),
+      b('DC', 'MELT', { phantom: 'X', qty: 2 }),
+      b('MELT', 'ING', { qty: 2178, uom: 'g' }),
+    ];
+    const { pasangan, dilewati, indukTersalin } = pasanganDariBom(data, cari);
+    expect(pasangan).toEqual([
+      { plantId: 9, indukId: 1, komponenId: 2, qtyPer: 1, uom: 'pcs' },
+      { plantId: 9, indukId: 2, komponenId: 3, qtyPer: 1, uom: 'pcs' },
+      { plantId: 9, indukId: 3, komponenId: 4, qtyPer: 4356, uom: 'g' },
+    ]);
+    expect(dilewati).toEqual([]);
+    // Baris milik phantom tidak ikut sebagai induk sendiri.
+    expect(indukTersalin.sort()).toEqual([1, 2, 3]);
+  });
+
+  it('part yang belum di master dilaporkan, induknya tetap tersalin', () => {
+    const data = [b('FG', 'SUB'), b('FG', 'BELI'), b('X', 'SUB')];
+    const { pasangan, dilewati, indukTersalin } = pasanganDariBom(data, cari);
+    expect(pasangan.map((p) => p.komponenId)).toEqual([5]);
+    expect(dilewati).toEqual([
+      { induk: 'FG', komponen: 'BELI', sebab: 'komponen belum ada di master' },
+      { induk: 'X', komponen: 'SUB', sebab: 'induk belum ada di master' },
+    ]);
+    expect(indukTersalin).toEqual([1]);
+  });
+
+  it('komponen yang sama dari dua cabang phantom dijumlahkan', () => {
+    const data = [
+      b('FG', 'P1', { phantom: 'X' }),
+      b('FG', 'P2', { phantom: 'X' }),
+      b('P1', 'SUB', { qty: 2 }),
+      b('P2', 'SUB', { qty: 3 }),
+    ];
+    expect(pasanganDariBom(data, cari).pasangan).toEqual([
+      { plantId: 9, indukId: 1, komponenId: 5, qtyPer: 5, uom: 'pcs' },
+    ]);
   });
 });

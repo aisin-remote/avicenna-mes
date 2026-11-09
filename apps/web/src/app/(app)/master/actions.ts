@@ -6,7 +6,9 @@ import {
   getEntityDef,
   MAKS_UKURAN_IMPOR,
   type MasterEntity,
-  type HasilImpor, MAKS_UKURAN_FOTO} from '@avicenna/contracts';
+  type HasilImpor, MAKS_UKURAN_FOTO,
+  type HasilSalinBom,
+} from '@avicenna/contracts';
 import { apiFetch, ApiRequestError } from '@/lib/api';
 
 export interface FormState {
@@ -187,6 +189,23 @@ export async function unggahFotoAction(
       method: 'POST',
       body: JSON.stringify({ fileBase64, mimeType: berkas.type }),
     });
+  } catch (err) {
+    if (err instanceof ApiRequestError) return { error: err.message };
+    return { error: 'Tidak bisa menghubungi server API' };
+  }
+}
+
+/**
+ * Menyalin BOM SAP ke Part Pairing.
+ *
+ * Scan memilih part tahap dari rantai Part Pairing, jadi salinan ini harus
+ * diperbarui setiap kali BOM di SAP berubah.
+ */
+export async function salinBomAction(): Promise<HasilSalinBom | { error: string }> {
+  try {
+    const hasil = await apiFetch<HasilSalinBom>('/bom/salin-pairing', { method: 'POST' });
+    if (hasil.tersedia) revalidatePath('/master/part-pairings');
+    return hasil;
   } catch (err) {
     if (err instanceof ApiRequestError) return { error: err.message };
     return { error: 'Tidak bisa menghubungi server API' };

@@ -3,6 +3,11 @@
 Ditulis untuk orang yang memegang server, bukan yang menulis kodenya.
 Semua perintah dijalankan dari akar repo di server.
 
+Untuk **server yang benar-benar baru** (kosong, belum pernah menjalankan
+Avicenna), ikuti [`deploy-server-baru.md`](deploy-server-baru.md) lebih dulu —
+di sana ada urutan persiapan, deploy key, dan impor data. Dokumen ini menganggap
+server sudah terpasang.
+
 ## Bentuknya
 
 Dua tumpukan compose terpisah, disambung satu jaringan Docker:

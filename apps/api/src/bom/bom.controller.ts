@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Post } from '@nestjs/common';
 import { BomService } from './bom.service';
 
 @Controller('bom')
@@ -13,5 +13,10 @@ export class BomController {
   @Get('fg/:partNumber')
   pohon(@Param('partNumber') partNumber: string) {
     return this.bom.pohon(partNumber);
+  }
+
+  @Post('salin-pairing')
+  salinKePairing() {
+    return this.bom.salinKePairing();
   }
 }

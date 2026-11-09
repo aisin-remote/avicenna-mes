@@ -82,3 +82,33 @@ export function masalahBarisRute(baris: BarisRuteUntukPeriksa): string[] {
   if (!baris.scanMode) masalah.push('Metode scan kosong');
   return masalah;
 }
+
+/** Turunan part keluarga QR, dengan jaraknya dari part itu (0 = part itu sendiri). */
+export interface TurunanPart {
+  partId: number;
+  kedalaman: number;
+}
+
+/**
+ * Part tahap yang dimaksud QR di sebuah line.
+ *
+ * QR ditatah sekali di Casting dan dibawa sampai FG, sedangkan nomor part
+ * berganti di tiap tahap. Kode program di QR hanya menunjuk keluarganya (FG),
+ * jadi part sebenarnya adalah anggota rantai yang dikerjakan di line ini.
+ *
+ * Yang terdekat ke FG yang menang. Dua part pada jarak yang sama sama-sama
+ * dikerjakan di line ini, dan itu tidak ditebak.
+ *
+ * Kosong berarti tidak ada anggota rantai yang punya rute di line ini; pemanggil
+ * memakai part keluarga dan scan menjadi di luar rute.
+ */
+export function pilihPartTahap(
+  turunan: readonly TurunanPart[],
+  adaRuteDiLine: (partId: number) => boolean,
+): { partId: number } | { ambigu: number[] } | null {
+  const cocok = turunan.filter((t) => adaRuteDiLine(t.partId));
+  if (cocok.length === 0) return null;
+  const terdekat = Math.min(...cocok.map((t) => t.kedalaman));
+  const pilihan = [...new Set(cocok.filter((t) => t.kedalaman === terdekat).map((t) => t.partId))];
+  return pilihan.length === 1 ? { partId: pilihan[0]! } : { ambigu: pilihan };
+}

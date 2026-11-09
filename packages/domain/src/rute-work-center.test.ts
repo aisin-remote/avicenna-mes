@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { katalogProses, type JenisProses } from '@avicenna/contracts';
-import { masalahBarisRute, pilihBarisRute, prosesDariWorkCenter } from './rute-work-center';
+import { masalahBarisRute, pilihBarisRute, prosesDariWorkCenter, pilihPartTahap } from './rute-work-center';
 
 const jenis = (code: string, processGroup: string, sapClass: string): JenisProses =>
   ({ code, label: code, processGroup, sapClass, scanMode: 'PART_SAJA', isActive: true, sortOrder: 0 }) as JenisProses;
@@ -114,5 +114,32 @@ describe('masalahBarisRute', () => {
         outputLocationId: null,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('pilihPartTahap', () => {
+  // FG(1) <- MA(2) <- DC(3); FG juga memakai SUB(4) di kedalaman 1
+  const rantai = [
+    { partId: 1, kedalaman: 0 },
+    { partId: 2, kedalaman: 1 },
+    { partId: 4, kedalaman: 1 },
+    { partId: 3, kedalaman: 2 },
+  ];
+
+  it('memilih anggota rantai yang punya rute di line', () => {
+    expect(pilihPartTahap(rantai, (id) => id === 3)).toEqual({ partId: 3 });
+    expect(pilihPartTahap(rantai, (id) => id === 1)).toEqual({ partId: 1 });
+  });
+
+  it('yang terdekat ke FG menang', () => {
+    expect(pilihPartTahap(rantai, (id) => id === 2 || id === 3)).toEqual({ partId: 2 });
+  });
+
+  it('dua part pada jarak sama tidak ditebak', () => {
+    expect(pilihPartTahap(rantai, (id) => id === 2 || id === 4)).toEqual({ ambigu: [2, 4] });
+  });
+
+  it('kosong bila tidak ada yang punya rute', () => {
+    expect(pilihPartTahap(rantai, () => false)).toBeNull();
   });
 });

@@ -47,3 +47,16 @@ export type DaftarPartFg =
 export type PohonPartFg =
   | { tersedia: true; ditemukan: boolean; simpul: SimpulBomFg[] }
   | { tersedia: false; galat: string; ditemukan: false; simpul: [] };
+
+/** Hasil menyalin BOM SAP ke Part Pairing. */
+export type HasilSalinBom =
+  | {
+      tersedia: true;
+      /** Induk BOM yang ada di master; pasangannya kini mengikuti BOM. */
+      induk: number;
+      ditambah: number;
+      diakhiri: number;
+      tetap: number;
+      dilewati: { induk: string; komponen: string; sebab: string }[];
+    }
+  | { tersedia: false; galat: string };

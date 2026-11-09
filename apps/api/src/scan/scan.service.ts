@@ -36,6 +36,7 @@ import {
   deliveryLines,
   customers,
   customerParts,
+  partPairings,
 } from '@avicenna/db';
 import { galatDuplikat } from '@avicenna/db';
 import {
@@ -50,6 +51,8 @@ import {
   productionDayWindow,
   statusLini,
   pilihBarisRute,
+  pilihPartTahap,
+  toLocalDateKey,
   grupProses,
   prosesDalamGrup,
   bolehScanDi,
@@ -272,7 +275,16 @@ export class ScanService {
      * scan produksi di lantai akan ditolak sebagai "part tidak dikenali" —
      * karena memang tidak ada nomor part untuk dicari.
      */
-    const { part, model: programModel } = await this.kenaliPart(parsed, line?.plantId);
+    const {
+      part,
+      model: programModel,
+      keluarga,
+      ambigu,
+    } = await this.kenaliPart(
+      parsed,
+      line?.plantId,
+      line ? { id: line.id, processType: normalized.processType ?? line.processType } : undefined,
+    );
 
     /*
      * Produksi WAJIB mengenali part-nya.
@@ -291,7 +303,9 @@ export class ScanService {
        * program number belum didaftarkan (urusan master), part memang tidak ada,
        * atau barcodenya tidak memuat identitas part sama sekali.
        */
-      const sebab = parsed.programCode
+      const sebab = ambigu
+        ? `QR ini cocok ke beberapa part di line ${line?.code}: ${ambigu.join(', ')}`
+        : parsed.programCode
         ? `program number "${parsed.programCode}" belum terdaftar di master`
         : punyaIdentitasPart(parsed)
           ? `part "${parsed.partNumber ?? parsed.backNumber}" tidak ada di master`
@@ -844,6 +858,7 @@ export class ScanService {
               aturanBarcode: parsed.aturan,
               ...(parsed.programCode ? { programNumber: parsed.programCode } : {}),
               ...(programModel ? { model: programModel } : {}),
+              ...(keluarga ? { partKeluarga: keluarga.partNumber } : {}),
               sapRoute,
               scanMode: modeScan,
               ...(kanbanTerpilih ? { kanbanSerial: kanbanTerpilih.serial } : {}),
@@ -1333,7 +1348,15 @@ export class ScanService {
   async kenaliPart(
     parsed: { partNumber?: string; backNumber?: string; programCode?: string },
     plantId?: number,
-  ): Promise<{ part?: typeof parts.$inferSelect; model: string | null }> {
+    line?: { id: number; processType: string | null },
+  ): Promise<{
+    part?: typeof parts.$inferSelect;
+    model: string | null;
+    /** Part yang ditunjuk kode program, bila part tahapnya berbeda. */
+    keluarga?: typeof parts.$inferSelect;
+    /** Nomor part rantai yang sama-sama dikerjakan line ini; part tidak dipilih. */
+    ambigu?: string[];
+  }> {
     const part = await this.resolvePart(parsed.partNumber, parsed.backNumber, plantId);
     if (part) return { part, model: null };
 
@@ -1354,7 +1377,75 @@ export class ScanService {
       .limit(1);
 
     if (!pn) return { part: undefined, model: null };
-    return { part: await this.partById(pn.partId), model: pn.product };
+    const keluarga = await this.partById(pn.partId);
+    if (!keluarga || !line) return { part: keluarga, model: pn.product };
+
+    /*
+     * QR ditatah di Casting dan dibawa sampai FG, sedangkan kode programnya
+     * menunjuk FG. Di DC dan MA barang yang sama masih bernomor part tahapnya,
+     * jadi part dipilih dari rantai Part Pairing FG itu yang dikerjakan line ini.
+     */
+    const tahap = await this.partTahap(keluarga.id, line);
+    if (!tahap) return { part: keluarga, model: pn.product };
+    if ('ambigu' in tahap) {
+      const nomor = await this.db
+        .select({ partNumber: parts.partNumber })
+        .from(parts)
+        .where(inArray(parts.id, tahap.ambigu));
+      return { part: undefined, model: pn.product, ambigu: nomor.map((n) => n.partNumber) };
+    }
+    if (tahap.partId === keluarga.id) return { part: keluarga, model: pn.product };
+    return { part: await this.partById(tahap.partId), model: pn.product, keluarga };
+  }
+
+  /** Anggota rantai Part Pairing sebuah FG yang punya rute di line ini. */
+  private async partTahap(
+    fgPartId: number,
+    line: { id: number; processType: string | null },
+  ): Promise<ReturnType<typeof pilihPartTahap>> {
+    const hariIni = toLocalDateKey(new Date());
+    // Batas kedalaman menjaga data pasangan yang melingkar.
+    const turunan = await this.db.execute<{ part_id: string; kedalaman: number }>(sql`
+      WITH RECURSIVE rantai(part_id, kedalaman) AS (
+        SELECT ${fgPartId}::bigint, 0
+        UNION
+        SELECT pp."INT_COMPONENT_PART_ID", r.kedalaman + 1
+        FROM ${partPairings} pp
+        JOIN rantai r ON pp."INT_PARENT_PART_ID" = r.part_id
+        WHERE r.kedalaman < 10
+          AND pp."DTM_EFFECTIVE_FROM" <= ${hariIni}
+          AND (pp."DTM_EFFECTIVE_TO" IS NULL OR pp."DTM_EFFECTIVE_TO" >= ${hariIni})
+      )
+      SELECT part_id, min(kedalaman)::int AS kedalaman FROM rantai GROUP BY part_id
+    `);
+    const daftar = turunan.rows.map((t) => ({ partId: Number(t.part_id), kedalaman: t.kedalaman }));
+    if (daftar.length <= 1) return null;
+
+    const rute = await this.db
+      .select({
+        partId: partProcesses.partId,
+        lineId: partProcesses.lineId,
+        processType: partProcesses.processType,
+      })
+      .from(partProcesses)
+      .where(
+        and(
+          inArray(
+            partProcesses.partId,
+            daftar.map((d) => d.partId),
+          ),
+          eq(partProcesses.isActive, true),
+        ),
+      );
+    return pilihPartTahap(daftar, (partId) =>
+      Boolean(
+        pilihBarisRute(
+          rute.filter((r) => r.partId === partId),
+          line.id,
+          line.processType,
+        ),
+      ),
+    );
   }
 
   /**
