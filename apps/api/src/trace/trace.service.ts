@@ -106,9 +106,7 @@ export class TraceService {
       .from(lots)
       .leftJoin(parts, eq(lots.partId, parts.id))
       .leftJoin(suppliers, eq(lots.supplierId, suppliers.id))
-      .where(
-        sql`${lots.lotNumber} = ${value} OR ${lots.supplierLotNumber} = ${value}`,
-      )
+      .where(sql`${lots.lotNumber} = ${value} OR ${lots.supplierLotNumber} = ${value}`)
       .limit(1);
 
     const lot = lotRows[0];

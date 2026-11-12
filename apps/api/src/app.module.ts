@@ -18,6 +18,7 @@ import { AdminModule } from './admin/admin.module';
 import { MasterModule } from './master/master.module';
 import { ReceivingModule } from './receiving/receiving.module';
 import { TraceModule } from './trace/trace.module';
+import { LaporanModule } from './laporan/laporan.module';
 import { TransferModule } from './transfer/transfer.module';
 import { LoadingModule } from './loading/loading.module';
 import { PisModule } from './pis/pis.module';
@@ -55,6 +56,7 @@ import { loadEnv } from './config/env';
     MasterModule,
     ReceivingModule,
     TraceModule,
+    LaporanModule,
     TransferModule,
     LoadingModule,
     PisModule,

@@ -19,6 +19,7 @@ import {
 } from '@avicenna/db';
 import {
   bacaKanban,
+  KanbanRusakKetik,
   KanbanTidakTerbaca,
   nomorPartSama,
   bolehScanDi,
@@ -34,6 +35,7 @@ import { InjectDb } from '../db/db.module';
 import type { Principal } from '../auth/auth.types';
 import { ProcessTypeService } from '../master/process-type.service';
 import { ScanService } from './scan.service';
+import { DandoriService } from './dandori.service';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Reader = Database | Tx;
@@ -47,7 +49,40 @@ export class MoldScanService {
     @InjectDb() private readonly db: Database,
     private readonly scanService: ScanService,
     private readonly processTypes: ProcessTypeService,
+    private readonly dandori: DandoriService,
   ) {}
+
+  /**
+   * Line mold yang wajib dandori memasang mold-nya lewat dandori, bukan lewat
+   * tag mold di kotak scan: mold yang di-START di sana dipasang ke sesi ini
+   * begitu putaran sebelumnya kosong. Mengembalikan pesan tolak bila line
+   * belum di-dandori.
+   */
+  private async ikutDandori(
+    tx: Tx,
+    context: Context,
+    session: Session,
+  ): Promise<{ session: Session; tolak?: string }> {
+    if (!(await this.dandori.wajib(context.line))) return { session };
+    const aktif = await this.dandori.terbuka(context.line.id);
+    if (!aktif) {
+      return { session, tolak: 'Line belum di-dandori. Tekan DANDORI, scan tag mold, lalu START.' };
+    }
+    if (aktif.status !== 'BERJALAN') {
+      return { session, tolak: 'Line sedang dandori. Scan tag mold lalu tekan START.' };
+    }
+    if (!aktif.toolingId || aktif.toolingId === session.toolingId) return { session };
+    if ((session.scanned ?? []).length > 0) return { session };
+    const [mold] = await tx
+      .select()
+      .from(toolings)
+      .where(eq(toolings.id, aktif.toolingId))
+      .limit(1);
+    if (!mold) return { session };
+    return {
+      session: await this.pasangMold(tx, context, session, mold, aktif.kodeDandori ?? mold.code),
+    };
+  }
 
   /** Stasiun mold tetap tunduk pada pabrik dan grup proses role operator. */
   private async context(lineCode: string, principal?: Principal): Promise<Context> {
@@ -328,6 +363,8 @@ export class MoldScanService {
     return this.db.transaction(async (tx) => {
       let session = await this.lockedSession(tx, context.line.id);
       if (session.status !== 'LOCKED') session = await this.reconcile(tx, context, session);
+      if (session.status !== 'LOCKED')
+        session = (await this.ikutDandori(tx, context, session)).session;
       return this.boardOf(tx, context.line, session);
     });
   }
@@ -335,7 +372,7 @@ export class MoldScanService {
   private cleanMoldCode(raw: string): string {
     return raw
       .trim()
-      .replace(/^MOLD\s*[:|]\s*/i, '')
+      .replace(/^MOLD\s*[-:|]\s*/i, '')
       .trim();
   }
 
@@ -369,6 +406,23 @@ export class MoldScanService {
         'Satu putaran sudah berjalan. Lengkapi semua anggota sebelum mengganti atau memuat ulang mold.',
       );
     }
+    const updated = await this.pasangMold(tx, context, session, mold, rawCode);
+    return this.boardOf(tx, context.line, updated, {
+      message: {
+        status: 'SUCCESS',
+        text: `Mold ${mold.code} aktif. Scan ${updated.memberPartIds.length} kanban anggotanya.`,
+      },
+    });
+  }
+
+  /** Memasang mold ke sesi line: anggota dimuat, putaran dikosongkan. */
+  private async pasangMold(
+    tx: Tx,
+    context: Context,
+    session: Session,
+    mold: typeof toolings.$inferSelect,
+    rawCode: string,
+  ): Promise<Session> {
     const memberRows = await tx
       .select({ id: parts.id })
       .from(toolingParts)
@@ -409,12 +463,7 @@ export class MoldScanService {
       occurredAt: new Date(),
       meta: { memberPartIds },
     });
-    return this.boardOf(tx, context.line, updated!, {
-      message: {
-        status: 'SUCCESS',
-        text: `Mold ${mold.code} aktif. Scan ${memberPartIds.length} kanban anggotanya.`,
-      },
-    });
+    return updated!;
   }
 
   private async unlock(
@@ -506,6 +555,7 @@ export class MoldScanService {
     try {
       parsed = bacaKanban(rawCode, { processType: line.processType, scanMode: 'KANBAN_MOLD' });
     } catch (error) {
+      if (error instanceof KanbanRusakKetik) throw new BadRequestException(error.message);
       if (error instanceof KanbanTidakTerbaca) {
         throw new BadRequestException('Barcode kanban tidak terbaca. Scan ulang kartunya.');
       }
@@ -573,7 +623,15 @@ export class MoldScanService {
         });
       }
 
+      const ikut = await this.ikutDandori(tx, context, session);
+      session = ikut.session;
       const mold = await this.findMold(tx, context.line, input.code);
+      if (ikut.tolak) throw new BadRequestException(ikut.tolak);
+      if (mold && (await this.dandori.wajib(context.line))) {
+        throw new BadRequestException(
+          'Ganti mold lewat tombol DANDORI, lalu scan tag mold di sana.',
+        );
+      }
       if (mold) return this.selectMold(tx, context, session, mold, input.code);
       if (!session.toolingId || session.status === 'WAITING_MOLD') {
         throw new BadRequestException('Scan tag mold yang terdaftar terlebih dahulu.');

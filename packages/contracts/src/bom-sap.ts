@@ -8,6 +8,8 @@ export type PartMasterBom = Record<string, unknown> & {
   name: string;
   backNumber: string | null;
   productionVersion: string | null;
+  /** SLOC tujuan hasil produksi, dipakai semua rute part ini. */
+  outputLocationId: number | null;
 };
 
 /** Satu part di pohon BOM SAP, sudah diratakan untuk tabel. */

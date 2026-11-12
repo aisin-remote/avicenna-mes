@@ -289,6 +289,17 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         numeric: true,
         hint: 'Menentukan urutan tampil pada daftar dan dashboard.',
       },
+      {
+        name: 'tanpaDandori',
+        label: 'Tanpa Dandori',
+        kind: 'boolean',
+        defaultValue: false,
+        inList: true,
+        hint:
+          'Semua line wajib dandori sebelum scan produksi diterima: scan QR dandori ' +
+          '(DANDORI-<nomor part>), master sample di line per kanban, atau tag mold di injection, ' +
+          'lalu START. Centang hanya untuk line yang dikecualikan.',
+      },
       activeField,
     ],
   },
@@ -358,6 +369,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint:
           'Nomor Production Version SAP untuk material ini, mis. 0001. Blueprint ' +
           'menjadikannya syarat pembuatan kanban — kartu mewarisinya dari sini.',
+      },
+      {
+        name: 'outputLocationId',
+        label: 'SLOC Tujuan',
+        kind: 'reference',
+        refEntity: 'locations',
+        inList: true,
+        hint:
+          'Gudang tempat hasil produksi part ini masuk (WP80, FG80, …), sama di work center ' +
+          'mana pun — padanan SLOC_TO di staging SAP. Kosong = pakai SLOC tujuan line.',
       },
       {
         name: 'photoPath',
@@ -1002,15 +1023,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         kind: 'reference',
         refEntity: 'locations',
         inList: true,
-        hint: 'SLOC asal barang.',
-      },
-      {
-        name: 'outputLocationId',
-        label: 'Tujuan',
-        kind: 'reference',
-        refEntity: 'locations',
-        inList: true,
-        hint: 'SLOC tujuan hasil produksi.',
+        hint: 'SLOC asal barang. SLOC tujuan diatur di master Part, sama untuk semua work center.',
       },
       {
         name: 'seqNo',
@@ -1028,6 +1041,15 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         optionLabels: SCAN_MODE_LABELS,
         required: true,
         inList: true,
+      },
+      {
+        name: 'cycleTime',
+        label: 'Cycle Time (detik)',
+        kind: 'decimal',
+        min: 0,
+        numeric: true,
+        inList: true,
+        hint: 'Detik per pcs di work center ini — dasar efisiensi. Kosong = efisiensi tidak dihitung.',
       },
       {
         name: 'processType',

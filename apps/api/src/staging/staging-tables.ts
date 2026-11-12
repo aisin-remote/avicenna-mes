@@ -611,7 +611,7 @@ export function typeTransUntuk(docType: string): string | null | undefined {
  * sebagian besar tidak punya padanan di sisi kita.
  */
 export interface SumberMaster {
-  entitas: 'PART' | 'CUSTOMER' | 'VENDOR' | 'CUSTOMER_PART';
+  entitas: 'PART' | 'PART_BELI' | 'CUSTOMER' | 'VENDOR' | 'CUSTOMER_PART';
   /** Tabel utama. Dipakai untuk pesan galat dan sebagai FROM bila `dari` kosong. */
   tabel: string;
   /** FROM/JOIN khusus, bila sumbernya lebih dari satu tabel. */
@@ -661,6 +661,12 @@ export interface SumberMaster {
     sourceType?: (typeof SOURCE_TYPES)[number];
     trackingMode?: (typeof TRACKING_MODES)[number];
   };
+  /**
+   * Bawaan yang bergantung pada isi baris, menimpa `bawaan` di atas. Aturannya
+   * sama: hanya untuk baris BARU. Menerima nilai baris yang sudah dibersihkan,
+   * sebelum kode plant dan SLOC diubah menjadi id.
+   */
+  bawaanPerBaris?: (nilai: Record<string, unknown>) => SumberMaster['bawaan'];
   /** Kolom penanda baris berubah, untuk tarik inkremental. Kosong = tarik penuh. */
   kolomPerubahan?: string;
 }
@@ -734,16 +740,32 @@ export const SUMBER_MASTER: SumberMaster[] = [
     dari:
       '(SELECT CHR_PLANT, CHR_PART_NO, ' +
       "MIN(CASE WHEN CHR_FLAG_DELETE IS NULL OR LTRIM(RTRIM(CHR_FLAG_DELETE)) = '' THEN 0 ELSE 1 END) " +
-      'AS INT_SEMUA_HAPUS, MAX(CHR_MODIFIED_DATE) AS CHR_UBAH_TERAKHIR ' +
-      'FROM TM_PROCESS_PARTS GROUP BY CHR_PLANT, CHR_PART_NO) pp ' +
+      'AS INT_SEMUA_HAPUS, MAX(CHR_MODIFIED_DATE) AS CHR_UBAH_TERAKHIR, ' +
+      // Satu SLOC tujuan per part di seluruh baris PV-nya; MAX hanya memilih satu.
+      'MAX(CHR_SLOC_TO) AS CHR_SLOC_TO ' +
+      'FROM TM_PROCESS_PARTS ' +
+      /*
+       * Komponen beli milik PART_BELI di bawah. Sebagian juga tercatat di sini
+       * di plant lain (45 komponen WH80 di plant 700); tanpa pengecualian ini
+       * keduanya menjadi part kembar, satu PURCHASED dan satu MANUFACTURED.
+       */
+      "WHERE REPLACE(CHR_PART_NO, ' ', '') NOT IN (" +
+      `SELECT REPLACE(LTRIM(RTRIM(CHR_PART_NO_COMP)), '-', '') FROM ${TABEL_BOM} WHERE CHR_SOURCE = 'F') ` +
+      'GROUP BY CHR_PLANT, CHR_PART_NO) pp ' +
       'LEFT JOIN TM_PARTS p ON p.CHR_PART_NO = pp.CHR_PART_NO',
-    kunci: 'pp.CHR_PART_NO',
+    /*
+     * Spasi DI TENGAH nomor dibuang: "42310110220    LD0" menjadi
+     * "42310110220LD0", bentuk yang dipakai BOM, QR, dan yang diterima SAP di
+     * TT_PRODUCTION_RESULT. Join ke TM_PARTS di atas tetap memakai nomor asli
+     * karena kedua tabel staging berspasi sama persis.
+     */
+    kunci: "REPLACE(pp.CHR_PART_NO, ' ', '')",
     kolomPlant: 'pp.CHR_PLANT',
     flagHapus: "CASE WHEN pp.INT_SEMUA_HAPUS = 1 THEN 'X' END",
     kolomPerubahan: 'pp.CHR_UBAH_TERAKHIR',
     kolom: {
       plantCode: 'pp.CHR_PLANT',
-      partNumber: 'pp.CHR_PART_NO',
+      partNumber: "REPLACE(pp.CHR_PART_NO, ' ', '')",
       name: 'p.CHR_PART_NAME',
       /*
        * CHR_PART_UOM char(40) di staging, sedangkan kolom kita varchar(16).
@@ -753,6 +775,17 @@ export const SUMBER_MASTER: SumberMaster[] = [
       uom: 'LEFT(p.CHR_PART_UOM, 16)',
       backNumber: 'p.CHR_BACK_NO',
       qtyPerKanban: 'p.INT_QTY_PER_BOX',
+      /*
+       * Kode SLOC; dicocokkan ke lokasi pabrik part saat disimpan.
+       *
+       * Digit ketiganya disamakan dengan pabrik (konvensi SLOC AIIA). Staging
+       * mencatat part plant 700 dengan FG80/WP80/WH80, padahal plant 700 di SAP
+       * memakai SLOC 70 — perpindahan WH70 -> WP70 diterima di
+       * TT_GOODS_MOVEMENT. Tanpa ini part Body tersimpan tanpa SLOC tujuan.
+       */
+      slocCode:
+        'CASE WHEN LEN(RTRIM(pp.CHR_SLOC_TO)) = 4 ' +
+        'THEN STUFF(RTRIM(pp.CHR_SLOC_TO), 3, 1, LEFT(pp.CHR_PLANT, 1)) END',
     },
     bawaan: {
       /*
@@ -770,6 +803,60 @@ export const SUMBER_MASTER: SumberMaster[] = [
       partType: 'FINISHED_GOOD',
       sourceType: 'MANUFACTURED',
       trackingMode: 'SERIAL',
+    },
+    /*
+     * Jenis part dari awalan SLOC tujuan: hasil ke WP berarti WIP, ke FG berarti
+     * barang jadi. Plant 700 adalah Body, jadi prosesnya Assembling Body.
+     */
+    bawaanPerBaris: (nilai) => {
+      const sloc = String(nilai.slocCode ?? '');
+      return {
+        ...(sloc.startsWith('WP') ? { partType: 'WIP' } : {}),
+        ...(sloc.startsWith('FG') ? { partType: 'FINISHED_GOOD' } : {}),
+        ...(nilai.plantCode === '700' ? { processType: 'ASSEMBLING_BODY_FG' } : {}),
+      };
+    },
+  },
+  {
+    /*
+     * Komponen beli, digerakkan BOM SAP (source F) — bukan TM_PROCESS_PARTS.
+     *
+     * Komponen beli tidak punya routing, jadi sebagian besar tidak muncul di
+     * TM_PROCESS_PARTS (yang muncul dikecualikan dari tarik PART). Padahal
+     * semuanya di-scan di work center receiving (WH -> WP), dan scan butuh
+     * part-nya ada di master.
+     *
+     * Pabrik diturunkan dari digit ketiga SLOC BOM (WH80 -> 800), sesuai
+     * konvensi SLOC AIIA. Nomor BOM bertanda hubung, TM_PARTS staging berisi
+     * spasi pengisi sebelum sufiks; keduanya dibuang supaya bertemu.
+     */
+    entitas: 'PART_BELI',
+    tabel: 'TM_BOM_SAP',
+    dari:
+      "(SELECT REPLACE(LTRIM(RTRIM(CHR_PART_NO_COMP)), '-', '') AS CHR_PART_NO, " +
+      "SUBSTRING(MAX(CHR_SLOC), 3, 1) + '00' AS CHR_PLANT, MAX(CHR_SLOC) AS CHR_SLOC, " +
+      'MAX(CHR_UOM) AS CHR_UOM, MIN(INT_FLG_DELETE) AS INT_SEMUA_HAPUS, ' +
+      'MAX(CHR_UPDATE_DATE) AS CHR_UBAH_TERAKHIR ' +
+      `FROM ${TABEL_BOM} WHERE CHR_SOURCE = 'F' ` +
+      "GROUP BY REPLACE(LTRIM(RTRIM(CHR_PART_NO_COMP)), '-', '')) b " +
+      "LEFT JOIN TM_PARTS p ON REPLACE(p.CHR_PART_NO, ' ', '') = b.CHR_PART_NO",
+    kunci: 'b.CHR_PART_NO',
+    kolomPlant: 'b.CHR_PLANT',
+    flagHapus: "CASE WHEN b.INT_SEMUA_HAPUS = 1 THEN 'X' END",
+    kolomPerubahan: 'b.CHR_UBAH_TERAKHIR',
+    kolom: {
+      plantCode: 'b.CHR_PLANT',
+      partNumber: 'b.CHR_PART_NO',
+      name: 'p.CHR_PART_NAME',
+      uom: 'LEFT(COALESCE(p.CHR_PART_UOM, b.CHR_UOM), 16)',
+      backNumber: 'p.CHR_BACK_NO',
+      slocCode: 'b.CHR_SLOC',
+    },
+    bawaan: {
+      processType: 'RECEIVING',
+      partType: 'COMPONENT',
+      sourceType: 'PURCHASED',
+      trackingMode: 'LOT',
     },
   },
   {

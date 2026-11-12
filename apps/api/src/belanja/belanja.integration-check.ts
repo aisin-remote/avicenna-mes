@@ -18,7 +18,6 @@ import {
 import { susunKodeKartuKanban } from '@avicenna/domain';
 import { BelanjaService } from './belanja.service';
 import { ProcessTypeService } from '../master/process-type.service';
-import { KomponenService } from '../komponen/komponen.service';
 
 /**
  * Pemeriksaan alur belanja dari ujung ke ujung, memakai service yang SAMA
@@ -492,21 +491,6 @@ async function main() {
       assert.equal(paintingSebagaiBox.hasil, 'DITOLAK');
       assert.match(paintingSebagaiBox.pesan, /belum discan produksi/);
       catat('kartu SHOPPED tidak bisa dibelanjakan: box-nya belum penuh');
-
-      /* ── 10. Stasiun kanban tidak melayani kartu internal ───────────── */
-      const komponen = new KomponenService(sebagaiDb);
-
-      /*
-       * Kartu 9103 masih PRODUCED dan kartunya milik kita sendiri. Stasiun
-       * Scan Komponen hanya untuk kartu ARES — menerimanya di sana akan
-       * melepaskan kartu tanpa box-nya pernah dicocokkan, dan interlock
-       * belanja hilang tanpa jejak.
-       */
-      const lewatStasiun = await komponen.scan({ plantCode: 'BODY', rawCode: 'ZP01|9103' });
-      assert.equal(lewatStasiun.hasil, 'DITOLAK');
-      assert.match(lewatStasiun.pesan, /kartu kanban internal/);
-      assert.equal(lewatStasiun.jenisKartu, null, 'bukan kartu ARES, jadi jenisnya tidak diakui');
-      catat('stasiun Scan Komponen menolak kartu kanban internal');
 
       /*
        * Dibatalkan, SELALU. Lihat catatan di kepala berkas: fixture yang

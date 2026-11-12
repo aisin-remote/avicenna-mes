@@ -190,6 +190,12 @@ export const PROCESS_GROUPS = [
   'VACUUM',
   'ANTENNA',
   'DELIVERY',
+  /*
+   * Penerimaan komponen beli ke produksi (mis. work center SE0800). Scan-nya
+   * hanya memindah stok dari SLOC part ke SLOC Transfer rute — bukan hasil
+   * produksi, jadi tanpa PRODUCTION_IN dan tanpa backflush.
+   */
+  'RECEIVING',
 ] as const;
 export type ProcessGroup = (typeof PROCESS_GROUPS)[number];
 

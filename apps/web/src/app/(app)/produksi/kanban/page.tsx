@@ -10,6 +10,7 @@ import type { PratinjauCetakKanban } from '@avicenna/contracts';
 import { listPartKartu, pratinjauCetakKanban } from '@/lib/kanban-cetak-api';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
+import { PilihCari } from '@/components/ui/pilih-cari';
 import { TombolBuatCetak } from '@/components/produksi/cetak-kanban-form';
 
 export const dynamic = 'force-dynamic';
@@ -73,24 +74,29 @@ export default async function CetakKanbanPage({
           action="/produksi/kanban"
           className="grid gap-4 p-6 sm:grid-cols-[1fr_auto_auto_auto]"
         >
-          <label className="block">
+          {/* div, bukan label: label yang membungkus PilihCari meneruskan klik ke
+              input tersembunyinya, sehingga daftar tidak mau terbuka. */}
+          <div className="block min-w-0">
             <span className="mb-1.5 block text-[13px] font-semibold">Part</span>
-            <select
+            <PilihCari
+              key={q.partId ?? ''}
               name="partId"
               defaultValue={q.partId ?? ''}
               required
-              className="h-11 w-full rounded-2xl border border-line bg-card px-3 text-[14px] outline-none focus:border-ink"
-            >
-              <option value="">— pilih part —</option>
-              {part.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.plantCode ?? '—'} · {p.partNumber}
-                  {p.backNumber ? ` (${p.backNumber})` : ''} — {p.partName}
-                  {p.jumlahKartu > 0 ? ` · ${p.jumlahKartu} kartu` : ''}
-                </option>
-              ))}
-            </select>
-          </label>
+              placeholder="— pilih part —"
+              pilihan={part.map((p) => ({
+                value: String(p.id),
+                label: `${p.partNumber}${p.backNumber ? ` (${p.backNumber})` : ''}`,
+                keterangan: [
+                  p.plantCode ?? '—',
+                  p.partName,
+                  p.jumlahKartu > 0 ? `${p.jumlahKartu} kartu` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · '),
+              }))}
+            />
+          </div>
 
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-semibold">Seri awal</span>

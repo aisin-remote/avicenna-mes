@@ -2,6 +2,7 @@
 
 import type {
   BerhentiLini,
+  DandoriLini,
   MoldScanBoard,
   PapanStasiun,
   SampleCheck,
@@ -159,4 +160,37 @@ export async function muatPapanAction(lineCode: string): Promise<PapanStasiun | 
     if (err instanceof ApiRequestError) return { error: err.message };
     return { error: 'Tidak bisa menghubungi server. Periksa jaringan.' };
   }
+}
+
+/**
+ * Dandori: tombol DANDORI, kode yang discan selama dandori, dan START.
+ *
+ * Keadaannya disimpan server, bukan layar — komputer line yang restart atau
+ * shift yang berganti tetap melanjutkan part yang sama.
+ */
+async function dandori(
+  jalur: 'mulai' | 'kode' | 'start',
+  body: { lineCode: string; code?: string },
+): Promise<DandoriLini | { error: string }> {
+  try {
+    return await apiFetch<DandoriLini>(`/scan/dandori/${jalur}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    if (err instanceof ApiRequestError) return { error: err.message };
+    return { error: 'Tidak bisa menghubungi server. Periksa jaringan.' };
+  }
+}
+
+export async function dandoriMulaiAction(lineCode: string) {
+  return dandori('mulai', { lineCode });
+}
+
+export async function dandoriKodeAction(input: { lineCode: string; code: string }) {
+  return dandori('kode', input);
+}
+
+export async function dandoriStartAction(lineCode: string) {
+  return dandori('start', { lineCode });
 }

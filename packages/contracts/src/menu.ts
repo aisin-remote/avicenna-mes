@@ -23,6 +23,7 @@ import { MASTER_ENTITIES, ENTITY_DEFS, type MasterEntity } from './master/regist
 export const MENU_GROUPS = [
   'Produksi',
   'Logistik',
+  'Traceability',
   'Integrasi',
   'Master Data',
   'Administrasi',
@@ -33,6 +34,7 @@ export type MenuGroup = (typeof MENU_GROUPS)[number];
 export const MENU_GROUP_COLLAPSIBLE: Record<MenuGroup, boolean> = {
   Produksi: false,
   Logistik: false,
+  Traceability: false,
   Integrasi: false,
   'Master Data': true,
   Administrasi: false,
@@ -133,14 +135,11 @@ const MENU_TETAP: MenuDef[] = [
     sortOrder: 50,
   },
 
-  {
-    key: 'receiving',
-    label: 'Receiving',
-    href: '/receiving',
-    icon: 'Truck',
-    group: 'Logistik',
-    sortOrder: 10,
-  },
+  /*
+   * Menu Receiving (sesi per order ARES) sengaja dicabut: komponen beli kini
+   * di-scan di work center receiving (jenis proses grup RECEIVING) lewat rute
+   * part. Halamannya masih ada; menunya otomatis dinonaktifkan saat API menyala.
+   */
   {
     key: 'transfer',
     label: 'Transfer Antar Line',
@@ -288,21 +287,65 @@ const MENU_MASTER_TIMPA: Partial<Record<MasterEntity, Partial<MenuDef>>> = {
  * Rute Proses tidak dibaca lagi: semuanya sudah per work center. Tabelnya masih
  * ada sampai peralihan terbukti berjalan, tetapi tidak ditawarkan sebagai menu.
  */
-const MENU_MASTER: MenuDef[] = MASTER_ENTITIES.filter((key) => key !== 'route-processes').map((key, i) => ({
-  key: `master.${key}`,
-  label: ENTITY_DEFS[key].label,
-  href: `/master/${key}`,
-  icon: ENTITY_DEFS[key].icon,
-  group: 'Master Data' as const,
-  sortOrder: (i + 1) * 10,
-  ...MENU_MASTER_TIMPA[key],
-}));
+const MENU_MASTER: MenuDef[] = MASTER_ENTITIES.filter((key) => key !== 'route-processes').map(
+  (key, i) => ({
+    key: `master.${key}`,
+    label: ENTITY_DEFS[key].label,
+    href: `/master/${key}`,
+    icon: ENTITY_DEFS[key].icon,
+    group: 'Master Data' as const,
+    sortOrder: (i + 1) * 10,
+    ...MENU_MASTER_TIMPA[key],
+  }),
+);
 
 /*
  * Tidak ada menu tambahan. Kedua master rute lahir dari MASTER_ENTITIES lewat
  * penimpa di atas — tes menu.test.ts menjaga alamatnya tidak pernah kembar.
  */
 const MENU_KHUSUS: MenuDef[] = [
+  /*
+   * Dashboard efisiensi dan laporan produksi (Handika, 12 Nov 2026).
+   * Rumusnya di efisiensi-produksi.ts (domain): OK × cycle time ÷ (shift −
+   * istirahat); RIL/ROL dari NG inline/outline.
+   */
+  {
+    key: 'produksi.efisiensi',
+    label: 'Dashboard Efisiensi',
+    href: '/produksi/efisiensi',
+    icon: 'Gauge',
+    group: 'Produksi',
+    sortOrder: 12,
+  },
+  {
+    key: 'produksi.laporan',
+    label: 'Laporan Produksi',
+    href: '/produksi/laporan',
+    icon: 'ClipboardList',
+    group: 'Produksi',
+    sortOrder: 14,
+  },
+  /*
+   * Traceability — dua pintu penelusuran, hanya membaca (Handika, 12 Nov 2026).
+   * Grupnya sendiri, bukan di Produksi: yang membuka layar ini QA dan PPIC saat
+   * ada keluhan, bukan operator di lini.
+   */
+  {
+    key: 'traceability.part',
+    label: 'Trace Part',
+    href: '/traceability/part',
+    icon: 'ScanSearch',
+    group: 'Traceability',
+    sortOrder: 10,
+  },
+  {
+    key: 'traceability.kanban',
+    label: 'Trace Kanban',
+    href: '/traceability/kanban',
+    icon: 'Tag',
+    group: 'Traceability',
+    sortOrder: 20,
+  },
   {
     key: 'produksi.papan-lini',
     label: 'Papan Lini',

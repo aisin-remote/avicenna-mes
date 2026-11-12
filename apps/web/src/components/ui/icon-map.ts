@@ -31,6 +31,9 @@ import {
   CalendarClock,
   Scissors,
   ClipboardCheck,
+  ScanSearch,
+  Gauge,
+  ClipboardList,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -42,6 +45,9 @@ import {
  * sekali. Penerjemahannya dilakukan di sini, di sisi UI.
  */
 const ICONS: Record<string, LucideIcon> = {
+  ScanSearch,
+  Gauge,
+  ClipboardList,
   Factory,
   GitBranch,
   Package,

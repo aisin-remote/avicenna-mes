@@ -20,7 +20,9 @@ import { cn } from './cn';
  *
  * ── Yang TIDAK memakai ini ──────────────────────────────────────────────────
  *
- *   galat per kolom formulir   tetap di bawah kolomnya — di situlah diperbaiki
+ *   galat per kolom formulir   tetap di bawah kolomnya — di situlah diperbaiki.
+ *                              MasterForm tetap menambah toast yang menyebut
+ *                              kolomnya, karena kolom itu bisa sudah tergulir
  *   panel status layar stasiun tetap besar di tengah — dibaca dari jarak
  *                              beberapa meter, dan toast kecil di pojok justru
  *                              luput dari mata operator

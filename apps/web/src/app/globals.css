@@ -34,6 +34,12 @@
   --color-warn: #d97706;
   --color-ng: #dc2626;
   --color-live: #4f46e5;
+  /*
+   * Warna data grafik, slot kategori 1 — tervalidasi (validate_palette) di
+   * atas kartu putih dan kartu gelap. Sengaja bukan aksen: aksen bisa diganti
+   * pengguna dan berpasangan dengan teks putih, warna data tidak.
+   */
+  --color-data-1: #2a78d6;
 
   --radius-card: 1.5rem;
   --radius-panel: 2rem;
@@ -81,6 +87,7 @@
   --color-warn: #fbbf24;
   --color-ng: #f87171;
   --color-live: #a5b4fc;
+  --color-data-1: #3987e5;
 
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-lift: 0 8px 24px -8px rgb(0 0 0 / 0.6);

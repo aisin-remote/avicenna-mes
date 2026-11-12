@@ -18,9 +18,13 @@ import {
   CircleDot,
   Boxes,
   LockKeyhole,
+  Wrench,
+  Play,
 } from 'lucide-react';
+import { SCAN_MODE_LABELS } from '@avicenna/contracts';
 import type {
   BerhentiLini,
+  DandoriLini,
   KanbanOwner,
   MoldScanBoard,
   SampleCheck,
@@ -30,6 +34,9 @@ import type {
 } from '@avicenna/contracts';
 import { sepertiKanban, sepertiKartuLogin, sepertiNomorPartPolos } from '@avicenna/domain';
 import {
+  dandoriKodeAction,
+  dandoriMulaiAction,
+  dandoriStartAction,
   periksaSampleAction,
   periksaScanAction,
   submitMoldScanAction,
@@ -129,6 +136,16 @@ export function ScanStation({
   const perBox = perKanban || moldMode;
   const [moldBoard, setMoldBoard] = useState<MoldScanBoard | null>(initialMold);
   /*
+   * Dandori: part (atau mold) yang sedang dipasang di line ini.
+   *
+   * Dimuat dari server, karena keadaannya milik line, bukan layar. Selama
+   * belum START, kotak scan menerima kode dandori saja — QR dandori, master
+   * sample di line per kanban, atau tag mold.
+   */
+  const [dandori, setDandori] = useState<DandoriLini | null>(summary.dandori ?? null);
+  const wajibDandori = summary.line.wajibDandori;
+  const perluDandori = wajibDandori && dandori?.status !== 'BERJALAN';
+  /*
    * Master sample yang sedang berlaku — hanya di lini per-kanban.
    *
    * Disimpan di memori layar, bukan localStorage: sample yang tertinggal dari
@@ -136,7 +153,20 @@ export function ScanStation({
    * salah, dan tidak ada yang melihat karena setiap scannya "OK". Memuat ulang
    * halaman = scan sample lagi, dan itu memang murah.
    */
-  const [sample, setSample] = useState<SampleCheck | null>(null);
+  const [sample, setSample] = useState<SampleCheck | null>(() =>
+    // Line wajib dandori: master sample sudah discan saat dandori, dan disimpan server.
+    perKanban && wajibDandori && summary.dandori?.status === 'BERJALAN' && summary.dandori.part
+      ? {
+          partId: summary.dandori.part.id,
+          partNumber: summary.dandori.part.partNumber,
+          backNumber: summary.dandori.part.backNumber,
+          partName: summary.dandori.part.name,
+          qtyPerKanban: summary.dandori.part.qtyPerKanban,
+          photoPath: summary.dandori.part.photoPath,
+          diLuarRute: false,
+        }
+      : null,
+  );
   /** Sample yang barusan lolos — ditampilkan besar sekali, lalu diganti hasil scan berikutnya. */
   const [sampleBaru, setSampleBaru] = useState<SampleCheck | null>(null);
 
@@ -288,6 +318,11 @@ export function ScanStation({
       return;
     }
 
+    if (perluDandori) {
+      await kirimKodeDandori(value);
+      return;
+    }
+
     if (moldMode) {
       await submitMold(value);
       return;
@@ -301,7 +336,11 @@ export function ScanStation({
      * Barcode kanban tidak pernah lolos penyaring ini: bentuknya panjang dan
      * berspasi, sedangkan nomor part tidak.
      */
-    if (perKanban && (!sample || sepertiNomorPartPolos(value))) {
+    if (perKanban && wajibDandori && sepertiNomorPartPolos(value)) {
+      tolakDiLayar('Ganti part lewat tombol DANDORI, lalu scan QR dandori dan master sample-nya.');
+      return;
+    }
+    if (perKanban && !wajibDandori && (!sample || sepertiNomorPartPolos(value))) {
       await periksaSample(value);
       return;
     }
@@ -393,6 +432,72 @@ export function ScanStation({
     setSampleBaru(null);
     setDitahanBaru(null);
     setBoxSelesai(null);
+  }
+
+  /**
+   * Tombol DANDORI: line berhenti, scan produksi ditolak sampai START.
+   *
+   * Ditolak selama box masih terbuka. Part yang ditahan belum tersimpan di
+   * mana pun; dandori di tengahnya membuat box itu tercampur dengan model
+   * berikutnya atau hilang begitu saja. Keputusan Handika: tutup dulu dengan
+   * kanban. Halaman dimuat ulang sesudahnya supaya panel berhenti, sample,
+   * dan papan mold membaca keadaan baru dari server.
+   */
+  async function tekanDandori() {
+    if (ditahan.length > 0) {
+      tolakDiLayar(
+        `Box masih terbuka (${ditahan.length}/${isiBox ?? '?'}). Tutup box dengan kanban dulu, baru dandori.`,
+      );
+      return;
+    }
+    setBusy(true);
+    bersihkanStatus();
+    const res = await dandoriMulaiAction(summary.line.code);
+    if ('error' in res) {
+      setBusy(false);
+      setError(res.error);
+      sound.reject();
+      focusInput();
+      return;
+    }
+    sound.ok();
+    window.location.reload();
+  }
+
+  /** QR dandori, master sample, atau tag mold selama dandori. */
+  async function kirimKodeDandori(value: string) {
+    if (!dandori) {
+      tolakDiLayar('Line belum di-dandori. Tekan tombol DANDORI dulu.');
+      return;
+    }
+    setBusy(true);
+    bersihkanStatus();
+    const res = await dandoriKodeAction({ lineCode: summary.line.code, code: value });
+    setCode('');
+    setBusy(false);
+    focusInput();
+    if ('error' in res) {
+      setError(res.error);
+      sound.reject();
+      return;
+    }
+    setDandori(res);
+    sound.ok();
+  }
+
+  async function tekanStart() {
+    setBusy(true);
+    bersihkanStatus();
+    const res = await dandoriStartAction(summary.line.code);
+    if ('error' in res) {
+      setBusy(false);
+      setError(res.error);
+      sound.reject();
+      focusInput();
+      return;
+    }
+    sound.ok();
+    window.location.reload();
   }
 
   /** Galat lokal layar (bukan dari server) — ditampilkan besar dan dibunyikan. */
@@ -697,8 +802,13 @@ export function ScanStation({
     await keluarStasiunAction();
   }
 
-  const tone =
-    moldMode && moldBoard?.status === 'LOCKED'
+  const tone = perluDandori
+    ? error
+      ? 'bad'
+      : dandori?.siapStart
+        ? 'ok'
+        : 'idle'
+    : moldMode && moldBoard?.status === 'LOCKED'
       ? 'bad'
       : moldMode && moldBoard?.message.status === 'SUCCESS'
         ? 'ok'
@@ -736,6 +846,18 @@ export function ScanStation({
           alasan={summary.alasanBerhenti ?? []}
           berhenti={berhenti}
           onBerubah={setBerhenti}
+          kartuBawah={
+            wajibDandori ? (
+              <KartuDandori
+                dandori={dandori}
+                busy={busy}
+                boxTerbuka={ditahan.length > 0}
+                onDandori={() => void tekanDandori()}
+                onStart={() => void tekanStart()}
+              />
+            ) : undefined
+          }
+          gantiMulai={wajibDandori && dandori?.status === 'DANDORI'}
         />
       </aside>
 
@@ -809,21 +931,23 @@ export function ScanStation({
           */}
           <header className="flex items-center justify-between gap-3">
             <h2 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-              {moldMode
-                ? moldBoard?.status === 'LOCKED'
-                  ? 'Scan NPK Atasan'
-                  : moldBoard?.mold
-                    ? 'Scan Kanban Anggota'
-                    : 'Scan Tag Mold'
-                : perKanban
-                  ? sample
-                    ? 'Scan Kanban'
-                    : 'Scan Master Sample'
-                  : fg
-                    ? isiBox !== null && ditahan.length >= isiBox
+              {perluDandori
+                ? judulDandori(dandori)
+                : moldMode
+                  ? moldBoard?.status === 'LOCKED'
+                    ? 'Scan NPK Atasan'
+                    : moldBoard?.mold
+                      ? 'Scan Kanban Anggota'
+                      : 'Scan Tag Mold'
+                  : perKanban
+                    ? sample
                       ? 'Scan Kanban'
-                      : 'Scan Part'
-                    : 'Scan Part'}
+                      : 'Scan Master Sample'
+                    : fg
+                      ? isiBox !== null && ditahan.length >= isiBox
+                        ? 'Scan Kanban'
+                        : 'Scan Part'
+                      : 'Scan Part'}
             </h2>
             <button
               type="button"
@@ -842,23 +966,25 @@ export function ScanStation({
             </button>
           </header>
           <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-            {moldMode
-              ? moldBoard?.status === 'LOCKED'
-                ? 'Line terkunci. Scan NPK JP/Leader pada kotak yang sama untuk melanjutkan.'
-                : moldBoard?.mold
-                  ? 'Satu kanban untuk setiap anggota. Anggota yang sama tidak boleh diulang sebelum set lengkap.'
-                  : 'Scan tag mold terdaftar. Sistem akan memuat seluruh part anggotanya.'
-              : perKanban
-                ? sample
-                  ? 'Satu scan kanban = satu box. Ganti part? Scan master sample yang baru.'
-                  : 'Scan master sample yang tertempel di lini dulu. Kanban baru bisa discan sesudahnya.'
-                : fg
-                  ? isiBox !== null && ditahan.length >= isiBox
-                    ? 'Box penuh. Scan kanban internal atau kanban customer untuk menutupnya.'
-                    : 'Part yang memakai kartu ditahan sampai box penuh, lalu scan kanban. Part lain langsung tercatat.'
-                  : 'Arahkan barcode ke scanner. Hasilnya muncul besar di sebelah kanan.'}
+            {perluDandori
+              ? petunjukDandori(dandori)
+              : moldMode
+                ? moldBoard?.status === 'LOCKED'
+                  ? 'Line terkunci. Scan NPK JP/Leader pada kotak yang sama untuk melanjutkan.'
+                  : moldBoard?.mold
+                    ? 'Satu kanban untuk setiap anggota. Anggota yang sama tidak boleh diulang sebelum set lengkap.'
+                    : 'Scan tag mold terdaftar. Sistem akan memuat seluruh part anggotanya.'
+                : perKanban
+                  ? sample
+                    ? 'Satu scan kanban = satu box. Ganti part? Scan master sample yang baru.'
+                    : 'Scan master sample yang tertempel di lini dulu. Kanban baru bisa discan sesudahnya.'
+                  : fg
+                    ? isiBox !== null && ditahan.length >= isiBox
+                      ? 'Box penuh. Scan kanban internal atau kanban customer untuk menutupnya.'
+                      : 'Part yang memakai kartu ditahan sampai box penuh, lalu scan kanban. Part lain langsung tercatat.'
+                    : 'Arahkan barcode ke scanner. Hasilnya muncul besar di sebelah kanan.'}
           </p>
-          {perKanban && sample ? (
+          {perKanban && sample && !wajibDandori ? (
             <div className="mt-3 flex items-start gap-3 rounded-2xl border border-ok/30 bg-ok/8 px-4 py-3">
               <Tag className="mt-0.5 size-4 shrink-0 text-ok" strokeWidth={1.8} aria-hidden />
               {fotoSample ? (
@@ -935,38 +1061,48 @@ export function ScanStation({
               onChange={(e) => setCode(e.target.value)}
               autoComplete="off"
               autoCapitalize="off"
+              /* Kanban AIGSYS penuh spasi ganda; koreksi otomatis macOS
+                 ("titik dengan spasi ganda") mengubahnya jadi ". " dan
+                 kartunya tak terbaca. */
+              autoCorrect="off"
               spellCheck={false}
               aria-label={
-                moldMode
-                  ? moldBoard?.status === 'LOCKED'
-                    ? 'NPK JP atau Leader'
-                    : moldBoard?.mold
-                      ? 'Barcode kanban anggota mold'
-                      : 'Tag mold'
-                  : perKanban
-                    ? sample
-                      ? 'Barcode kanban'
-                      : 'Master sample'
-                    : fg
-                      ? 'Barcode part atau kanban'
-                      : 'Barcode part'
+                perluDandori
+                  ? judulDandori(dandori)
+                  : moldMode
+                    ? moldBoard?.status === 'LOCKED'
+                      ? 'NPK JP atau Leader'
+                      : moldBoard?.mold
+                        ? 'Barcode kanban anggota mold'
+                        : 'Tag mold'
+                    : perKanban
+                      ? sample
+                        ? 'Barcode kanban'
+                        : 'Master sample'
+                      : fg
+                        ? 'Barcode part atau kanban'
+                        : 'Barcode part'
               }
               placeholder={
-                moldMode
-                  ? moldBoard?.status === 'LOCKED'
-                    ? 'Scan NPK atasan'
-                    : moldBoard?.mold
-                      ? 'Scan kanban anggota'
-                      : 'Scan tag mold'
-                  : perKanban
-                    ? sample
-                      ? 'Scan kanban'
-                      : 'Scan master sample dulu'
-                    : fg
-                      ? isiBox !== null && ditahan.length >= isiBox
+                perluDandori
+                  ? dandori
+                    ? `${judulDandori(dandori)}…`
+                    : 'Tekan DANDORI dulu'
+                  : moldMode
+                    ? moldBoard?.status === 'LOCKED'
+                      ? 'Scan NPK atasan'
+                      : moldBoard?.mold
+                        ? 'Scan kanban anggota'
+                        : 'Scan tag mold'
+                    : perKanban
+                      ? sample
                         ? 'Scan kanban'
-                        : 'Scan part'
-                      : 'Fokus di sini lalu scan'
+                        : 'Scan master sample dulu'
+                      : fg
+                        ? isiBox !== null && ditahan.length >= isiBox
+                          ? 'Scan kanban'
+                          : 'Scan part'
+                        : 'Fokus di sini lalu scan'
               }
               className="tabular h-12 w-full rounded-2xl border-2 border-line bg-surface px-4 text-[16px] font-semibold outline-none transition-colors duration-200 placeholder:text-[14px] placeholder:font-normal placeholder:text-ink-muted focus:border-ink focus:bg-card"
             />
@@ -1011,6 +1147,13 @@ export function ScanStation({
                   </div>
                   <p className="max-w-md text-[15px] text-ink-soft">{error}</p>
                 </>
+              ) : perluDandori && !(moldMode && moldBoard?.status === 'LOCKED') ? (
+                <PanelDandoriBesar
+                  dandori={dandori}
+                  busy={busy}
+                  onDandori={() => void tekanDandori()}
+                  onStart={() => void tekanStart()}
+                />
               ) : moldMode && moldBoard?.status === 'LOCKED' ? (
                 <>
                   <LockKeyhole className="size-12 text-ng" strokeWidth={1.6} aria-hidden />
@@ -1496,6 +1639,202 @@ export function ScanStation({
         </section>
       </div>
     </>,
+  );
+}
+
+/** Judul kotak scan selama dandori — menyebut APA yang harus discan sekarang. */
+function judulDandori(d: DandoriLini | null): string {
+  if (!d) return 'Dandori';
+  if (d.metode === 'MOLD') return 'Scan Tag Mold';
+  if (d.metode === 'PART_SAMPLE' && d.part && !d.sampleOk) return 'Scan Master Sample';
+  if (d.siapStart) return 'Tekan START';
+  return 'Scan QR Dandori';
+}
+
+function petunjukDandori(d: DandoriLini | null): string {
+  if (!d) return 'Line belum di-dandori. Tekan DANDORI untuk memasang part yang akan diproduksi.';
+  if (d.metode === 'MOLD') return 'Scan tag mold (MOLD-…) yang dipasang, lalu tekan START.';
+  if (d.metode === 'PART_SAMPLE') {
+    return d.part
+      ? 'Scan master sample part yang sama dengan QR dandori, lalu tekan START.'
+      : 'Scan QR dandori (DANDORI-nomor part), lalu master sample-nya.';
+  }
+  return 'Scan QR dandori (DANDORI-nomor part), lalu tekan START.';
+}
+
+/**
+ * Part atau mold yang sedang dipasang, dengan tombol DANDORI dan START.
+ *
+ * Selalu terlihat di line wajib dandori: operator harus tahu part apa yang
+ * sedang ia kerjakan sebelum men-scan, bukan setelah scan pertamanya ditolak.
+ * Tempatnya di dasar kolom berhenti (menggantikan "Monitoring aktif"), bukan di
+ * kotak scan — kotak scan dibiarkan lega. Selama berhenti karena dandori,
+ * kartu ini menggantikan tombol "Mulai" sehingga lini jalan lagi lewat START.
+ */
+function KartuDandori({
+  dandori,
+  busy,
+  boxTerbuka,
+  onDandori,
+  onStart,
+}: {
+  dandori: DandoriLini | null;
+  busy: boolean;
+  boxTerbuka: boolean;
+  onDandori: () => void;
+  onStart: () => void;
+}) {
+  const berjalan = dandori?.status === 'BERJALAN';
+  return (
+    <div
+      className={cn(
+        'rounded-2xl border p-4',
+        berjalan ? 'border-ok/30 bg-ok/8' : 'border-warn/40 bg-warn/8',
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <Wrench
+          className={cn('mt-0.5 size-4 shrink-0', berjalan ? 'text-ok' : 'text-warn')}
+          strokeWidth={1.8}
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+            {berjalan ? 'Part aktif' : dandori ? 'Sedang dandori' : 'Belum dandori'}
+          </div>
+          {dandori?.part ? (
+            <>
+              <div className="tabular truncate text-[16px] font-bold">
+                {/* Back number saja: kolomnya sempit dan back number yang dibaca
+                    operator di lantai. Part number hanya cadangan bila part
+                    belum punya back number. */}
+                {dandori.part.backNumber ?? dandori.part.partNumber}
+              </div>
+              <div className="line-clamp-2 text-[13px] leading-snug text-ink-soft">
+                {dandori.part.name}
+              </div>
+            </>
+          ) : dandori?.mold ? (
+            <div className="tabular truncate text-[16px] font-bold">
+              Mold {dandori.mold.code} · {dandori.mold.jumlahAnggota} part
+            </div>
+          ) : (
+            <div className="text-[13px] text-ink-muted">Belum ada part terpasang.</div>
+          )}
+          {dandori?.scanMode ? (
+            <div className="mt-0.5 text-[12px] text-ink-muted">
+              {SCAN_MODE_LABELS[dandori.scanMode]}
+              {dandori.metode === 'PART_SAMPLE' && dandori.part
+                ? dandori.sampleOk
+                  ? ' · sample cocok'
+                  : ' · sample belum discan'
+                : ''}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-2 flex gap-2">
+        {dandori?.status === 'DANDORI' ? (
+          <button
+            type="button"
+            onClick={onStart}
+            disabled={busy || !dandori.siapStart}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-ok px-4 py-2 text-[13px] font-bold text-white transition-opacity disabled:opacity-40"
+          >
+            <Play className="size-4" strokeWidth={2} aria-hidden />
+            START
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onDandori}
+            disabled={busy}
+            title={boxTerbuka ? 'Tutup box dengan kanban dulu' : undefined}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border-2 border-warn px-4 py-2 text-[13px] font-bold text-warn transition-colors hover:bg-warn/10 disabled:opacity-40"
+          >
+            <Wrench className="size-4" strokeWidth={2} aria-hidden />
+            DANDORI
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Panel status besar selama line belum berjalan: langkah dandori yang tersisa. */
+function PanelDandoriBesar({
+  dandori,
+  busy,
+  onDandori,
+  onStart,
+}: {
+  dandori: DandoriLini | null;
+  busy: boolean;
+  onDandori: () => void;
+  onStart: () => void;
+}) {
+  if (!dandori) {
+    return (
+      <>
+        <Wrench className="size-12 text-warn" strokeWidth={1.6} aria-hidden />
+        <div className="text-[28px] font-extrabold leading-tight text-warn">BELUM DANDORI</div>
+        <p className="max-w-md text-[15px] text-ink-soft">
+          Scan produksi ditolak sampai part dipasang. Tekan DANDORI, scan QR dandori, lalu START.
+        </p>
+        <button
+          type="button"
+          onClick={onDandori}
+          disabled={busy}
+          className="inline-flex items-center gap-2 rounded-full bg-warn px-6 py-3 text-[16px] font-extrabold text-white disabled:opacity-40"
+        >
+          <Wrench className="size-5" strokeWidth={2} aria-hidden />
+          DANDORI
+        </button>
+      </>
+    );
+  }
+  return (
+    <>
+      <Wrench
+        className={cn('size-12', dandori.siapStart ? 'text-ok' : 'text-warn')}
+        strokeWidth={1.6}
+        aria-hidden
+      />
+      <div
+        className={cn(
+          'text-[30px] font-extrabold leading-none tracking-tight',
+          dandori.siapStart ? 'text-ok' : 'text-warn',
+        )}
+      >
+        {dandori.siapStart ? 'SIAP START' : 'DANDORI'}
+      </div>
+      {dandori.part ? (
+        <div className="text-[16px] font-bold">
+          {dandori.part.partNumber}
+          {dandori.part.backNumber ? ` (${dandori.part.backNumber})` : ''} — {dandori.part.name}
+        </div>
+      ) : dandori.mold ? (
+        <div className="text-[16px] font-bold">
+          Mold {dandori.mold.code} — {dandori.mold.name}
+        </div>
+      ) : null}
+      <p className="max-w-md text-[15px] text-ink-soft">
+        {dandori.siapStart
+          ? 'Pastikan part sudah terpasang, lalu tekan START.'
+          : petunjukDandori(dandori)}
+      </p>
+      {dandori.siapStart ? (
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={busy}
+          className="inline-flex items-center gap-2 rounded-full bg-ok px-8 py-3 text-[18px] font-extrabold text-white disabled:opacity-40"
+        >
+          <Play className="size-5" strokeWidth={2} aria-hidden />
+          START
+        </button>
+      ) : null}
+    </>
   );
 }
 

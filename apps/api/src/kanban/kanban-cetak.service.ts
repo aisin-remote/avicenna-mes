@@ -82,7 +82,6 @@ export class KanbanCetakService {
     const [baris] = await this.db
       .select({
         lineId: partProcesses.lineId,
-        outputLocationId: partProcesses.outputLocationId,
         transferLocationId: partProcesses.transferLocationId,
       })
       .from(partProcesses)
@@ -101,14 +100,14 @@ export class KanbanCetakService {
    * SLOC tujuan hasil part ini — kode SLOC-nya, mis. `SE1C`.
    *
    * Urutannya sama dengan yang dipakai scan produksi dan NG: transfer baris rute,
-   * tujuan baris rute, lalu SLOC keluar milik line. Kalau kartu menyebut SLOC lain
+   * SLOC tujuan part, lalu SLOC keluar milik line. Kalau kartu menyebut SLOC lain
    * dari tempat barangnya benar-benar dicatat masuk, orang di lantai akan membawa
    * box ke tempat yang salah.
    */
   private async slocTujuan(partId: number): Promise<string | null> {
     const rute = await this.barisUtama(partId);
     const [partLine] = await this.db
-      .select({ lineId: parts.lineId })
+      .select({ lineId: parts.lineId, outputLocationId: parts.outputLocationId })
       .from(parts)
       .where(eq(parts.id, partId))
       .limit(1);
@@ -121,7 +120,8 @@ export class KanbanCetakService {
           .limit(1)
       : [];
 
-    const lokasiId = rute?.transferLocationId ?? rute?.outputLocationId ?? line?.outputLocationId;
+    const lokasiId =
+      rute?.transferLocationId ?? partLine?.outputLocationId ?? line?.outputLocationId;
     if (!lokasiId) return null;
     const [lokasi] = await this.db
       .select({ code: locations.code })

@@ -102,9 +102,21 @@ export interface BarisBomDilewati {
 /**
  * Pasangan Part Pairing dari BOM SAP.
  *
- * Phantom tidak punya stok, jadi tidak pernah dipotong: komponennya langsung
- * dipasangkan ke induk phantom, dengan qty dikalikan. Hasilnya, Casting -04
- * langsung memakai ingot tanpa lewat Melting -02.
+ * Phantom yang TIDAK ada di master diurai: komponennya langsung dipasangkan ke
+ * induk phantom, dengan qty dikalikan. Hasilnya, Casting -04 langsung memakai
+ * ingot tanpa lewat Melting -02 yang tidak didaftarkan.
+ *
+ * ── Phantom yang ada di master tetap jadi tahap ─────────────────────────────
+ *
+ * Di BOM J922, CH11 (machining) dan CG11 (die casting) bertanda phantom: SAP
+ * tidak menyetok keduanya dan hanya mencatat produksi FG CI11. Di lantai
+ * keduanya tetap barang nyata — di-scan di MA0001 dan DCAA01, berstok di WP80,
+ * dan membawa QR casting yang sama. Part Pairing menjadi rantai pengenal QR
+ * (kode program menunjuk FG, part tahapnya dicari turun lewat rantai ini) dan
+ * dasar backflush stok Avicenna; mengurai phantom yang terdaftar memutus
+ * rantainya, sehingga QR di DCAA01 tercatat sebagai FG CI11. Keputusan Handika
+ * 11 Nov 2026. Posting SAP tidak terpengaruh: rute CH11/CG11 tidak mengirim
+ * dokumen produksi.
  *
  * Baris yang induk atau komponennya belum ada di master dilaporkan, bukan
  * ditebak, karena part beli memang belum semuanya didaftarkan.
@@ -124,10 +136,17 @@ export function pasanganDariBom(
     if (b.phantom === 'X') phantom.add(b.komponen);
   }
 
-  /** Komponen nyata sebuah baris: phantom diurai sampai bertemu part berstok. */
-  const urai = (b: BarisBomSap, kali: number, jalur: readonly string[]): { b: BarisBomSap; qty: number }[] => {
+  /** Phantom yang harus diurai: hanya yang belum terdaftar di master. */
+  const diurai = (pn: string) => phantom.has(pn) && !cariPart(pn);
+
+  /** Komponen nyata sebuah baris: phantom diurai sampai bertemu part terdaftar atau berstok. */
+  const urai = (
+    b: BarisBomSap,
+    kali: number,
+    jalur: readonly string[],
+  ): { b: BarisBomSap; qty: number }[] => {
     const qty = (b.qty ?? 0) * kali;
-    if (!phantom.has(b.komponen)) return [{ b, qty }];
+    if (!diurai(b.komponen)) return [{ b, qty }];
     return (anak.get(b.komponen) ?? [])
       .filter((a) => !jalur.includes(a.komponen))
       .flatMap((a) => urai(a, qty, [...jalur, a.komponen]));
@@ -137,18 +156,23 @@ export function pasanganDariBom(
   const dilewati: BarisBomDilewati[] = [];
   const indukTersalin = new Set<number>();
   for (const [indukNo, daftar] of anak) {
-    // Baris milik phantom sudah ikut dalam induknya.
-    if (phantom.has(indukNo)) continue;
+    // Baris milik phantom yang diurai sudah ikut dalam induknya.
+    if (diurai(indukNo)) continue;
     const induk = cariPart(indukNo);
     if (!induk) {
-      for (const b of daftar) dilewati.push({ induk: indukNo, komponen: b.komponen, sebab: 'induk belum ada di master' });
+      for (const b of daftar)
+        dilewati.push({ induk: indukNo, komponen: b.komponen, sebab: 'induk belum ada di master' });
       continue;
     }
     indukTersalin.add(induk.id);
     for (const { b, qty } of daftar.flatMap((b) => urai(b, 1, [indukNo, b.komponen]))) {
       const komponen = cariPart(b.komponen);
       if (!komponen) {
-        dilewati.push({ induk: indukNo, komponen: b.komponen, sebab: 'komponen belum ada di master' });
+        dilewati.push({
+          induk: indukNo,
+          komponen: b.komponen,
+          sebab: 'komponen belum ada di master',
+        });
         continue;
       }
       if (!(qty > 0)) {

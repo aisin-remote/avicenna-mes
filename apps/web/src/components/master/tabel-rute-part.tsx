@@ -16,9 +16,10 @@ const JUDUL = [
   'Work Center',
   'SAP',
   'Asal',
-  'Tujuan',
+  'Tujuan (part)',
   'Sequence',
   'Mode',
+  'CT (detik)',
   'Utama',
 ];
 
@@ -154,6 +155,7 @@ export function TabelRutePart({
                         <Kosong />
                       )}
                     </td>
+                    <td className={cn(kelasSel, 'tabular')}>{r.cycleTime ?? <Kosong />}</td>
                     <td className={kelasSel}>{r.isPrimary ? 'Utama' : <Kosong />}</td>
                     <td className={cn('px-4 py-3 align-top', r.masalah.length === 0 && 'border-b border-line')}>
                       <div className="flex items-center justify-end gap-1.5">

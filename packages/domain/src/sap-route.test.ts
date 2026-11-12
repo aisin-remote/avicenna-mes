@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bolehKirimDokumenRute } from './sap-movement';
-import { rencanaMutasiScanProduksi } from './stock';
+import { rencanaMutasiScanPenerimaan, rencanaMutasiScanProduksi } from './stock';
 
 describe('kebijakan SAP per langkah rute', () => {
   it('Machining WIP tetap mencatat stok tanpa membuat dokumen produksi atau transfer SAP', () => {
@@ -36,5 +36,14 @@ describe('kebijakan SAP per langkah rute', () => {
     expect(rencanaMutasiScanProduksi(1, 20, null)).toEqual([
       { type: 'PRODUCTION_IN', locationId: 20, qty: 1 },
     ]);
+  });
+
+  it('scan receiving hanya memindah komponen, tanpa hasil produksi', () => {
+    expect(rencanaMutasiScanPenerimaan(5, 6, 7)).toEqual([
+      { type: 'TRANSFER_OUT', locationId: 6, qty: -5 },
+      { type: 'TRANSFER_IN', locationId: 7, qty: 5 },
+    ]);
+    expect(() => rencanaMutasiScanPenerimaan(5, 6, null)).toThrow();
+    expect(() => rencanaMutasiScanPenerimaan(5, 6, 6)).toThrow();
   });
 });

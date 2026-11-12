@@ -106,11 +106,12 @@ export function MasterForm({
   });
 
   /*
-   * Galat tingkat formulir (bukan per kolom) jadi toast.
+   * Setiap penolakan jadi toast, termasuk galat per kolom.
    *
-   * Panel ini bisa lebih tinggi dari layar — part punya 14 kolom. Banner di
-   * atasnya luput saat orang menekan Simpan di bawah; toast tidak ikut
-   * menggulir. Galat per kolom tetap di bawah kolomnya: di situlah diperbaiki.
+   * Panel ini bisa lebih tinggi dari layar — part punya 14 kolom. Galat di
+   * bawah kolom yang sudah tergulir ke atas luput saat orang menekan Simpan di
+   * bawah, dan tanpa toast panelnya tampak diam saja. Toast menyebut kolomnya;
+   * pesan di bawah kolom tetap ada, karena di situlah diperbaiki.
    */
   /*
    * Satu hasil = satu toast.
@@ -120,7 +121,15 @@ export function MasterForm({
    * orangnya mengira tombolnya tidak jalan.
    */
   useHasilAksi(state, (hasil) => {
-    if (hasil.error && !hasil.fieldErrors) toast.galat(hasil.error, 'Tidak tersimpan');
+    if (!hasil.error) return;
+    if (!hasil.fieldErrors) {
+      toast.galat(hasil.error, 'Tidak tersimpan');
+      return;
+    }
+    const daftar = Object.entries(hasil.fieldErrors).map(
+      ([nama, pesan]) => `${def.fields.find((f) => f.name === nama)?.label ?? nama}: ${pesan}`,
+    );
+    toast.galat(daftar.join(' · '), 'Tidak tersimpan');
   });
 
   // Esc menutup panel — jalan pintas yang diharapkan ada pada panel semacam ini.
@@ -392,7 +401,14 @@ function Field({
           <label id={id} className="block text-[14px] font-semibold">
             {field.label}
           </label>
-          {field.hint ? (
+          {/* Server juga menolak lewat sakelar (push SAP, Utama); tanpa ini
+              pesannya tidak tampil di mana pun. */}
+          {error ? (
+            <p role="alert" className="mt-0.5 flex items-start gap-1.5 text-[13px] text-ng">
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+              {error}
+            </p>
+          ) : field.hint ? (
             <p className="mt-0.5 text-[13px] leading-snug text-ink-muted">{field.hint}</p>
           ) : null}
         </div>

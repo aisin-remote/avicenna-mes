@@ -130,6 +130,7 @@ export const PROCESS_GROUP_LABELS: Record<ProcessGroup, string> = {
   VACUUM: 'Vacuum',
   ANTENNA: 'Antena',
   DELIVERY: 'Delivery',
+  RECEIVING: 'Receiving',
 };
 
 /* ────────────────────────────────────────────────────────────────────────────

@@ -102,6 +102,26 @@ export function rencanaMutasiScanProduksi(
   ];
 }
 
+/**
+ * Scan di work center receiving: komponen beli pindah dari SLOC part (mis.
+ * WH80) ke SLOC Transfer rute (mis. WP80). Tidak ada PRODUCTION_IN — barangnya
+ * tidak dibuat di sini, penerimaannya dari supplier dicatat di luar Avicenna.
+ */
+export function rencanaMutasiScanPenerimaan(
+  qty: number,
+  dariLocationId: number | null,
+  keLocationId: number | null,
+): Array<{ type: 'TRANSFER_OUT' | 'TRANSFER_IN'; locationId: number; qty: number }> {
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('qty scan harus lebih dari nol');
+  if (!dariLocationId || !keLocationId || dariLocationId === keLocationId) {
+    throw new Error('penerimaan membutuhkan dua SLOC berbeda');
+  }
+  return [
+    { type: 'TRANSFER_OUT', locationId: dariLocationId, qty: signedQty('TRANSFER_OUT', qty) },
+    { type: 'TRANSFER_IN', locationId: keLocationId, qty: signedQty('TRANSFER_IN', qty) },
+  ];
+}
+
 /** Selisih stok fisik terhadap catatan sistem — dipakai saat opname. */
 export function stockVariance(systemQty: number, physicalQty: number): number {
   return physicalQty - systemQty;

@@ -56,12 +56,14 @@ export class RoutingService {
           processType: partProcesses.processType,
           seqNo: partProcesses.seqNo,
           inputLocationId: partProcesses.inputLocationId,
-          outputLocationId: partProcesses.outputLocationId,
+          // SLOC tujuan milik part: sama di work center mana pun.
+          outputLocationId: parts.outputLocationId,
           transferLocationId: partProcesses.transferLocationId,
           scanMode: partProcesses.scanMode,
           sapTransferEnabled: partProcesses.sapTransferEnabled,
           sapTransferMovementType: partProcesses.sapTransferMovementType,
           requirePairing: partProcesses.requirePairing,
+          cycleTime: partProcesses.cycleTime,
           sapProductionEnabled: partProcesses.sapProductionEnabled,
           isPrimary: partProcesses.isPrimary,
           isActive: partProcesses.isActive,
@@ -101,7 +103,9 @@ export class RoutingService {
     }
 
     const semua: BarisRutePart[] = rows.map((r) => {
-      const masalah = r.isActive ? masalahBarisRute(r) : [];
+      const masalah = r.isActive
+        ? masalahBarisRute({ ...r, processGroup: katalog.grup(r.processType) })
+        : [];
       /*
        * Layar stasiun memilih alur per box atau per barang dari line, sebelum
        * part-nya dikenal. Metode yang lain jenis akan selalu ditolak saat scan.

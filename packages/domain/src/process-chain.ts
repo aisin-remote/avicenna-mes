@@ -105,13 +105,17 @@ export type ScanRejectReason =
   | 'DN_CLOSED'
   | 'DN_PART_NOT_LISTED'
   | 'CUSTOMER_PART_UNKNOWN'
-  | 'SCAN_MODE_UNSUPPORTED';
+  | 'SCAN_MODE_UNSUPPORTED'
+  | 'DANDORI_REQUIRED'
+  | 'DANDORI_MODEL_MISMATCH';
 
 /** Pesan untuk operator. Ditulis sebagai instruksi, bukan sekadar keterangan. */
 export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
   DUPLICATE: 'Barcode ini sudah pernah discan. Ambil part berikutnya.',
   UNKNOWN_PROGRAM: 'Kode program tidak dikenal. Laporkan ke leader.',
   MISSING_PREVIOUS_PROCESS: 'Part belum discan di proses sebelumnya. Jangan diproses.',
+  DANDORI_REQUIRED: 'Line belum di-dandori. Tekan DANDORI, scan QR dandori, lalu START.',
+  DANDORI_MODEL_MISMATCH: 'Model berbeda dengan dandori yang berjalan. Lakukan dandori dulu.',
   LINE_NOT_FOUND: 'Line tidak dikenal. Periksa barcode line.',
   PLANT_UNKNOWN: 'Pabrik tidak bisa ditentukan dari scan ini.',
   BARCODE_UNREADABLE: 'Barcode tidak terbaca. Coba scan ulang, lalu laporkan ke leader.',

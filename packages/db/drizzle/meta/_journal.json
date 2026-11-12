@@ -169,6 +169,41 @@
       "when": 1794019970542,
       "tag": "0023_rute_transfer_belanja_kunci_work_center",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794280657987,
+      "tag": "0024_sloc_tujuan_di_part",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794296890597,
+      "tag": "0025_grup_proses_receiving",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794384901975,
+      "tag": "0026_dandori",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1794448611271,
+      "tag": "0027_grup_menu_traceability",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1794456577953,
+      "tag": "0028_cycle_time_rute",
+      "breakpoints": true
     }
   ]
 }

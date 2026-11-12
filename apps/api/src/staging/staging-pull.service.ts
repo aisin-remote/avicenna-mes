@@ -604,9 +604,10 @@ export class StagingPullService {
      * baris AII, dan tarik master melaporkan "0 baris" tanpa sebab yang terlihat.
      */
     let saring = '';
+    let kodeKita: string[] = [];
     const params: Record<string, unknown> = {};
     if (sumber.kolomPlant) {
-      const kodeKita = (
+      kodeKita = (
         await this.db.select({ kode: plants.sapCode }).from(plants).where(isNotNull(plants.sapCode))
       )
         .map((r) => (r.kode ?? '').trim())
@@ -656,7 +657,12 @@ export class StagingPullService {
     };
 
     if (rows.length === 0) {
-      catatan.push(`tabel ${sumber.tabel} di staging masih kosong`);
+      catatan.push(
+        // Tabelnya bisa saja berisi, hanya tidak satu pun berplant milik kita.
+        kodeKita.length > 0
+          ? `tidak ada baris ${sumber.tabel} di staging untuk plant ${kodeKita.join('/')}`
+          : `tabel ${sumber.tabel} di staging masih kosong`,
+      );
       /*
        * Part baru memakai jenis proses SEMENTARA — staging tidak menyediakannya.
        * Disebutkan di laporan supaya tidak diam-diam dianggap benar; yang
@@ -721,7 +727,14 @@ export class StagingPullService {
       case 'VENDOR':
         return this.upsertKode(suppliers, kunci, nilai, terhapus, uji);
       case 'PART':
-        return this.upsertPart(kunci, nilai, terhapus, sumber.bawaan ?? {}, uji);
+      case 'PART_BELI':
+        return this.upsertPart(
+          kunci,
+          nilai,
+          terhapus,
+          { ...sumber.bawaan, ...sumber.bawaanPerBaris?.(nilai) },
+          uji,
+        );
       case 'CUSTOMER_PART':
         return this.upsertCustomerPart(nilai, uji);
     }
@@ -817,6 +830,22 @@ export class StagingPullService {
           'Kode SAP mana pun di master Pabrik. Isi CHR_SAP_CODE di master Pabrik.',
       );
       return 'tetap';
+    }
+
+    /*
+     * SLOC tujuan datang sebagai kode; yang disimpan id lokasi milik pabrik part.
+     * Kode yang belum ada di master Lokasi tidak mengosongkan nilai lama.
+     */
+    const kodeSloc = bersih(nilai.slocCode);
+    delete nilai.slocCode;
+    if (kodeSloc) {
+      const [lokasi] = await this.db
+        .select({ id: locations.id })
+        .from(locations)
+        .where(and(eq(locations.plantId, pabrik.id), eq(locations.code, kodeSloc)))
+        .limit(1);
+      if (lokasi) nilai.outputLocationId = lokasi.id;
+      else this.logger.warn(`part ${kunci}: SLOC ${kodeSloc} belum ada di master Lokasi`);
     }
 
     const [ada] = await this.db

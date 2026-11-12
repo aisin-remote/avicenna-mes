@@ -261,6 +261,93 @@ export class MasterService {
    * SLOC Keluar, lalu seluruh scan casting berhenti tanpa ada yang tahu kolom
    * mana yang salah.
    */
+  /**
+   * SLOC tujuan sebuah baris master. Rute per part tidak menyimpannya sendiri:
+   * SLOC tujuan milik part-nya, sama di work center mana pun.
+   */
+  private async slocKeluar(
+    entity: MasterEntity,
+    nilai: (nama: string) => unknown,
+  ): Promise<number | null> {
+    if (entity !== 'part-processes') {
+      return (nilai('outputLocationId') as number | null | undefined) ?? null;
+    }
+    const partId = nilai('partId');
+    if (!partId) return null;
+    const [part] = await this.db
+      .select({ tujuan: parts.outputLocationId })
+      .from(parts)
+      .where(eq(parts.id, Number(partId)))
+      .limit(1);
+    return part?.tujuan ?? null;
+  }
+
+  /**
+   * SLOC tujuan part dipakai semua rutenya, jadi menggantinya diperiksa terhadap
+   * setiap rute aktif dengan aturan yang sama seperti saat rute disunting.
+   * Tanpa ini, satu suntingan di master Part bisa membuat seluruh scan sebuah
+   * work center ditolak.
+   */
+  private async pastikanSlocTujuanPart(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ) {
+    if (entity !== 'parts' || !barisLama || values.outputLocationId === undefined) return;
+
+    const tujuanId = (values.outputLocationId as number | null) ?? null;
+    const rute = await this.db
+      .select({
+        lineCode: lines.code,
+        processType: partProcesses.processType,
+        transferLocationId: partProcesses.transferLocationId,
+        sapProductionEnabled: partProcesses.sapProductionEnabled,
+      })
+      .from(partProcesses)
+      .leftJoin(lines, eq(partProcesses.lineId, lines.id))
+      .where(and(eq(partProcesses.partId, Number(barisLama.id)), eq(partProcesses.isActive, true)));
+    if (rute.length === 0) return;
+
+    const [tujuan] = tujuanId
+      ? await this.db
+          .select({ code: locations.code, kind: locations.kind })
+          .from(locations)
+          .where(eq(locations.id, tujuanId))
+          .limit(1)
+      : [];
+    const katalog = await this.processTypes.katalog();
+
+    const pesan: string[] = [];
+    for (const r of rute) {
+      const wc = r.lineCode ?? r.processType;
+      if (tujuanId !== null && r.transferLocationId === tujuanId) {
+        pesan.push(`${wc}: SLOC Transfer rute sama dengan SLOC Tujuan ini — kosongkan transfernya dulu.`);
+      }
+      if (tujuanId === null && (r.sapProductionEnabled || r.transferLocationId !== null)) {
+        pesan.push(`${wc}: rute ini push produksi atau transfer, jadi SLOC Tujuan wajib diisi.`);
+      }
+      if (tujuan) {
+        const keputusan = periksaHasilProduksi({
+          jenis: katalog.cari(r.processType),
+          slocKind: tujuan.kind,
+          slocCode: tujuan.code,
+        });
+        if (!keputusan.kirim && !keputusan.sengaja && keputusan.alasan) {
+          pesan.push(`${wc}: ${keputusan.alasan}`);
+        }
+      }
+    }
+
+    if (pesan.length > 0) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'ValidationError',
+        message: 'Data yang dikirim tidak valid',
+        details: pesan.map((message) => ({ field: 'outputLocationId', message })),
+      });
+    }
+  }
+
   private async pastikanRuteProsesWajar(
     entity: MasterEntity,
     values: Record<string, unknown>,
@@ -271,10 +358,11 @@ export class MasterService {
     const nilai = <T>(nama: string): T | null | undefined =>
       (values[nama] !== undefined ? values[nama] : barisLama?.[nama]) as T | null | undefined;
 
-    const keluar = nilai<number>('outputLocationId') ?? null;
+    const keluar = await this.slocKeluar(entity, nilai);
     const transfer = nilai<number>('transferLocationId') ?? null;
     const pushProduksi = Boolean(nilai<boolean>('sapProductionEnabled'));
     const pushTransfer = Boolean(nilai<boolean>('sapTransferEnabled'));
+    const rutePart = entity === 'part-processes';
 
     const details: Array<{ field: string; message: string }> = [];
 
@@ -293,10 +381,19 @@ export class MasterService {
       });
     }
     if ((pushProduksi || transfer !== null) && keluar === null) {
-      details.push({
-        field: 'outputLocationId',
-        message: 'SLOC Keluar wajib diisi bila push produksi aktif atau ada SLOC Transfer.',
-      });
+      details.push(
+        rutePart
+          ? {
+              field: 'partId',
+              message:
+                'SLOC Tujuan part ini masih kosong, padahal push produksi aktif atau ada SLOC ' +
+                'Transfer — isi dulu di master Part.',
+            }
+          : {
+              field: 'outputLocationId',
+              message: 'SLOC Keluar wajib diisi bila push produksi aktif atau ada SLOC Transfer.',
+            },
+      );
     }
 
     if (details.length > 0) {
@@ -400,7 +497,7 @@ export class MasterService {
       values.transferLocationId !== undefined;
     if (!menyentuhKeluar && !menyentuhSap) return;
 
-    const keluarId = nilai<number>('outputLocationId') ?? null;
+    const keluarId = await this.slocKeluar(entity, nilai);
     const transferId = nilai<number>('transferLocationId') ?? null;
     const idLokasi = [keluarId, transferId].filter((v): v is number => typeof v === 'number');
     const barisLokasi = idLokasi.length
@@ -429,7 +526,13 @@ export class MasterService {
         slocCode: keluar.code,
       });
       if (!keputusan.kirim && !keputusan.sengaja && keputusan.alasan) {
-        details.push({ field: 'outputLocationId', message: keputusan.alasan });
+        details.push({
+          field: entity === 'part-processes' ? 'partId' : 'outputLocationId',
+          message:
+            entity === 'part-processes'
+              ? `SLOC Tujuan part tidak cocok dengan proses work center ini: ${keputusan.alasan}`
+              : keputusan.alasan,
+        });
       }
     }
 
@@ -563,7 +666,7 @@ export class MasterService {
       .limit(1);
     if (!line) return 'Work Center yang dipilih tidak ditemukan.';
 
-    const tujuanId = nilai('outputLocationId');
+    const tujuanId = await this.slocKeluar(entity, nilai);
     const [tujuan] = tujuanId
       ? await this.db
           .select({ kind: locations.kind })
@@ -683,6 +786,7 @@ export class MasterService {
     await this.pastikanRuteProsesWajar(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanProsesRute(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanSlocSesuaiBlueprint(entity, values, barisLama as Record<string, unknown>);
+    await this.pastikanSlocTujuanPart(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanProductionVersion(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanSatuUtama(entity, values, barisLama as Record<string, unknown>);
 

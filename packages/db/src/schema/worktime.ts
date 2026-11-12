@@ -8,10 +8,10 @@ import {
   uniqueIndex,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { daftarNilai, enumCol, fk, pk, productionSchema, timestamps } from './_shared';
 import { plants, users } from './org';
-import { lines, parts } from './master';
+import { lines, parts, toolings } from './master';
 
 /**
  * ─── JAM KERJA DAN WAKTU BERHENTI ───────────────────────────────────────────
@@ -196,6 +196,61 @@ export const lineStops = productionSchema.table(
     index('TT_LINE_STOP_OPEN_IDX').on(t.lineId, t.endedAt),
 
     daftarNilai('TT_LINE_STOP_CHR_CLOSED_BY_CHK', t.closedBy, STOP_CLOSED_BY),
+  ],
+);
+
+export const DANDORI_STATUSES = ['DANDORI', 'BERJALAN', 'SELESAI'] as const;
+
+/**
+ * Dandori — pergantian model di sebuah line, satu baris per pergantian.
+ *
+ * ── Kenapa disimpan di server ───────────────────────────────────────────────
+ *
+ * Part aktif menentukan part apa yang boleh discan dan metode scannya. Kalau
+ * hanya ada di memori layar, komputer line yang restart atau shift yang
+ * berganti kehilangannya, dan scan berikutnya tercatat atas nama part yang
+ * kebetulan terakhir diingat browser. Barisnya sekaligus laporan dandori:
+ * siapa, kapan, berapa lama, dari part apa ke part apa.
+ *
+ * Status: DANDORI (tombol ditekan, line berhenti, scan produksi ditolak) →
+ * BERJALAN (START ditekan; part atau mold inilah yang boleh discan) → SELESAI
+ * (dandori berikutnya dimulai). Satu line paling banyak satu baris yang belum
+ * SELESAI — dijaga indeks unik parsial, bukan hanya oleh service.
+ */
+export const dandori = productionSchema.table(
+  'TT_DANDORI',
+  {
+    id: pk(),
+    plantId: fk('INT_PLANT_ID')
+      .notNull()
+      .references(() => plants.id),
+    lineId: fk('INT_LINE_ID')
+      .notNull()
+      .references(() => lines.id),
+    status: enumCol('CHR_STATUS', DANDORI_STATUSES).notNull(),
+    /** Part yang dipasang. Kosong di line mold: yang dipasang mold-nya. */
+    partId: fk('INT_PART_ID').references(() => parts.id),
+    /** Mold yang dipasang — hanya line injection (mode mold lalu kanban). */
+    toolingId: fk('INT_TOOLING_ID').references(() => toolings.id),
+    /** Isi QR dandori atau tag mold apa adanya, untuk penelusuran. */
+    kodeDandori: varchar('CHR_KODE_DANDORI', { length: 255 }),
+    /** Master sample yang discan sesudah QR dandori — line BODY per kanban. */
+    kodeSample: varchar('CHR_KODE_SAMPLE', { length: 255 }),
+    /** Catatan berhenti DANDORI yang dibuka tombol dan ditutup START. */
+    lineStopId: fk('INT_LINE_STOP_ID').references(() => lineStops.id),
+    mulaiAt: timestamp('DTM_MULAI', { withTimezone: true, mode: 'date' }).notNull(),
+    startAt: timestamp('DTM_START', { withTimezone: true, mode: 'date' }),
+    selesaiAt: timestamp('DTM_SELESAI', { withTimezone: true, mode: 'date' }),
+    userMulaiId: fk('INT_USER_MULAI_ID').references(() => users.id),
+    userStartId: fk('INT_USER_START_ID').references(() => users.id),
+    ...timestamps,
+  },
+  (t) => [
+    index('TT_DANDORI_LINE_TIME_IDX').on(t.lineId, t.mulaiAt),
+    uniqueIndex('TT_DANDORI_LINE_TERBUKA_UNIQUE')
+      .on(t.lineId)
+      .where(sql`${t.status} <> 'SELESAI'`),
+    daftarNilai('TT_DANDORI_CHR_STATUS_CHK', t.status, DANDORI_STATUSES),
   ],
 );
 
