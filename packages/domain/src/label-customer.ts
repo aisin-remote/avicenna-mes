@@ -16,14 +16,21 @@
  *      tanpa panjang part, seluruh label adalah nomor part.
  *   4. Hasilnya dibakukan (tanpa strip dan spasi) supaya cocok dengan master
  *      Part Customer yang ditulis berstrip maupun tidak.
+ *   5. Bentuk hasil konversi format customer ikut dicoba, seperti bella:
+ *      TMMIN 12 karakter berakhiran 00 (`11310BZ20000`) tersimpan di master
+ *      sebagai `11310-BZ200`.
  *
  * Satu label bisa cocok dengan beberapa customer (MMKI, SENOPATI, FUJITRANS
  * sama-sama 10 karakter). Itu sengaja: yang memutuskan adalah pemetaan Part
  * Customer ke part yang sedang didandori, di lapisan service.
  */
 
+import { convertCustomerPartNumber, type PartNumberFormat } from './customer-part';
+
 export interface AturanLabelCustomer {
   customerId: number;
+  /** Format nomor part customer; dipakai mengubah TMMIN `11310BZ20000` -> `11310-BZ200`. */
+  partNumberFormat?: PartNumberFormat | null;
   labelLength: number | null;
   labelPartStart: number | null;
   labelPartLength: number | null;
@@ -65,7 +72,14 @@ export function potongLabelCustomer(
     const nomorPart = bakukanPartCustomer(potong);
     if (!nomorPart) continue;
 
-    hasil.push({ customerId: a.customerId, nomorPart, seri: seriLabel(label, a) });
+    const seri = seriLabel(label, a);
+    hasil.push({ customerId: a.customerId, nomorPart, seri });
+    const konversi = bakukanPartCustomer(
+      convertCustomerPartNumber(potong.trim(), a.partNumberFormat ?? 'NONE'),
+    );
+    if (konversi && konversi !== nomorPart) {
+      hasil.push({ customerId: a.customerId, nomorPart: konversi, seri });
+    }
   }
   return hasil;
 }

@@ -188,6 +188,13 @@ export interface StationSummary {
     menerimaKartu: boolean;
     /** Scan produksi baru diterima setelah dandori di-START. */
     wajibDandori: boolean;
+    /**
+     * Panjang label kanban customer yang dikenal (master Customer). Layar FG
+     * memakai ini untuk mengenali kartu customer — mis. RFID TMMIN 37 karakter
+     * — yang tidak cocok dengan aturan kanban internal. Pemetaannya tetap di
+     * server.
+     */
+    panjangLabelCustomer: number[];
   };
   /** Dandori yang belum selesai di line ini: sedang dandori, atau part/mold yang sedang berjalan. */
   dandori: DandoriLini | null;

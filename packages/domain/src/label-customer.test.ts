@@ -73,6 +73,42 @@ describe('potongLabelCustomer', () => {
   });
 });
 
+describe('kanban RFID TMMIN (UNIT)', () => {
+  /* Contoh Handika, 17 Nov 2026: 37 karakter, part di depan, sisanya identitas kartu. */
+  const RFID: AturanLabelCustomer = {
+    customerId: 1,
+    partNumberFormat: 'TMMIN',
+    labelLength: 37,
+    labelPartStart: 0,
+    labelPartLength: 12,
+    labelSerialStart: 13,
+    labelSerialLength: 24,
+  };
+
+  it('nomor TMMIN berakhiran 00 ikut dicoba dalam bentuk master (11310-BZ200)', () => {
+    const hasil = potongLabelCustomer('11310BZ20000 10000000000D403501120066', [RFID]);
+    expect(hasil.map((h) => h.nomorPart)).toEqual(['11310BZ20000', '11310BZ200']);
+    expect(hasil[0]?.seri).toBe('10000000000D403501120066');
+  });
+
+  it('aturan sistem lama: back number TMMIN di posisi 24, seri 4 karakter terakhir', () => {
+    const LAMA: AturanLabelCustomer = { ...RFID, labelPartStart: 24, labelPartLength: 4, labelSerialStart: 33, labelSerialLength: 4 };
+    expect(potongLabelCustomer('11310BZ20000 10000000000D403501120066', [LAMA])).toEqual([
+      { customerId: 1, nomorPart: 'D403', seri: '0066' },
+    ]);
+  });
+
+  it('tiap kartu punya seri sendiri', () => {
+    const seri = [
+      '11310BZ20000 10000000000D403501120066',
+      '11310BZ20000 10000000000D403501121676',
+      '11310BZ20000 10000000000D403501121654',
+      '11310BZ20000 10000000000D403501121814',
+    ].map((l) => potongLabelCustomer(l, [RFID])[0]?.seri);
+    expect(new Set(seri).size).toBe(4);
+  });
+});
+
 describe('bakukanPartCustomer', () => {
   it('strip, spasi, dan huruf kecil tidak membedakan', () => {
     expect(bakukanPartCustomer('82081-74u00-wc3')).toBe('8208174U00WC3');

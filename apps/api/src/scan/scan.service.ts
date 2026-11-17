@@ -658,9 +658,12 @@ export class ScanService {
            * boleh menggantikan kartu (Handika, 16–17 Nov 2026). Hanya di lini
            * per-box; di lini lain label customer tidak punya arti.
            */
-          labelCustomer = syarat.qtyDariKartu
-            ? await this.bacaLabelCustomer(normalized.kanbanCode, part, plantId, opsi)
-            : null;
+          labelCustomer =
+            syarat.qtyDariKartu || syarat.tempelUnitKeKartu
+              ? await this.bacaLabelCustomer(normalized.kanbanCode, part, plantId, opsi, {
+                  wajibSeri: syarat.tempelUnitKeKartu,
+                })
+              : null;
           if (!labelCustomer) {
             throw new ScanRejected(
               'KANBAN_UNREADABLE',
@@ -1436,10 +1439,12 @@ export class ScanService {
     part: { id: number; partNumber: string; backNumber: string | null; qtyPerKanban: number | null },
     plantId: number,
     opsi: OpsiIngest,
+    { wajibSeri = false }: { wajibSeri?: boolean } = {},
   ): Promise<LabelCustomer | null> {
     const aturan = await this.db
       .select({
         customerId: customers.id,
+        partNumberFormat: customers.partNumberFormat,
         labelLength: customers.labelLength,
         labelPartStart: customers.labelPartStart,
         labelPartLength: customers.labelPartLength,
@@ -1451,7 +1456,16 @@ export class ScanService {
     const potongan = potongLabelCustomer(raw, aturan);
     if (potongan.length === 0) return null;
 
+    /*
+     * Nomor dari label dicocokkan ke nomor part customer ATAU back number
+     * customer. Yang kedua dipakai kanban RFID TMMIN: sistem lama membaca
+     * back number TMMIN (mis. D403) dari label dan memetakannya lewat
+     * `avi_trace_program_number.rfid_tmmin` — karena satu nomor part TMMIN
+     * bisa dipakai dua part AISIN (11310-BZ200: CI17 dan CI18).
+     */
     const baku = sql<string>`upper(replace(replace(${customerParts.customerPartNumber}, '-', ''), ' ', ''))`;
+    const bakuBack = sql<string>`upper(replace(replace(coalesce(${customerParts.customerBackNumber}, ''), '-', ''), ' ', ''))`;
+    const nomorDibaca = [...new Set(potongan.map((p) => p.nomorPart))];
     const baris = await this.db
       .select({
         customerId: customerParts.customerId,
@@ -1462,16 +1476,19 @@ export class ScanService {
         partNumber: parts.partNumber,
         backNumber: parts.backNumber,
         baku,
+        bakuBack,
       })
       .from(customerParts)
       .innerJoin(customers, eq(customers.id, customerParts.customerId))
       .innerJoin(parts, eq(parts.id, customerParts.partId))
-      .where(inArray(baku, [...new Set(potongan.map((p) => p.nomorPart))]));
+      .where(or(inArray(baku, nomorDibaca), inArray(bakuBack, nomorDibaca)));
 
     // Utamakan pasangan customer + nomor yang dibaca menurut aturan customer
     // itu sendiri; bila tidak ada, nomor yang sama milik customer lain (bella).
     const sepasang = baris.filter((b) =>
-      potongan.some((p) => p.customerId === b.customerId && p.nomorPart === b.baku),
+      potongan.some(
+        (p) => p.customerId === b.customerId && (p.nomorPart === b.baku || p.nomorPart === b.bakuBack),
+      ),
     );
     const kandidat = sepasang.length > 0 ? sepasang : baris;
     if (kandidat.length === 0) return null;
@@ -1500,6 +1517,18 @@ export class ScanService {
     const qtyPerKanban = isiCustomer ?? isiMaster ?? 1;
 
     const seri = potongan.find((p) => p.customerId === cocok.customerId && p.seri)?.seri ?? null;
+    /*
+     * Lini tempel unit (FG UNIT, mis. kanban RFID TMMIN): unit-unit satu box
+     * dikirim satu per satu dengan kartu yang SAMA, jadi kartunya harus punya
+     * identitas tetap. Label tanpa seri akan membuat kartu baru di tiap unit.
+     */
+    if (wajibSeri && !seri) {
+      throw new ScanRejected(
+        'KANBAN_UNREADABLE',
+        `Label customer ${cocok.customerPartNumber} tidak punya seri, jadi tidak bisa menutup box ` +
+          'di line ini. Isi Posisi/Panjang Seri di master Customer, atau pakai kanban internal.',
+      );
+    }
     const serialNumber = seri
       ? `${cocok.customerCode}:${seri}`
       : `${cocok.customerCode}:${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
@@ -2094,6 +2123,15 @@ export class ScanService {
   }
 
   /** Apakah ada part di line ini yang ditutup kartu, walau bawaan line-nya tidak. */
+  /** Panjang label kanban customer yang dijaga panjangnya (master Customer aktif). */
+  private async panjangLabelCustomer(): Promise<number[]> {
+    const rows = await this.db
+      .selectDistinct({ n: customers.labelLength })
+      .from(customers)
+      .where(and(eq(customers.isActive, true), sql`${customers.labelLength} > 0`));
+    return rows.map((r) => r.n!).sort((a, b) => a - b);
+  }
+
   private async lineMenerimaKartu(line: {
     id: number;
     processType: ProcessType;
@@ -2318,6 +2356,7 @@ export class ScanService {
         scanMode: await this.modeScanLini(line.processType, line.scanMode),
         menerimaKartu: await this.lineMenerimaKartu(line),
         wajibDandori: await this.dandori.wajib(line),
+        panjangLabelCustomer: await this.panjangLabelCustomer(),
       },
       dandori: await this.dandori.keadaan(line),
       ...(await this.hitunganUntukHasil(lineCode)),

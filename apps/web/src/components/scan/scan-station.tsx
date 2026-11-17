@@ -365,7 +365,15 @@ export function ScanStation({
      * terakhir — kartu tanpa part ditolak, bukan disimpan diam-diam.
      */
     if (fg) {
-      if (sepertiKanban(value, { processType, scanMode: summary.line.scanMode })) {
+      /*
+       * Kartu customer (mis. RFID TMMIN 37 karakter) tidak cocok dengan aturan
+       * kanban internal; dikenali dari panjang label yang terdaftar di master
+       * Customer. Pemetaan dan seri kartunya diperiksa server.
+       */
+      if (
+        sepertiKanban(value, { processType, scanMode: summary.line.scanMode }) ||
+        (summary.line.panjangLabelCustomer ?? []).includes(value.trim().length)
+      ) {
         await tutupBox(value);
       } else {
         await tahanPart(value);
