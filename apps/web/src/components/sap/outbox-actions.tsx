@@ -39,7 +39,10 @@ export function OutboxActions({ idGagal, tarikAktif }: { idGagal: number[]; tari
     const res = await retryAction(idGagal);
     setSibuk(false);
     if ('error' in res) return toast.galat(res.error);
-    toast.ok(`${res.diulang} dokumen dikembalikan ke antrean kirim.`);
+    toast.ok(
+      `${res.diulang} dokumen dikembalikan ke antrean kirim.` +
+        (res.pvDiisi ? ` PV ${res.pvDiisi} dokumen diisi dari rute.` : ''),
+    );
     startTransition(() => router.refresh());
   }
 

@@ -26,9 +26,9 @@ export async function collectNowAction(): Promise<
   }
 }
 
-export async function retryAction(ids: number[]): Promise<{ diulang: number } | { error: string }> {
+export async function retryAction(ids: number[]): Promise<{ diulang: number; pvDiisi?: number } | { error: string }> {
   try {
-    const res = await apiFetch<{ diulang: number }>('/sap/retry', {
+    const res = await apiFetch<{ diulang: number; pvDiisi?: number }>('/sap/retry', {
       method: 'POST',
       body: JSON.stringify({ ids }),
     });

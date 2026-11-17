@@ -105,6 +105,7 @@ export type ScanRejectReason =
   | 'DN_CLOSED'
   | 'DN_PART_NOT_LISTED'
   | 'CUSTOMER_PART_UNKNOWN'
+  | 'CUSTOMER_LABEL_QTY_MISMATCH'
   | 'SCAN_MODE_UNSUPPORTED'
   | 'DANDORI_REQUIRED'
   | 'DANDORI_MODEL_MISMATCH';
@@ -160,6 +161,13 @@ export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
   DN_PART_NOT_LISTED: 'Part ini tidak ada dalam loading list tersebut. Periksa label dan part-nya.',
   CUSTOMER_PART_UNKNOWN:
     'Nomor part customer pada label tidak cocok dengan part ini. Laporkan ke leader.',
+  /*
+   * Label customer di lini BODY (pengganti kartu). Isi box menurut customer
+   * harus sama dengan master part — selisih berarti master keliru atau label
+   * tertukar, dan box-nya akan selisih saat dikirim.
+   */
+  CUSTOMER_LABEL_QTY_MISMATCH:
+    'Isi box pada label customer berbeda dengan master part. Laporkan ke leader.',
 
   /*
    * Metode scan lini ini dikenal tetapi layarnya belum ada. Lebih baik berhenti

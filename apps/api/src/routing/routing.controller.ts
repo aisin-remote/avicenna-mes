@@ -25,7 +25,11 @@ export class RoutingController {
   @Get('process-types')
   async processTypes() {
     const katalog = await this.processTypeService.katalog();
-    return { data: katalog.daftar.map((j) => ({ ...j })) };
+    return {
+      data: katalog.daftar.map((j) => ({ ...j })),
+      // Grup ikut dikirim: layar butuh nama dan daftarnya (monitor, role, scan).
+      grup: katalog.grupDaftar.map((g) => ({ ...g })),
+    };
   }
 
   /** Daftar rute per part, sebentuk dengan tabel rute PPIC. */

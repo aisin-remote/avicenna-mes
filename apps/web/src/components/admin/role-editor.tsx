@@ -6,7 +6,7 @@ import { motion } from 'motion/react';
 import { Plus, Pencil, Trash2, X, Users, ArrowRight } from 'lucide-react';
 import {
   ROLE_KINDS,
-  PROCESS_GROUPS,
+  type GrupProses,
   type RoleRow,
   type MenuRow,
 } from '@avicenna/contracts';
@@ -35,10 +35,14 @@ const KETERANGAN_KIND: Record<string, string> = {
 export function RoleEditor({
   roles,
   katalog,
+  grupProses,
 }: {
   roles: RoleRow[];
   katalog: MenuRow[];
+  /** Grup proses aktif dari master TM_PROCESS_GROUP (Administrasi › Grup Proses). */
+  grupProses: GrupProses[];
 }) {
+  const labelGrup = (kode: string) => grupProses.find((g) => g.code === kode)?.label ?? kode;
   const [form, setForm] = useState<{ mode: 'buat' | 'sunting'; row?: RoleRow } | null>(null);
 
   return (
@@ -86,7 +90,7 @@ export function RoleEditor({
               </span>
               {r.processGroup ? (
                 <span className="rounded-full border border-line px-2.5 py-1 font-semibold">
-                  {r.processGroup}
+                  {labelGrup(r.processGroup)}
                 </span>
               ) : null}
               {!r.isActive ? (
@@ -135,6 +139,7 @@ export function RoleEditor({
           mode={form.mode}
           row={form.row}
           katalog={katalog}
+          grupProses={grupProses}
           onClose={() => setForm(null)}
         />
       ) : null}
@@ -149,13 +154,23 @@ function FormRole({
   mode,
   row,
   katalog,
+  grupProses,
   onClose,
 }: {
   mode: 'buat' | 'sunting';
   row?: RoleRow;
   katalog: MenuRow[];
+  grupProses: GrupProses[];
   onClose: () => void;
 }) {
+  // Grup yang sudah dinonaktifkan tetap tampil bila role ini masih memakainya.
+  const pilihanGrup: GrupProses[] =
+    row?.processGroup && !grupProses.some((g) => g.code === row.processGroup)
+      ? [
+          ...grupProses,
+          { code: row.processGroup, label: `${row.processGroup} (nonaktif)`, sortOrder: 9999, isActive: false },
+        ]
+      : grupProses;
   const [state, action, pending] = useActionState(simpanRoleAction, AWAL);
   const [hapusState, hapusAction, hapusPending] = useActionState(hapusRoleAction, AWAL);
   const [kind, setKind] = useState(row?.kind ?? 'VIEW');
@@ -284,9 +299,9 @@ function FormRole({
                 className={KELAS_INPUT}
               >
                 <option value="">— seluruh proses —</option>
-                {PROCESS_GROUPS.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
+                {pilihanGrup.map((g) => (
+                  <option key={g.code} value={g.code}>
+                    {g.label} ({g.code})
                   </option>
                 ))}
               </select>

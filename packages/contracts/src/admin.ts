@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ROLE_KINDS, PROCESS_GROUPS } from './common';
+import { ROLE_KINDS, processGroupSchema, type ProcessGroup } from './common';
 import { MENU_GROUPS } from './menu';
 
 /**
@@ -22,7 +22,6 @@ import { MENU_GROUPS } from './menu';
  */
 
 export const roleKindSchema = z.enum(ROLE_KINDS);
-export const processGroupSchema = z.enum(PROCESS_GROUPS);
 
 /** Kosong dari formulir HTML berarti "tidak diisi", bukan string kosong. */
 const opsionalTeks = (max: number) =>
@@ -81,7 +80,7 @@ export interface RoleRow {
   name: string;
   label: string | null;
   kind: (typeof ROLE_KINDS)[number];
-  processGroup: (typeof PROCESS_GROUPS)[number] | null;
+  processGroup: ProcessGroup | null;
   isActive: boolean;
   /** Jumlah pengguna yang memegang role ini — dibaca sebelum menghapus. */
   userCount: number;

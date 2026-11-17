@@ -1,7 +1,8 @@
 import { boolean, index, integer, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { daftarNilai, enumCol, fk, orgSchema, pk, timestamps } from './_shared';
-import { ROLE_KINDS, PROCESS_GROUPS, MENU_GROUPS } from '@avicenna/contracts';
+import { ROLE_KINDS, MENU_GROUPS } from '@avicenna/contracts';
+import { processGroups } from './master';
 
 /**
  * Pabrik / unit bisnis.
@@ -40,6 +41,15 @@ export const plants = orgSchema.table(
      * Tidak berpengaruh pada customer biasa: mereka selalu dicocokkan tiga arah.
      */
     scanDirectKanbanSaatMuat: boolean('FLG_SCAN_DIRECT_KANBAN').notNull().default(false),
+    /**
+     * Kanban customer yang discan di lini FG LANGSUNG menjadi pulling.
+     *
+     * UNIT: ya — label DN di lini = direct delivery, box masuk loading list
+     * lewat pintu pulling. BODY: tidak — kanban customer hanya menggantikan
+     * kartu internal; box tetap PRODUCED dan di-pull belakangan. Keputusan
+     * Handika 16–17 Nov 2026. Sifat pabrik, bukan nama pabrik.
+     */
+    directPullingDiLini: boolean('FLG_DIRECT_PULLING_LINE').notNull().default(false),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
@@ -64,7 +74,7 @@ export const roles = orgSchema.table(
      * maupun Casting FG. Memakai jenis proses akan menuntut dua role terpisah
      * untuk satu jabatan yang di lapangan memang satu orang.
      */
-    processGroup: enumCol('CHR_PROCESS_GROUP', PROCESS_GROUPS),
+    processGroup: varchar('CHR_PROCESS_GROUP', { length: 32 }).references(() => processGroups.code),
     /**
      * Role yang tidak dipakai lagi.
      *
@@ -78,7 +88,6 @@ export const roles = orgSchema.table(
   (t) => [
     uniqueIndex('TM_ROLE_NAME_UNIQUE').on(t.name),
     daftarNilai('TM_ROLE_CHR_KIND_CHK', t.kind, ROLE_KINDS),
-    daftarNilai('TM_ROLE_CHR_PROCESS_GROUP_CHK', t.processGroup, PROCESS_GROUPS),
   ],
 );
 

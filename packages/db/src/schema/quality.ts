@@ -9,8 +9,7 @@ import {
   timestamps,
   type ProcessType,
 } from './_shared';
-import { PROCESS_GROUPS } from '@avicenna/contracts';
-import { parts, lines, machines, processTypes } from './master';
+import { parts, lines, machines, processGroups, processTypes } from './master';
 import { kanbans } from './kanban';
 import { scanEvents } from './production';
 import { plants, users } from './org';
@@ -35,7 +34,7 @@ export const ngMasters = qualitySchema.table(
       .references(() => plants.id),
     code: varchar('CHR_CODE', { length: 32 }).notNull(),
     name: varchar('CHR_NAME', { length: 128 }).notNull(),
-    processGroup: enumCol('CHR_PROCESS_GROUP', PROCESS_GROUPS),
+    processGroup: varchar('CHR_PROCESS_GROUP', { length: 32 }).references(() => processGroups.code),
     category: varchar('CHR_CATEGORY', { length: 64 }),
     sortOrder: integer('INT_SORT_ORDER').notNull().default(0),
     isActive: enumCol('CHR_IS_ACTIVE', ['0', '1']).notNull().default('1'),
@@ -45,7 +44,6 @@ export const ngMasters = qualitySchema.table(
     uniqueIndex('TM_NG_PLANT_CODE_UNIQUE').on(t.plantId, t.code),
     index('TM_NG_GROUP_IDX').on(t.plantId, t.processGroup, t.sortOrder),
 
-    daftarNilai('TM_NG_CHR_PROCESS_GROUP_CHK', t.processGroup, PROCESS_GROUPS),
     daftarNilai('TM_NG_CHR_IS_ACTIVE_CHK', t.isActive, ['0', '1']),
   ],
 );

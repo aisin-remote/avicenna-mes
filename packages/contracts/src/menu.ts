@@ -281,6 +281,11 @@ const MENU_MASTER_TIMPA: Partial<Record<MasterEntity, Partial<MenuDef>>> = {
    * hasil SAP membuat produksi mendarat di SLOC yang keliru.
    */
   'process-types': { label: 'Jenis Proses', group: 'Integrasi', sortOrder: 15 },
+  /*
+   * Grup proses adalah lingkup ROLE, jadi tinggal di samping Role — bukan di
+   * Master Data yang diurus leader produksi (Handika, 16 Nov 2026).
+   */
+  'process-groups': { label: 'Grup Proses', group: 'Administrasi', sortOrder: 25, adminOnly: true },
 };
 
 /*

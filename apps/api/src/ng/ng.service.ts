@@ -104,7 +104,11 @@ export class NgService {
    * lain tidak akan pernah muncul di laporan mana pun.
    */
   async jenis(grupRaw?: string | null, principal?: Principal) {
-    const grup = bacaGrupProses(grupRaw);
+    const katalog = await this.processTypes.katalog();
+    const grup = bacaGrupProses(
+      grupRaw,
+      katalog.grupDaftar.map((g) => g.code),
+    );
 
     const rows = await this.db
       .select({

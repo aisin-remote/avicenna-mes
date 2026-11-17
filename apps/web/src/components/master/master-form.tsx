@@ -12,6 +12,7 @@ import { saveMasterAction, type FormState } from '@/app/(app)/master/actions';
 import { useToast } from '../ui/toast';
 import { useHasilAksi } from '../ui/use-hasil-aksi';
 import { BidangGambar } from './bidang-gambar';
+import { PilihCari, PilihCariBanyak } from '../ui/pilih-cari';
 import { durations, easeSoft, springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
@@ -100,7 +101,11 @@ export function MasterForm({
 
   useHasilAksi(state, (hasil) => {
     if (!hasil.ok) return;
-    toast.ok(`${def.singular} tersimpan.`);
+    toast.ok(
+      hasil.jumlah && hasil.jumlah > 1
+        ? `${hasil.jumlah} ${def.singular} tersimpan.`
+        : `${def.singular} tersimpan.`,
+    );
     onClose();
     router.refresh();
   });
@@ -206,8 +211,12 @@ export function MasterForm({
               <div className="scroll-slim flex-1 space-y-5 overflow-y-auto px-6 py-6">
                 {def.fields.map((field) => (
                   <Field
-                    key={field.name}
+                    // Pemilih part berbasis state sendiri: dipasang ulang saat
+                    // pabrik berganti supaya pilihan milik pabrik lama tidak
+                    // ikut terkirim. Kolom lain tetap, agar isiannya tidak hilang.
+                    key={field.refEntity === 'parts' ? `${field.name}-${plantId}` : field.name}
                     field={field}
+                    tambah={!isEdit}
                     value={isi?.[field.name]}
                     options={saringPerPabrik(options[field.refEntity ?? ''] ?? [], plantId)}
                     dariMaster={
@@ -344,9 +353,12 @@ function Field({
   dariMaster,
   error,
   tergantungPabrik = false,
+  tambah = false,
   onChange,
 }: {
   field: FieldDef;
+  /** Formulir tambah (bukan ubah) — kolom `banyakSaatTambah` jadi pilih-banyak. */
+  tambah?: boolean;
   value: unknown;
   options: RefOption[];
   /** Pilihan untuk kolom `optionsFrom`; kosong berarti kolomnya bukan jenis itu. */
@@ -453,6 +465,32 @@ function Field({
               : String(value)
           }
         />
+      ) : field.kind === 'reference' && field.refEntity === 'parts' ? (
+        /* Part ribuan baris: dropdown biasa tidak bisa dicari. */
+        field.banyakSaatTambah && tambah ? (
+          <PilihCariBanyak
+            name={field.name}
+            labelName={`__label_${field.name}`}
+            pilihan={options.map((o) => ({
+              value: String(o.value),
+              label: o.label,
+              ringkas: o.short,
+            }))}
+            defaultValue={value === undefined || value === null ? [] : [String(value)]}
+            placeholder={tergantungPabrik ? '— pilih pabrik dulu —' : '— pilih satu atau lebih —'}
+            required={field.required}
+            disabled={tergantungPabrik}
+          />
+        ) : (
+          <PilihCari
+            name={field.name}
+            pilihan={options.map((o) => ({ value: String(o.value), label: o.label }))}
+            defaultValue={value === undefined || value === null ? '' : String(value)}
+            placeholder={tergantungPabrik ? '— pilih pabrik dulu —' : '— pilih —'}
+            required={field.required}
+            disabled={tergantungPabrik}
+          />
+        )
       ) : field.kind === 'reference' ? (
         <select
           id={id}

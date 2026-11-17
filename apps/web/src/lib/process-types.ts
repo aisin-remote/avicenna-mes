@@ -1,5 +1,10 @@
 import { cache } from 'react';
-import { katalogProses, type JenisProses, type KatalogProses } from '@avicenna/contracts';
+import {
+  katalogProses,
+  type GrupProses,
+  type JenisProses,
+  type KatalogProses,
+} from '@avicenna/contracts';
 import { apiFetch } from './api';
 
 /**
@@ -16,6 +21,9 @@ import { apiFetch } from './api';
  * "sebentar lagi".
  */
 export const katalogProsesServer = cache(async (): Promise<KatalogProses> => {
-  const { data } = await apiFetch<{ data: JenisProses[] }>('/routing/process-types');
-  return katalogProses(data);
+  const { data, grup } = await apiFetch<{ data: JenisProses[]; grup?: GrupProses[] }>(
+    '/routing/process-types',
+  );
+  // Grup dari master TM_PROCESS_GROUP — label dan urutannya ikut dari sana.
+  return katalogProses(data, grup);
 });

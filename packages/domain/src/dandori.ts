@@ -26,6 +26,23 @@ export function bacaKodeDandori(raw: string): string | null {
   return /^[A-Za-z0-9][A-Za-z0-9.\-_/ ]{2,63}$/.test(nomor) ? nomor : null;
 }
 
+/** Penanda label master sample BODY, mis. `MODEL-423117-10870-AA7`. */
+export const PENANDA_SAMPLE = 'MODEL-';
+
+/**
+ * Nomor part dari label master sample.
+ *
+ * Label sample di line BODY berbentuk `MODEL-<nomor part>`; sample lama yang
+ * hanya berisi nomor part polos tetap diterima. Penanda dibuang di sini supaya
+ * pencarian part tidak ikut membaca "MODEL" sebagai bagian nomornya.
+ */
+export function bacaKodeSample(raw: string): string {
+  const teks = raw.trim();
+  return teks.slice(0, PENANDA_SAMPLE.length).toUpperCase() === PENANDA_SAMPLE
+    ? teks.slice(PENANDA_SAMPLE.length).trim()
+    : teks;
+}
+
 /** Apakah teks ini QR dandori — dipakai layar untuk memilih kotak scan. */
 export function sepertiKodeDandori(raw: string): boolean {
   return bacaKodeDandori(raw) !== null;

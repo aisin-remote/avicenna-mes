@@ -44,6 +44,7 @@ import {
   normalizeScan,
   normalkanNomorPart,
   nomorPartSama,
+  potongLabelCustomer,
   bacaBarcode,
   BarcodeTidakDikenali,
   punyaIdentitasPart,
@@ -58,7 +59,6 @@ import {
   grupProses,
   prosesDalamGrup,
   bolehScanDi,
-  PROCESS_GROUP_LABELS,
   bacaKanban,
   KanbanRusakKetik,
   KanbanTidakTerbaca,
@@ -73,6 +73,7 @@ import {
   type PartNumberFormat,
   REJECT_MESSAGES,
   type ScanRejectReason,
+  bacaKodeSample,
 } from '@avicenna/domain';
 import type {
   AlasanBerhenti,
@@ -152,6 +153,20 @@ interface LabelDn {
   dnNumber: string;
   dnSeq: number;
   /** Isi box menurut loading list — dipakai saat mendaftarkan label sebagai kartu. */
+  qtyPerKanban: number;
+}
+
+/**
+ * Label kanban customer yang menggantikan kartu internal di lini BODY.
+ *
+ * Didaftarkan sebagai kartu CUSTOMER supaya aturan per-box (isi dari kartu,
+ * tolak kartu yang sudah terproduksi) berlaku tanpa jalur khusus.
+ */
+interface LabelCustomer {
+  serialNumber: string;
+  customerId: number;
+  customerCode: string;
+  customerPartNumber: string;
   qtyPerKanban: number;
 }
 
@@ -595,6 +610,8 @@ export class ScanService {
     }
 
     let labelDn: LabelDn | null = null;
+    /** Label kanban customer yang menggantikan kartu internal (lini BODY). */
+    let labelCustomer: LabelCustomer | null = null;
     /*
      * Peringatan dari KARTUNYA, bukan dari prosesnya — lihat pemeriksaan qty
      * di bawah. Disimpan dulu karena `hasilDasar` baru ada setelah seluruh
@@ -628,17 +645,35 @@ export class ScanService {
           throw new ScanRejected('KANBAN_REQUIRED', REJECT_MESSAGES.KANBAN_REQUIRED);
         }
 
-        let kb;
+        let kb: ReturnType<typeof bacaKanban> | undefined;
         try {
           kb = bacaKanban(normalized.kanbanCode, konteksBarcode);
         } catch (err) {
-          if (err instanceof KanbanTidakTerbaca) {
+          if (!(err instanceof KanbanTidakTerbaca)) throw err;
+          if (err instanceof KanbanRusakKetik) {
+            throw new ScanRejected('KANBAN_UNREADABLE', err.message);
+          }
+          /*
+           * Bukan kanban internal: mungkin label kanban CUSTOMER yang di BODY
+           * boleh menggantikan kartu (Handika, 16–17 Nov 2026). Hanya di lini
+           * per-box; di lini lain label customer tidak punya arti.
+           */
+          labelCustomer = syarat.qtyDariKartu
+            ? await this.bacaLabelCustomer(normalized.kanbanCode, part, plantId, opsi)
+            : null;
+          if (!labelCustomer) {
             throw new ScanRejected(
               'KANBAN_UNREADABLE',
-              err instanceof KanbanRusakKetik ? err.message : REJECT_MESSAGES.KANBAN_UNREADABLE,
+              `${REJECT_MESSAGES.KANBAN_UNREADABLE} Bukan kartu internal maupun label customer ` +
+                'yang terdaftar di Master › Part Customer. Untuk ganti part, pakai tombol DANDORI.',
             );
           }
-          throw err;
+          kb = {
+            raw: normalized.kanbanCode,
+            partNumber: part.partNumber,
+            serialNumber: labelCustomer.serialNumber,
+            aturan: 'LABEL_CUSTOMER',
+          } as ReturnType<typeof bacaKanban>;
         }
 
         /*
@@ -709,6 +744,20 @@ export class ScanService {
           .from(kanbans)
           .where(and(eq(kanbans.partId, part.id), eq(kanbans.serialNumber, kb.serialNumber ?? '')))
           .limit(1);
+
+        if (!kartu && labelCustomer && opsi.ujiSaja) {
+          // Mode uji tidak mendaftarkan label customer; pemetaannya sudah sah.
+          return {
+            duplicated: false,
+            partId: part.id,
+            productionDate: prodDate,
+            qty: labelCustomer.qtyPerKanban,
+            serialNumber: null,
+            kanbanOwner: 'CUSTOMER',
+            loadingList: null,
+            peringatan: null,
+          };
+        }
 
         if (!kartu && labelDn && opsi.ujiSaja) {
           // Mode uji tidak mendaftarkan label; sampai di sini berarti label
@@ -1158,8 +1207,24 @@ export class ScanService {
      * barangnya sudah jadi. Yang dilakukan: dicatat keras, dan operator diberi
      * tahu lewat peringatan supaya box-nya di-pull manual.
      */
+    /*
+     * Direct pulling hanya di pabrik yang menyalakannya (UNIT). Di BODY kanban
+     * customer hanya menggantikan kartu: box tetap PRODUCED dan di-pull
+     * belakangan lewat layar pulling (Handika, 16–17 Nov 2026).
+     */
+    const pullingDiLini =
+      labelDn && plantId
+        ? ((
+            await this.db
+              .select({ ya: plants.directPullingDiLini })
+              .from(plants)
+              .where(eq(plants.id, plantId))
+              .limit(1)
+          )[0]?.ya ?? false)
+        : false;
     if (
       labelDn &&
+      pullingDiLini &&
       kanbanTerpilih &&
       insertedId &&
       syarat?.tempelUnitKeKartu &&
@@ -1345,6 +1410,126 @@ export class ScanService {
       customerPartNumber: labelPart,
       dnNumber: dn,
       dnSeq: kb.dnSeq ?? 0,
+      qtyPerKanban,
+    };
+  }
+
+  /**
+   * Label kanban CUSTOMER di lini BODY — pengganti kartu internal.
+   *
+   * Aturan bacanya data per customer (master Customer, disalin dari bella);
+   * pemetaannya master Part Customer. Label harus menunjuk part yang sedang
+   * didandori — label part lain ditolak di sini, bukan ketahuan di dock.
+   *
+   * Hasilnya didaftarkan sebagai kartu CUSTOMER:
+   *   - label BERSERI (mis. TMMIN 39 karakter): seri = identitas box, jadi
+   *     label yang sama tidak bisa dicatat dua kali;
+   *   - label TANPA seri (MMKI hanya nomor part, Suzuki QR): tiap scan = satu
+   *     box baru. Scan ganda label yang sama tidak terdeteksi — risiko yang
+   *     diterima Handika, sama dengan praktik sekarang.
+   *
+   * Tidak ada pulling di sini: di BODY box tetap PRODUCED dan di-pull
+   * belakangan. `null` = bukan label customer yang dikenal.
+   */
+  private async bacaLabelCustomer(
+    raw: string,
+    part: { id: number; partNumber: string; backNumber: string | null; qtyPerKanban: number | null },
+    plantId: number,
+    opsi: OpsiIngest,
+  ): Promise<LabelCustomer | null> {
+    const aturan = await this.db
+      .select({
+        customerId: customers.id,
+        labelLength: customers.labelLength,
+        labelPartStart: customers.labelPartStart,
+        labelPartLength: customers.labelPartLength,
+        labelSerialStart: customers.labelSerialStart,
+        labelSerialLength: customers.labelSerialLength,
+      })
+      .from(customers)
+      .where(eq(customers.isActive, true));
+    const potongan = potongLabelCustomer(raw, aturan);
+    if (potongan.length === 0) return null;
+
+    const baku = sql<string>`upper(replace(replace(${customerParts.customerPartNumber}, '-', ''), ' ', ''))`;
+    const baris = await this.db
+      .select({
+        customerId: customerParts.customerId,
+        customerCode: customers.code,
+        customerPartNumber: customerParts.customerPartNumber,
+        qtyPerKanban: customerParts.qtyPerKanban,
+        partId: customerParts.partId,
+        partNumber: parts.partNumber,
+        backNumber: parts.backNumber,
+        baku,
+      })
+      .from(customerParts)
+      .innerJoin(customers, eq(customers.id, customerParts.customerId))
+      .innerJoin(parts, eq(parts.id, customerParts.partId))
+      .where(inArray(baku, [...new Set(potongan.map((p) => p.nomorPart))]));
+
+    // Utamakan pasangan customer + nomor yang dibaca menurut aturan customer
+    // itu sendiri; bila tidak ada, nomor yang sama milik customer lain (bella).
+    const sepasang = baris.filter((b) =>
+      potongan.some((p) => p.customerId === b.customerId && p.nomorPart === b.baku),
+    );
+    const kandidat = sepasang.length > 0 ? sepasang : baris;
+    if (kandidat.length === 0) return null;
+
+    const cocok =
+      kandidat.find((b) => b.partId === part.id) ??
+      kandidat.find((b) => nomorPartSama(b.partNumber, part.partNumber));
+    if (!cocok) {
+      const milik = [...new Set(kandidat.map((b) => b.backNumber ?? b.partNumber))].join(', ');
+      throw new ScanRejected(
+        'KANBAN_PART_MISMATCH',
+        `${REJECT_MESSAGES.KANBAN_PART_MISMATCH} (label customer ${kandidat[0]!.customerPartNumber} ` +
+          `untuk ${milik}, yang didandori ${part.backNumber ?? part.partNumber})`,
+      );
+    }
+
+    const isiMaster = part.qtyPerKanban ?? null;
+    const isiCustomer = cocok.qtyPerKanban && cocok.qtyPerKanban > 0 ? cocok.qtyPerKanban : null;
+    if (isiCustomer && isiMaster && isiCustomer !== isiMaster) {
+      throw new ScanRejected(
+        'CUSTOMER_LABEL_QTY_MISMATCH',
+        `${REJECT_MESSAGES.CUSTOMER_LABEL_QTY_MISMATCH} (${cocok.customerCode} ${cocok.customerPartNumber}: ` +
+          `${isiCustomer}/box, master ${part.backNumber ?? part.partNumber}: ${isiMaster}/box)`,
+      );
+    }
+    const qtyPerKanban = isiCustomer ?? isiMaster ?? 1;
+
+    const seri = potongan.find((p) => p.customerId === cocok.customerId && p.seri)?.seri ?? null;
+    const serialNumber = seri
+      ? `${cocok.customerCode}:${seri}`
+      : `${cocok.customerCode}:${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+    if (!opsi.ujiSaja) {
+      const [ada] = await this.db
+        .select({ id: kanbans.id })
+        .from(kanbans)
+        .where(and(eq(kanbans.partId, part.id), eq(kanbans.serialNumber, serialNumber)))
+        .limit(1);
+      if (!ada) {
+        await this.db.insert(kanbans).values({
+          plantId,
+          partId: part.id,
+          serialNumber,
+          owner: 'CUSTOMER',
+          kanbanType: 'REGULER',
+          qtyPerBox: qtyPerKanban,
+          unitPerKanban: qtyPerKanban,
+          customerId: cocok.customerId,
+          status: 'AVAILABLE',
+        });
+      }
+    }
+
+    return {
+      serialNumber,
+      customerId: cocok.customerId,
+      customerCode: cocok.customerCode,
+      customerPartNumber: cocok.customerPartNumber,
       qtyPerKanban,
     };
   }
@@ -2073,7 +2258,7 @@ export class ScanService {
 
     let parsed;
     try {
-      parsed = bacaBarcode(kode.trim(), { processType: line.processType, scanMode: mode });
+      parsed = bacaBarcode(bacaKodeSample(kode), { processType: line.processType, scanMode: mode });
     } catch (err) {
       if (err instanceof BarcodeTidakDikenali) {
         throw new BadRequestException(REJECT_MESSAGES.BARCODE_UNREADABLE);
@@ -2478,10 +2663,12 @@ export class ScanService {
   async liniGrup(grup: string, principal?: Principal) {
     const katalogGrup = await this.processTypes.katalog();
     const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[1];
-    const jenis = prosesDalamGrup(katalogGrup, g);
-    if (jenis.length === 0) {
+    if (!katalogGrup.cariGrup(g)) {
       throw new BadRequestException(`Grup proses "${grup}" tidak dikenal`);
     }
+    const jenis = prosesDalamGrup(katalogGrup, g);
+    // Grup baru yang belum punya jenis proses: daftar lini kosong, bukan galat.
+    if (jenis.length === 0) return { grup: g, label: katalogGrup.labelGrup(g), lines: [] };
 
     const rows = await this.db
       .select({
@@ -2502,7 +2689,7 @@ export class ScanService {
       )
       .orderBy(lines.sortOrder);
 
-    return { grup: g, label: PROCESS_GROUP_LABELS[g], lines: rows };
+    return { grup: g, label: katalogGrup.labelGrup(g), lines: rows };
   }
 
   /**
@@ -2545,7 +2732,7 @@ export class ScanService {
 
     if (grupProses(katalogLini, line.processType) !== g) {
       throw new BadRequestException(
-        `Lini ${bersih} bukan lini ${PROCESS_GROUP_LABELS[g] ?? grup}. Periksa barcode lininya.`,
+        `Lini ${bersih} bukan lini ${katalogLini.labelGrup(g)}. Periksa barcode lininya.`,
       );
     }
 

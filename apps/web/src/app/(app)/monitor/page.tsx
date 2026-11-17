@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { Activity, ArrowUpRight } from 'lucide-react';
 import { listLinesWithProduction, type LineProduksi } from '@/lib/queries';
-import { grupProses, PROCESS_GROUPS, PROCESS_GROUP_LABELS } from '@avicenna/domain';
 import { katalogProsesServer } from '@/lib/process-types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
@@ -41,11 +40,10 @@ export default async function MonitorIndexPage({
    * Nilai yang tidak dikenal diabaikan, bukan menghasilkan halaman kosong:
    * tautan lama atau salah ketik tidak seharusnya membuat layar terlihat rusak.
    */
-  const saringan = PROCESS_GROUPS.find(
-    (g) => g.toLowerCase() === (sp.proses ?? '').trim().toLowerCase(),
-  );
-
   const katalog = await katalogProsesServer();
+  const GRUP = katalog.grupDaftar.map((g) => g.code);
+  const saringan = GRUP.find((g) => g.toLowerCase() === (sp.proses ?? '').trim().toLowerCase());
+
   const NAMA_PROSES: Record<string, string> = Object.fromEntries(
     katalog.daftar.map((j) => [j.code, j.label]),
   );
@@ -73,7 +71,7 @@ export default async function MonitorIndexPage({
         title="Monitor Produksi"
         description={
           saringan
-            ? `Proses ${PROCESS_GROUP_LABELS[saringan]} — hari produksi berjalan, dihitung dari jam 07:00`
+            ? `Proses ${katalog.labelGrup(saringan)} — hari produksi berjalan, dihitung dari jam 07:00`
             : 'Hasil hari produksi berjalan per proses — dihitung dari jam 07:00, bukan tengah malam'
         }
       />
@@ -82,14 +80,14 @@ export default async function MonitorIndexPage({
           tahu ia sedang melihat sebagian, bukan seluruhnya. */}
       <div className="mb-5 flex flex-wrap gap-1.5">
         <Saring aktif={!saringan} href="/monitor" label="Semua proses" />
-        {PROCESS_GROUPS.filter((g) =>
+        {GRUP.filter((g) =>
           semuaLine.some((l) => katalog.grup(l.processType) === g),
         ).map((g) => (
           <Saring
             key={g}
             aktif={saringan === g}
             href={`/monitor?proses=${g.toLowerCase()}`}
-            label={PROCESS_GROUP_LABELS[g]}
+            label={katalog.labelGrup(g)}
           />
         ))}
       </div>
@@ -97,7 +95,7 @@ export default async function MonitorIndexPage({
       {semua.length === 0 ? (
         <Card className="px-6 py-14 text-center text-[14px] text-ink-muted">
           {saringan
-            ? `Belum ada line ${PROCESS_GROUP_LABELS[saringan]} yang aktif.`
+            ? `Belum ada line ${katalog.labelGrup(saringan)} yang aktif.`
             : null}
           {saringan ? null : (
             <>

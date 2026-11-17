@@ -18,6 +18,7 @@ export const MASTER_ENTITIES = [
   'lines',
   'parts',
   'customers',
+  'customer-parts',
   'driver-destinations',
   'suppliers',
   'machines',
@@ -29,6 +30,7 @@ export const MASTER_ENTITIES = [
   'part-processes',
   'route-processes',
   'process-types',
+  'process-groups',
   'kanbans',
   'program-numbers',
   'work-times',
@@ -46,9 +48,8 @@ export type MasterEntity = (typeof MASTER_ENTITIES)[number];
  * di kolom enum, lalu setiap penyimpanan gagal dengan pesan dari MySQL yang
  * tidak menyebut sebabnya.
  */
-export { PROCESS_GROUPS, SAP_CLASSES, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
+export { SAP_CLASSES, SCAN_MODES, SCAN_MODE_LABELS } from '../common';
 import {
-  PROCESS_GROUPS,
   SAP_CLASSES,
   SCAN_MODES,
   SCAN_MODE_LABELS,
@@ -149,6 +150,14 @@ export interface FieldDef {
    * satu penjaga yang tidak bisa basi, bukan dua yang bisa berbeda.
    */
   optionsFrom?: MasterEntity;
+  /**
+   * Kolom referensi yang boleh dipilih LEBIH DARI SATU saat menambah data.
+   *
+   * Tiap pilihan menjadi satu baris sendiri dengan isi kolom lain yang sama —
+   * mis. satu mold dengan delapan part anggota diisi sekali, bukan delapan kali.
+   * Saat mengubah baris, kolomnya tetap satu nilai.
+   */
+  banyakSaatTambah?: boolean;
   /** Tampil sebagai kolom di tabel daftar. */
   inList?: boolean;
   /** Rata kanan di tabel — untuk angka. */
@@ -219,6 +228,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         kind: 'boolean',
         defaultValue: false,
         hint: 'Di pabrik ini, customer direct kanban tetap scan kanban customer saat muat.',
+      },
+      {
+        name: 'directPullingDiLini',
+        label: 'Kanban Customer di Line = Pulling',
+        kind: 'boolean',
+        defaultValue: false,
+        inList: true,
+        hint:
+          'Nyala (UNIT): label DN yang discan di line FG langsung masuk loading list lewat pulling. ' +
+          'Mati (BODY): kanban customer hanya menggantikan kartu, box di-pull belakangan.',
       },
       activeField,
     ],
@@ -440,7 +459,100 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         inList: true,
         hint: 'Aturan penulisan nomor part pada barcode customer. Menentukan bagaimana barcode saat muat dicocokkan ke master.',
       },
+      /*
+       * Aturan baca label kanban customer — salinan master `customers` bella.
+       * Posisi mulai dari 0; label di-trim dulu sebelum diukur.
+       */
+      {
+        name: 'labelLength',
+        label: 'Panjang Label',
+        kind: 'number',
+        min: 0,
+        numeric: true,
+        inList: true,
+        hint: 'Panjang label kanban customer (karakter). Kosong/0 = tanpa penjagaan panjang.',
+      },
+      {
+        name: 'labelPartStart',
+        label: 'Posisi Part',
+        kind: 'number',
+        min: 0,
+        numeric: true,
+        hint: 'Posisi awal nomor part customer di label, mulai dari 0.',
+      },
+      {
+        name: 'labelPartLength',
+        label: 'Panjang Part',
+        kind: 'number',
+        min: 0,
+        numeric: true,
+        hint: 'Jumlah karakter nomor part. Kosong/0 = seluruh isi label adalah nomor part.',
+      },
+      {
+        name: 'labelSerialStart',
+        label: 'Posisi Seri',
+        kind: 'number',
+        min: 0,
+        numeric: true,
+        hint: 'Posisi seri label, bila labelnya punya. Seri mencegah label yang sama dicatat dua kali.',
+      },
+      { name: 'labelSerialLength', label: 'Panjang Seri', kind: 'number', min: 0, numeric: true },
       activeField,
+    ],
+  },
+
+  /**
+   * PART CUSTOMER — nomor part milik customer untuk part AISIN.
+   *
+   * Dipakai DUA pihak: lini BODY yang men-scan label customer sebagai
+   * pengganti kartu (label → part AISIN → harus sama dengan part dandori), dan
+   * delivery yang mencocokkan kanban customer ke loading list. Diisi awal dari
+   * `customer_parts` bella, 17 Nov 2026; sumber resminya nanti staging SAP.
+   */
+  'customer-parts': {
+    key: 'customer-parts',
+    label: 'Part Customer',
+    singular: 'Part Customer',
+    icon: 'Tag',
+    description: 'Nomor part customer untuk tiap part AISIN — pembaca label kanban customer',
+    searchFields: ['customerPartNumber', 'customerBackNumber'],
+    defaultSort: 'customerPartNumber',
+    fields: [
+      {
+        name: 'customerId',
+        label: 'Customer',
+        kind: 'reference',
+        refEntity: 'customers',
+        required: true,
+        inList: true,
+      },
+      {
+        name: 'customerPartNumber',
+        label: 'Part Customer',
+        kind: 'text',
+        required: true,
+        max: 64,
+        inList: true,
+        hint: 'Seperti tertulis di label customer, mis. 5716A705HC atau 82081-74U00-WC3.',
+      },
+      {
+        name: 'partId',
+        label: 'Part AISIN',
+        kind: 'reference',
+        refEntity: 'parts',
+        required: true,
+        inList: true,
+      },
+      { name: 'customerBackNumber', label: 'Back No Customer', kind: 'text', max: 64, inList: true },
+      {
+        name: 'qtyPerKanban',
+        label: 'Isi per Kanban',
+        kind: 'number',
+        min: 0,
+        numeric: true,
+        inList: true,
+        hint: 'Isi box menurut customer. Bila berbeda dari Qty/Box master part, scan label ditolak.',
+      },
     ],
   },
 
@@ -576,6 +688,8 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         refEntity: 'parts',
         required: true,
         inList: true,
+        banyakSaatTambah: true,
+        hint: 'Bisa memilih beberapa part sekaligus; tiap part disimpan sebagai satu anggota.',
       },
     ],
   },
@@ -626,7 +740,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'processGroup',
         label: 'Grup Proses',
         kind: 'select',
-        options: PROCESS_GROUPS,
+        optionsFrom: 'process-groups',
         inList: true,
         hint: 'Kosongkan bila berlaku di semua proses — seperti tombol "DLL" di layar NG.',
       },
@@ -758,7 +872,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         name: 'processGroup',
         label: 'Grup',
         kind: 'select',
-        options: PROCESS_GROUPS,
+        optionsFrom: 'process-groups',
         required: true,
         inList: true,
         hint: 'Lingkup role — menentukan siapa boleh men-scan di lini proses ini.',
@@ -801,6 +915,53 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint:
           'Urutan kolom di matriks rute saja — BUKAN urutan rute. ' +
           'Rute disusun dari urutan klik dan melekat pada tiap part.',
+      },
+      { name: 'isActive', label: 'Aktif', kind: 'boolean', defaultValue: true, inList: true },
+    ],
+  },
+
+  /**
+   * GRUP PROSES — lingkup role, satu tingkat di atas jenis proses.
+   *
+   * Dulu daftar tetap di kode (PROCESS_GROUPS) dan menambahnya menuntut
+   * migrasi. Sejak 16 Nov 2026 (Handika, untuk PACKING_ELC) hidup di master
+   * dan diisi di menu Administrasi: grup menentukan siapa boleh men-scan di
+   * lini mana, jadi pengurusnya admin, bukan leader produksi.
+   *
+   * RECEIVING dan DELIVERY dikunci (GRUP_PROSES_TERKUNCI): kode bergantung
+   * pada namanya, jadi hanya labelnya yang boleh disunting.
+   */
+  'process-groups': {
+    key: 'process-groups',
+    label: 'Grup Proses',
+    singular: 'Grup Proses',
+    icon: 'Boxes',
+    description: 'Lingkup role — menentukan siapa boleh men-scan di lini proses mana',
+    searchFields: ['code', 'label'],
+    defaultSort: 'sortOrder',
+    fields: [
+      {
+        name: 'code',
+        label: 'Kode',
+        kind: 'text',
+        required: true,
+        max: 32,
+        inList: true,
+        hint:
+          'HURUF BESAR, angka, dan garis bawah, mis. PACKING_ELC. ' +
+          'Dipakai di jenis proses, role, NG, dan alamat /scan/proses/<kode>. Tidak bisa diubah setelah dipakai.',
+      },
+      { name: 'label', label: 'Nama di Layar', kind: 'text', required: true, max: 64, inList: true },
+      {
+        name: 'sortOrder',
+        label: 'Urutan',
+        kind: 'number',
+        min: 0,
+        defaultValue: 0,
+        numeric: true,
+        required: true,
+        inList: true,
+        hint: 'Urutan di saringan monitor dan pilihan formulir.',
       },
       { name: 'isActive', label: 'Aktif', kind: 'boolean', defaultValue: true, inList: true },
     ],

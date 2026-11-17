@@ -16,6 +16,8 @@ export interface FormState {
   error?: string;
   /** Galat per kolom, ditampilkan tepat di bawah input yang bersangkutan. */
   fieldErrors?: Record<string, string>;
+  /** Jumlah baris yang tersimpan, bila satu formulir menyimpan beberapa baris. */
+  jumlah?: number;
 }
 
 interface ApiValidationBody {
@@ -60,6 +62,43 @@ export async function saveMasterAction(
   }
 
   const isEdit = idRaw !== '';
+
+  /*
+   * Kolom pilih-banyak (mis. part anggota mold): satu baris per pilihan.
+   *
+   * Disimpan satu per satu lewat endpoint yang sama, jadi aturan server untuk
+   * tiap baris tetap berlaku. Yang gagal tidak membatalkan yang berhasil —
+   * pesannya menyebut part mana dan kenapa, supaya cukup itu yang diulang.
+   */
+  const banyak = isEdit ? undefined : def.fields.find((f) => f.banyakSaatTambah);
+  if (banyak) {
+    const nilai = formData.getAll(banyak.name).map(String).filter(Boolean);
+    const label = formData.getAll(`__label_${banyak.name}`).map(String);
+    if (nilai.length > 1) {
+      let tersimpan = 0;
+      const gagal: string[] = [];
+      for (const [i, v] of nilai.entries()) {
+        try {
+          await apiFetch(`/master/${entity}`, {
+            method: 'POST',
+            body: JSON.stringify({ ...payload, [banyak.name]: v }),
+          });
+          tersimpan++;
+        } catch (err) {
+          const body = err instanceof ApiRequestError ? (err.body as ApiValidationBody) : undefined;
+          const sebab =
+            body?.details?.map((d) => d.message).join('; ') ??
+            (err instanceof ApiRequestError ? err.message : 'Tidak bisa menghubungi server API');
+          gagal.push(`${label[i] ?? v}: ${sebab}`);
+        }
+      }
+      if (tersimpan > 0) revalidatePath(`/master/${entity}`);
+      if (gagal.length === 0) return { ok: true, jumlah: tersimpan };
+      return {
+        error: `${tersimpan} dari ${nilai.length} tersimpan. Gagal — ${gagal.join(' · ')}`,
+      };
+    }
+  }
 
   try {
     await apiFetch(isEdit ? `/master/${entity}/${idRaw}` : `/master/${entity}`, {

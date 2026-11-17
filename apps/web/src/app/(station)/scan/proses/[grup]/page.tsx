@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { getSessionUser } from '@/lib/session';
-import { PROCESS_GROUPS } from '@avicenna/contracts';
+import { katalogProsesServer } from '@/lib/process-types';
 import { StasiunProses } from '@/components/scan/stasiun-proses';
 
 export const dynamic = 'force-dynamic';
@@ -32,8 +32,8 @@ export default async function ScanProsesPage({
   params: Promise<{ grup: string }>;
 }) {
   const { grup } = await params;
-  const tegak = grup.toUpperCase();
-  if (!(PROCESS_GROUPS as readonly string[]).includes(tegak)) notFound();
+  // Grup dari master TM_PROCESS_GROUP; yang tidak terdaftar = 404.
+  if (!(await katalogProsesServer()).cariGrup(grup.toUpperCase())) notFound();
 
   const [user, data] = await Promise.all([
     getSessionUser(),

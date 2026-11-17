@@ -106,14 +106,23 @@ export default async function MasterEntityPage({ params, searchParams }: PagePro
    * ada kolom seperti itu, supaya entitas lain tidak membayar permintaan yang
    * tidak dipakainya.
    */
-  const butuhKatalogProses = def.fields.some((f) => f.optionsFrom === 'process-types');
+  const butuhKatalogProses = def.fields.some(
+    (f) => f.optionsFrom === 'process-types' || f.optionsFrom === 'process-groups',
+  );
   const katalog = butuhKatalogProses ? await katalogProsesServer() : null;
 
   /* Dipakai DUA kali: pilihan dropdown penyaring, dan pilihan dropdown yang
      sama di formulir tambah/ubah. Satu permintaan, satu daftar — kalau
      diambil terpisah, keduanya bisa berbeda dalam satu layar. */
   const pilihanDariMaster: PilihanDariMaster | undefined = katalog
-    ? { 'process-types': katalog.kode.map((k) => ({ value: k, label: katalog.label(k) })) }
+    ? {
+        'process-types': katalog.kode.map((k) => ({ value: k, label: katalog.label(k) })),
+        // Grup dari master TM_PROCESS_GROUP (Administrasi › Grup Proses).
+        'process-groups': katalog.grupDaftar.map((g) => ({
+          value: g.code,
+          label: `${g.label} (${g.code})`,
+        })),
+      }
     : undefined;
 
   const filters: FilterTampil[] = bolehDisaring.map((field) => {

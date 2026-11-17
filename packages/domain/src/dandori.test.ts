@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bacaKodeDandori, metodeDandori, sepertiKodeDandori } from './dandori';
+import { bacaKodeDandori, bacaKodeSample, metodeDandori, sepertiKodeDandori } from './dandori';
 
 describe('bacaKodeDandori', () => {
   it('nomor part bergaris maupun tidak', () => {
@@ -27,5 +27,15 @@ describe('metodeDandori', () => {
     expect(metodeDandori('KANBAN_BOX_DANDORI')).toBe('PART_SAMPLE');
     expect(metodeDandori('KANBAN_MOLD')).toBe('MOLD');
     expect(metodeDandori(null)).toBe('PART');
+  });
+});
+
+describe('bacaKodeSample', () => {
+  it('membuang penanda MODEL- dari label sample BODY', () => {
+    expect(bacaKodeSample('MODEL-423117-10870-AA7')).toBe('423117-10870-AA7');
+    expect(bacaKodeSample(' model-42311710870AA7 ')).toBe('42311710870AA7');
+  });
+  it('nomor part polos tetap diterima apa adanya', () => {
+    expect(bacaKodeSample('42311710870AA7')).toBe('42311710870AA7');
   });
 });

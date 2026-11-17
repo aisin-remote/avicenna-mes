@@ -204,6 +204,20 @@
       "when": 1794456577953,
       "tag": "0028_cycle_time_rute",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794804611627,
+      "tag": "0029_grup_proses_master",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794880019007,
+      "tag": "0030_label_customer_direct_pulling",
+      "breakpoints": true
     }
   ]
 }

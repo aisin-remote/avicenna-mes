@@ -3,7 +3,6 @@ import {
   NG_SOURCES,
   NG_ORIGIN_LABELS,
   NG_SOURCE_LABELS,
-  PROCESS_GROUPS,
   type NgOrigin,
   type NgSource,
   type ProcessGroup,
@@ -145,10 +144,14 @@ export function jenisNgUntukGrup<T extends { processGroup?: ProcessGroup | null 
   return daftar.filter((n) => !n.processGroup || n.processGroup === grup);
 }
 
-/** Grup proses dari sebuah string bebas (isi query parameter). Null bila tidak dikenal. */
-export function bacaGrupProses(raw: string | null | undefined): ProcessGroup | null {
+/**
+ * Grup proses dari sebuah string bebas (isi query parameter). Null bila tidak
+ * dikenal. `dikenal` adalah kode grup dari master (katalog.grupDaftar).
+ */
+export function bacaGrupProses(
+  raw: string | null | undefined,
+  dikenal: readonly ProcessGroup[],
+): ProcessGroup | null {
   const bersih = (raw ?? '').trim().toUpperCase();
-  return (PROCESS_GROUPS as readonly string[]).includes(bersih)
-    ? (bersih as ProcessGroup)
-    : null;
+  return dikenal.includes(bersih) ? bersih : null;
 }

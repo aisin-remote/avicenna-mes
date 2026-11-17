@@ -23,17 +23,14 @@
  * box dan dibawa pulang ke posnya, sementara box-nya berjalan diantar kartu
  * induk.
  *
- * ── Kenapa SATU kartu FG per belanja ────────────────────────────────────────
+ * ── Beberapa kartu induk per belanja ───────────────────────────────────────
  *
- * Satu kartu FG adalah satu box yang harus diisi. Bella mengizinkan beberapa
- * seri assembly sekaligus, lalu menyimpan SELURUH seri painting pada setiap
- * barisnya — jadi tidak ada yang tahu box painting mana sebenarnya milik box
- * assembly mana. Di sini pasangannya harus tunggal, sebab interlock-nya
- * memeriksa per kartu: box yang sama tidak boleh dihitung untuk dua perintah.
- *
- * Membagi beberapa kartu WIP ke beberapa kartu FG secara otomatis sempat
- * dipertimbangkan, lalu ditolak: pembagiannya tidak punya dasar fisik — yang
- * tahu box mana masuk ke box mana hanya orang yang mengambilnya.
+ * Dulu satu belanja = satu kartu FG, karena Bella menyimpan SELURUH seri
+ * painting pada setiap seri assembly sehingga tidak ada yang tahu box mana
+ * masuk ke mana. Sejak 13 Nov 2026 (Handika) satu belanja boleh berisi
+ * beberapa kartu induk; pembagiannya dicatat per pasangan oleh
+ * `alokasiBelanja` (berurutan, dengan qty bagiannya), dan seluruh kartu dalam
+ * satu belanja dibatalkan bersama — satu box turunan bisa terbagi ke dua induk.
  *
  * ── Hanya BOM tingkat satu ──────────────────────────────────────────────────
  *
@@ -43,11 +40,19 @@
  * discan. Mengurai sampai raw material akan menuntut operator men-scan
  * sesuatu yang tidak ada bendanya.
  *
- * ── Kenapa jumlahnya harus PAS, bukan "cukup" ───────────────────────────────
+ * ── PENGAMAN WARNA + JUMLAH BOX (Handika, 13 Nov 2026) ─────────────────────
  *
- * Kanban bergerak per box utuh. "Lebih" berarti ada box yang terikat pada
- * perintah ini tanpa pernah terpakai — dan box itu hilang dari rak bagi lini
- * lain yang membutuhkannya, tanpa satu pun catatan yang menjelaskan ke mana.
+ * Belanja memastikan box turunan yang diambil sesuai dengan kartu induk yang
+ * akan diproduksi — terutama WARNANYA. Di BODY, suffix nomor part adalah kode
+ * warna: KPJ9 `423120-14170-AA7` hanya boleh diisi KN2N `423117-10870-AA7`.
+ * Turunan yang sah adalah yang ada di BOM induk, jadi cocok-BOM berarti
+ * cocok-warna.
+ *
+ * Satu belanja boleh berisi BEBERAPA kartu induk (satu part yang sama), lalu
+ * kartu turunan dari SATU komponen saja — tidak dicampur. Jumlah kartu
+ * turunannya mengikuti total isi induk: 5 kartu induk isi 8 = 40 unit, jadi
+ * 5 kartu turunan isi 8, atau 3 kartu isi 16 (48, sisa 8 tetap tercatat).
+ * Kurang ditolak; satu box yang tidak dibutuhkan juga ditolak.
  */
 
 /** Satu kartu yang discan dalam sesi belanja. */
@@ -71,29 +76,28 @@ export interface KomponenBelanja {
 export interface RingkasanKomponen {
   partId: number;
   partNumber: string;
-  /** Unit yang harus dibawa: isi kartu FG × qtyPer. */
+  /** Unit komponen untuk seluruh kartu induk: total isi induk × qtyPer. */
   dibutuhkan: number;
-  /** Unit yang benar-benar discan. */
+  /** Unit yang dibawa kartu turunan komponen ini. */
   dibawa: number;
   jumlahKartu: number;
-  /** dibawa − dibutuhkan. Negatif berarti kurang. */
-  selisih: number;
-  pas: boolean;
   /**
-   * Terisi kalau kekurangannya TIDAK bisa digenapi dengan isi box yang sedang
-   * dipakai — mis. butuh 100 sedangkan satu box isi 30. Tanpa ini operator
-   * akan menambah dan mengurangi kartu berulang kali mencari angka yang
-   * sebenarnya tidak ada.
+   * Kartu turunan yang diperlukan dengan isi box yang sedang dipakai, mis.
+   * butuh 40 dan isi 16 → 3. Kosong selama belum ada kartu, atau isinya campur.
    */
-  tidakAkanPas?: { isiBox: number; kurangKartu: number; lebihKartu: number };
+  kartuDibutuhkan: number | null;
+  /** Komponen inilah yang dipilih kartu turunannya. */
+  dipilih: boolean;
+  /** Yang dibawa sudah memenuhi kebutuhan. */
+  cukup: boolean;
 }
 
 export interface HasilBelanja {
   bolehDisimpan: boolean;
-  /** Unit FG yang akan dihasilkan kartu ini. */
-  unitFg: number;
+  /** Total unit seluruh kartu induk. */
+  unitInduk: number;
   perKomponen: RingkasanKomponen[];
-  /** Kartu WIP yang part-nya bukan komponen BOM kartu FG ini. */
+  /** Kartu turunan yang part-nya bukan komponen BOM induk. */
   bukanKomponen: KartuBelanja[];
   /** Pesan siap tampil. Kosong berarti tidak ada yang menghalangi. */
   galat: string[];
@@ -108,116 +112,146 @@ function bulat(n: number): number {
  * Memeriksa satu sesi belanja.
  *
  * Tidak menyentuh database dan tidak peduli status kartu — status diperiksa
- * pemanggilnya, yang memang memegang barisnya dan bisa menguncinya. Yang di
- * sini murni soal JUMLAH: apakah yang dibawa sudah pas dengan yang dibutuhkan.
+ * pemanggilnya, yang memang memegang barisnya dan bisa menguncinya.
  */
 export function periksaBelanja(input: {
-  kartuFg: KartuBelanja;
+  kartuInduk: KartuBelanja[];
   komponen: KomponenBelanja[];
   kartuWip: KartuBelanja[];
 }): HasilBelanja {
-  const { kartuFg, komponen, kartuWip } = input;
+  const { kartuInduk, komponen, kartuWip } = input;
   const galat: string[] = [];
+  const unitInduk = kartuInduk.reduce((n, k) => n + k.qty, 0);
+  const induk = kartuInduk[0];
 
-  const unitFg = kartuFg.qty;
-  if (unitFg <= 0) {
-    galat.push(
-      `Kartu FG ${kartuFg.serialNumber} tidak menyebutkan isi per box. Perbaiki master kanbannya dulu.`,
-    );
+  if (!induk) galat.push('Scan kartu induk dulu.');
+  if (new Set(kartuInduk.map((k) => k.partId)).size > 1) {
+    galat.push('Kartu induk harus satu part yang sama dalam satu belanja.');
   }
+  for (const k of kartuInduk) {
+    if (k.qty <= 0) {
+      galat.push(
+        `Kartu induk ${k.serialNumber} tidak menyebutkan isi per box. Perbaiki master kanbannya dulu.`,
+      );
+    }
+  }
+  if (adaKembar(kartuInduk)) galat.push('Ada kartu induk yang discan dua kali.');
 
   /*
    * BOM kosong ditolak, TIDAK dianggap "tidak ada yang perlu diperiksa".
-   *
-   * Tanpa BOM, belanja akan selalu lolos dan interlock-nya berubah jadi
+   * Tanpa BOM, belanja akan selalu lolos dan pengaman warnanya berubah jadi
    * sekadar tombol — persis kebalikan dari gunanya.
    */
-  if (komponen.length === 0) {
+  if (induk && komponen.length === 0) {
     galat.push(
-      `BOM untuk ${kartuFg.partNumber} belum diisi, jadi kebutuhannya tidak bisa dihitung. ` +
-        'Isi dulu di Master Data › BOM.',
+      `BOM untuk ${induk.partNumber} belum diisi, jadi turunannya tidak bisa diperiksa. ` +
+        'Isi dulu di Master Data › Part Pairing.',
     );
   }
 
-  if (kartuWip.length === 0) {
-    galat.push('Belum ada kartu WIP yang discan.');
-  }
-
-  // Kartu yang sama discan dua kali: satu box tidak bisa mengisi dua jatah.
-  const terlihat = new Set<number>();
-  for (const k of kartuWip) {
-    if (terlihat.has(k.kanbanId)) {
-      galat.push(`Kartu ${k.partNumber} seri ${k.serialNumber} discan dua kali.`);
-    }
-    terlihat.add(k.kanbanId);
-  }
+  if (kartuWip.length === 0) galat.push('Scan kartu turunan.');
+  if (adaKembar(kartuWip)) galat.push('Ada kartu turunan yang discan dua kali.');
 
   const idKomponen = new Set(komponen.map((k) => k.partId));
   const bukanKomponen = kartuWip.filter((k) => !idKomponen.has(k.partId));
   for (const k of bukanKomponen) {
-    galat.push(`${k.partNumber} bukan komponen ${kartuFg.partNumber} menurut BOM.`);
+    galat.push(
+      `${k.partNumber} bukan turunan ${induk?.partNumber ?? 'induk'} menurut BOM — model atau warnanya berbeda.`,
+    );
+  }
+  if (new Set(kartuWip.map((k) => k.partId)).size > 1) {
+    galat.push('Kartu turunan harus satu part saja — jangan dicampur.');
   }
 
   const perKomponen: RingkasanKomponen[] = komponen.map((komp) => {
     const kartu = kartuWip.filter((k) => k.partId === komp.partId);
-    const dibutuhkan = bulat(unitFg * komp.qtyPer);
+    const dibutuhkan = bulat(unitInduk * komp.qtyPer);
     const dibawa = kartu.reduce((n, k) => n + k.qty, 0);
-    const selisih = bulat(dibawa - dibutuhkan);
-
-    const ringkas: RingkasanKomponen = {
+    const isi = kartu[0]?.qty ?? 0;
+    const seragam = kartu.length > 0 && isi > 0 && kartu.every((k) => k.qty === isi);
+    return {
       partId: komp.partId,
       partNumber: komp.partNumber,
       dibutuhkan,
       dibawa,
       jumlahKartu: kartu.length,
-      selisih,
-      pas: selisih === 0,
+      kartuDibutuhkan: seragam ? Math.ceil(dibutuhkan / isi) : null,
+      dipilih: kartu.length > 0,
+      cukup: kartu.length > 0 && dibawa >= dibutuhkan,
     };
-
-    /*
-     * Hanya bisa disimpulkan kalau SELURUH kartu yang discan untuk komponen ini
-     * isinya sama. Kalau isinya campur, kombinasi yang pas mungkin saja ada dan
-     * menyatakan "tidak akan pas" justru menyesatkan.
-     */
-    if (!ringkas.pas && kartu.length > 0) {
-      const isi = kartu[0]!.qty;
-      const seragam = kartu.every((k) => k.qty === isi);
-      if (seragam && isi > 0 && dibutuhkan % isi !== 0) {
-        ringkas.tidakAkanPas = {
-          isiBox: isi,
-          kurangKartu: Math.floor(dibutuhkan / isi),
-          lebihKartu: Math.ceil(dibutuhkan / isi),
-        };
-      }
-    }
-
-    return ringkas;
   });
 
-  for (const r of perKomponen) {
-    if (r.pas) continue;
-    if (r.jumlahKartu === 0) {
-      galat.push(`${r.partNumber} belum discan — butuh ${r.dibutuhkan}.`);
-    } else if (r.tidakAkanPas) {
-      const { isiBox, kurangKartu, lebihKartu } = r.tidakAkanPas;
+  const pilihan = perKomponen.filter((k) => k.dipilih);
+  if (pilihan.length === 1 && bukanKomponen.length === 0) {
+    const k = pilihan[0]!;
+    const kartu = kartuWip.filter((w) => w.partId === k.partId);
+    if (k.dibawa < k.dibutuhkan) {
+      const sisa = k.kartuDibutuhkan !== null ? k.kartuDibutuhkan - k.jumlahKartu : null;
       galat.push(
-        `${r.partNumber} butuh ${r.dibutuhkan} tetapi satu box isinya ${isiBox} — ` +
-          `${kurangKartu} kartu kurang, ${lebihKartu} kartu lebih. Periksa isi per box di masternya.`,
+        `${k.partNumber} kurang ${bulat(k.dibutuhkan - k.dibawa)} dari ${k.dibutuhkan}` +
+          (sisa !== null ? ` — scan ${sisa} kartu lagi.` : '.'),
       );
-    } else if (r.selisih < 0) {
-      galat.push(`${r.partNumber} kurang ${Math.abs(r.selisih)} dari ${r.dibutuhkan}.`);
     } else {
-      galat.push(`${r.partNumber} lebih ${r.selisih} dari ${r.dibutuhkan}.`);
+      // Box yang tidak dibutuhkan: tanpa kartu terkecil pun kebutuhan masih terpenuhi.
+      const terkecil = Math.min(...kartu.map((w) => w.qty));
+      if (k.dibawa - terkecil >= k.dibutuhkan) {
+        galat.push(
+          `${k.partNumber} kelebihan box — ${k.dibutuhkan} unit cukup dengan ` +
+            `${k.jumlahKartu - 1} kartu. Lepas satu kartu.`,
+        );
+      }
     }
   }
 
   return {
     bolehDisimpan: galat.length === 0,
-    unitFg,
+    unitInduk,
     perKomponen,
     bukanKomponen,
     galat,
   };
+}
+
+function adaKembar(kartu: KartuBelanja[]): boolean {
+  return new Set(kartu.map((k) => k.kanbanId)).size !== kartu.length;
+}
+
+/** Bagian satu kartu turunan yang masuk ke satu kartu induk. */
+export interface AlokasiBelanja {
+  indukKanbanId: number;
+  wipKanbanId: number;
+  /** Unit komponen dari kartu turunan itu untuk induk ini. */
+  qty: number;
+}
+
+/**
+ * Membagi isi kartu turunan ke kartu induk, berurutan seperti diambil dari rak.
+ *
+ * Induk pertama diisi dari turunan pertama sampai penuh, lalu induk berikutnya,
+ * dst. Satu turunan isi 16 untuk induk isi 8 terbagi ke dua induk; sisa turunan
+ * terakhir tidak dialokasikan ke siapa pun. Hasilnya menjawab "box turunan
+ * mana masuk ke box induk mana" untuk penelusuran.
+ */
+export function alokasiBelanja(
+  kartuInduk: KartuBelanja[],
+  kartuWip: KartuBelanja[],
+  qtyPer: number,
+): AlokasiBelanja[] {
+  const hasil: AlokasiBelanja[] = [];
+  const sisa = kartuWip.map((w) => ({ id: w.kanbanId, sisa: w.qty }));
+  let i = 0;
+  for (const induk of kartuInduk) {
+    let perlu = bulat(induk.qty * qtyPer);
+    while (perlu > 0 && i < sisa.length) {
+      const w = sisa[i]!;
+      const ambil = bulat(Math.min(perlu, w.sisa));
+      if (ambil > 0) hasil.push({ indukKanbanId: induk.kanbanId, wipKanbanId: w.id, qty: ambil });
+      perlu = bulat(perlu - ambil);
+      w.sisa = bulat(w.sisa - ambil);
+      if (w.sisa <= 0) i++;
+    }
+  }
+  return hasil;
 }
 
 /** Sebab sebuah kartu tidak boleh masuk sesi belanja. */

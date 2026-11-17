@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   and,
@@ -24,6 +25,7 @@ import {
   partProcesses,
 } from '@avicenna/db';
 import {
+  alokasiBelanja,
   bacaKanban,
   fgSiapBelanja,
   KanbanTidakTerbaca,
@@ -39,6 +41,7 @@ import {
 } from '@avicenna/domain';
 import type {
   BatalBelanjaInput,
+  BatalBelanjaResult,
   KartuBelanjaRingkas,
   ScanBelanjaInput,
   ScanBelanjaResult,
@@ -76,7 +79,8 @@ type Pencarian =
 /**
  * ─── STASIUN BELANJA ────────────────────────────────────────────────────────
  *
- * Mencocokkan satu kartu FG dengan kartu WIP yang isinya sesuai Part Pairing.
+ * Mencocokkan satu kartu FG dengan SATU kartu turunan dari BOM-nya — pengaman
+ * warna/model, bukan hitungan isi (Handika, 13 Nov 2026).
  * Setelah cocok, kartu FG berstatus SHOPPED dan scan produksi di proses yang
  * mewajibkan belanja baru menerimanya. Lihat `periksaBelanja` di @avicenna/domain
  * untuk aturan jumlahnya, dan FLG_REQUIRE_PAIRING di TM_ROUTE_PROCESS untuk
@@ -234,20 +238,22 @@ export class BelanjaService {
     };
   }
 
-  /** Menyusun keadaan sesi dari kartu FG dan daftar id kartu WIP. */
-  private async sesi(plantId: number, fg: KartuDb, wipIds: number[]): Promise<SesiBelanja> {
-    const kartuWip = wipIds.length > 0 ? await this.kartuPerId(this.db, plantId, wipIds) : [];
-    const komponen = await this.komponenBelanja(fg.partId);
+  /** Menyusun keadaan sesi dari daftar id kartu induk dan kartu turunan. */
+  private async sesi(plantId: number, indukIds: number[], wipIds: number[]): Promise<SesiBelanja> {
+    const semua = await this.kartuPerId(this.db, plantId, [...indukIds, ...wipIds]);
+    const induk = urut(semua, indukIds);
+    const kartuWip = urut(semua, wipIds);
+    const komponen = induk[0] ? await this.komponenBelanja(induk[0].partId) : [];
     const hasil = periksaBelanja({
-      kartuFg: this.kartuBelanja(fg),
+      kartuInduk: induk.map((k) => this.kartuBelanja(k)),
       komponen,
       kartuWip: kartuWip.map((k) => this.kartuBelanja(k)),
     });
 
     const namaKomponen = new Map(kartuWip.map((k) => [k.partId, k.partName]));
     return {
-      fg: this.ringkas(fg),
-      unitFg: hasil.unitFg,
+      induk: induk.map((k) => this.ringkas(k)),
+      unitInduk: hasil.unitInduk,
       komponen: hasil.perKomponen.map((r) => ({
         partId: r.partId,
         partNumber: r.partNumber,
@@ -255,18 +261,12 @@ export class BelanjaService {
         dibutuhkan: r.dibutuhkan,
         dibawa: r.dibawa,
         jumlahKartu: r.jumlahKartu,
-        selisih: r.selisih,
-        pas: r.pas,
-        tidakAkanPas: r.tidakAkanPas ?? null,
+        kartuDibutuhkan: r.kartuDibutuhkan,
+        dipilih: r.dipilih,
+        cukup: r.cukup,
       })),
-      /*
-       * Urutannya mengikuti urutan penembakan, bukan urutan id: operator
-       * membaca baris terakhir untuk memastikan tembakan tadi masuk.
-       */
-      kartuWip: wipIds
-        .map((id) => kartuWip.find((k) => k.kanbanId === id))
-        .filter((k): k is KartuDb => Boolean(k))
-        .map((k) => this.ringkas(k)),
+      // Urut tembakan: operator membaca baris terakhir untuk memastikan tembakan tadi masuk.
+      kartuWip: kartuWip.map((k) => this.ringkas(k)),
       bolehDisimpan: hasil.bolehDisimpan,
       galat: hasil.galat,
     };
@@ -292,7 +292,11 @@ export class BelanjaService {
       .where(and(eq(kanbans.plantId, plantId), inArray(kanbans.id, ids)));
   }
 
-  private tolak(sebab: TolakBelanja, raw: string, sisi: 'FG' | 'WIP' | null): ScanBelanjaResult {
+  private tolak(
+    sebab: TolakBelanja,
+    raw: string,
+    sisi: 'INDUK' | 'TURUNAN' | null,
+  ): ScanBelanjaResult {
     return { hasil: 'DITOLAK', pesan: PESAN_BELANJA[sebab], rawCode: raw, sisi, sesi: null };
   }
 
@@ -349,31 +353,80 @@ export class BelanjaService {
 
   /* ── Satu tembakan ──────────────────────────────────────────────────────── */
 
+  /**
+   * Satu tembakan di stasiun belanja.
+   *
+   * Sisinya ditentukan dari KARTUNYA, bukan dari tombol: belum ada induk →
+   * kartu ini induk; part yang sama dengan induk dan turunan belum mulai →
+   * tambah induk; selebihnya kartu turunan.
+   */
   async scan(input: ScanBelanjaInput): Promise<ScanBelanjaResult> {
     const pabrik = await this.pabrikDari(input.plantCode);
-    const sisi = input.fgKanbanId ? 'WIP' : 'FG';
+    const indukIds = input.indukKanbanIds;
+    const wipIds = input.wipKanbanIds;
+    const sisiTebak = indukIds.length === 0 ? 'INDUK' : 'TURUNAN';
 
     const cari = await this.cariKartu(pabrik.id, input.rawCode);
     if (!cari.ada) {
       if (cari.sebab === 'BUKAN_KARTU') return this.tolak('BUKAN_KARTU', input.rawCode, null);
       return this.tolak(
-        sisi === 'FG' ? 'FG_TIDAK_TERDAFTAR' : 'WIP_TIDAK_TERDAFTAR',
+        sisiTebak === 'INDUK' ? 'FG_TIDAK_TERDAFTAR' : 'WIP_TIDAK_TERDAFTAR',
         input.rawCode,
-        sisi,
+        sisiTebak,
       );
     }
     const kartu = cari.kartu;
-    if (!kartu.isActive) return this.tolak('FG_TIDAK_AKTIF', input.rawCode, sisi);
+    if (!kartu.isActive) return this.tolak('FG_TIDAK_AKTIF', input.rawCode, sisiTebak);
 
-    return sisi === 'FG'
-      ? this.bukaSesi(pabrik.id, kartu, input.rawCode)
-      : this.tambahWip(pabrik.id, kartu, input);
+    if (indukIds.length === 0) return this.bukaSesi(pabrik.id, kartu, input.rawCode);
+
+    const sesiKini = () => this.sesi(pabrik.id, indukIds, wipIds);
+    const ditolak = async (pesan: string, sisi: 'INDUK' | 'TURUNAN') => ({
+      hasil: 'DITOLAK' as const,
+      pesan,
+      rawCode: input.rawCode,
+      sisi,
+      sesi: await sesiKini(),
+    });
+
+    if (indukIds.includes(kartu.kanbanId) || wipIds.includes(kartu.kanbanId)) {
+      return ditolak(
+        `Kartu ${kartu.partNumber} seri ${kartu.serialNumber} sudah ditembak di belanja ini.`,
+        indukIds.includes(kartu.kanbanId) ? 'INDUK' : 'TURUNAN',
+      );
+    }
+
+    const [indukPertama] = await this.kartuPerId(this.db, pabrik.id, [indukIds[0]!]);
+    if (!indukPertama) return this.tolak('FG_TIDAK_TERDAFTAR', input.rawCode, 'INDUK');
+
+    // Part yang sama dengan induk = kartu induk tambahan.
+    if (kartu.partId === indukPertama.partId) {
+      if (wipIds.length > 0) {
+        return ditolak(
+          'Kartu turunan sudah mulai discan — kartu induk tidak bisa ditambah lagi. ' +
+            'Selesaikan belanja ini dulu.',
+          'INDUK',
+        );
+      }
+      const tolak = fgSiapBelanja(kartu.status);
+      if (tolak) return { ...this.tolak(tolak, input.rawCode, 'INDUK'), sesi: await sesiKini() };
+      const sesi = await this.sesi(pabrik.id, [...indukIds, kartu.kanbanId], wipIds);
+      return {
+        hasil: 'DITERIMA',
+        pesan: `Induk ${sesi.induk.length} kartu · ${sesi.unitInduk} unit. Scan induk lagi, atau mulai scan turunan.`,
+        rawCode: input.rawCode,
+        sisi: 'INDUK',
+        sesi,
+      };
+    }
+
+    return this.tambahWip(pabrik.id, indukIds, kartu, input);
   }
 
-  /** Tembakan pertama: kartu FG yang akan diisi. */
+  /** Tembakan pertama: kartu induk yang akan diisi. */
   private async bukaSesi(plantId: number, kartu: KartuDb, raw: string): Promise<ScanBelanjaResult> {
     const tolak = fgSiapBelanja(kartu.status);
-    if (tolak) return this.tolak(tolak, raw, 'FG');
+    if (tolak) return this.tolak(tolak, raw, 'INDUK');
 
     /*
      * Kartu tanpa komponen yang bisa dibelanjakan ditolak di sini, bukan
@@ -392,65 +445,45 @@ export class BelanjaService {
           `${kartu.partNumber} tidak punya komponen berkartu, jadi tidak ada yang bisa ` +
           'dibelanjakan. Periksa Master Data › Part Pairing.',
         rawCode: raw,
-        sisi: 'FG',
+        sisi: 'INDUK',
         sesi: null,
       };
     }
 
-    const sesi = await this.sesi(plantId, kartu, []);
+    const sesi = await this.sesi(plantId, [kartu.kanbanId], []);
     return {
       hasil: 'DITERIMA',
-      pesan: `Belanja untuk ${kartu.partNumber} — ambil ${sesi.komponen
-        .map((k) => `${k.dibutuhkan} ${k.partNumber}`)
-        .join(', ')}`,
+      pesan:
+        `Belanja ${kartu.partNumber}. Scan induk lain bila ada, lalu kartu turunan: ` +
+        sesi.komponen.map((k) => k.partNumber).join(' atau '),
       rawCode: raw,
-      sisi: 'FG',
+      sisi: 'INDUK',
       sesi,
     };
   }
 
-  /** Tembakan berikutnya: kartu WIP yang dibawa. */
+  /** Tembakan kartu turunan. */
   private async tambahWip(
     plantId: number,
+    indukIds: number[],
     kartu: KartuDb,
     input: ScanBelanjaInput,
   ): Promise<ScanBelanjaResult> {
-    const [fg] = await this.kartuPerId(this.db, plantId, [input.fgKanbanId!]);
-    if (!fg) return this.tolak('FG_TIDAK_TERDAFTAR', input.rawCode, 'FG');
-
     const sudah = input.wipKanbanIds;
-    if (sudah.includes(kartu.kanbanId)) {
-      return {
-        hasil: 'DITOLAK',
-        pesan: `Kartu ${kartu.partNumber} seri ${kartu.serialNumber} sudah ditembak di sesi ini.`,
-        rawCode: input.rawCode,
-        sisi: 'WIP',
-        sesi: await this.sesi(plantId, fg, sudah),
-      };
-    }
-
-    // Kartu FG yang ikut tertembak sebagai kartu WIP: kejadian biasa di lantai,
-    // dan pesannya harus menyebut apa yang terjadi, bukan "bukan komponen".
-    if (kartu.kanbanId === fg.kanbanId) {
-      return {
-        hasil: 'DITOLAK',
-        pesan: 'Itu kartu FG yang sedang dibelanjakan, bukan kartu WIP.',
-        rawCode: input.rawCode,
-        sisi: 'WIP',
-        sesi: await this.sesi(plantId, fg, sudah),
-      };
-    }
+    const sesiKini = () => this.sesi(plantId, indukIds, sudah);
+    const ditolak = async (pesan: string) => ({
+      hasil: 'DITOLAK' as const,
+      pesan,
+      rawCode: input.rawCode,
+      sisi: 'TURUNAN' as const,
+      sesi: await sesiKini(),
+    });
 
     const tolakWip = wipSiapBelanja(kartu.status);
-    if (tolakWip) {
-      return {
-        ...this.tolak(tolakWip, input.rawCode, 'WIP'),
-        sesi: await this.sesi(plantId, fg, sudah),
-      };
-    }
+    if (tolakWip) return ditolak(PESAN_BELANJA[tolakWip]);
 
     /*
-     * Terikat pada kartu FG LAIN diperiksa dari tabel pasangan, bukan hanya
+     * Terikat pada kartu induk LAIN diperiksa dari tabel pasangan, bukan hanya
      * dari status. Statusnya bisa ikut benar, tetapi yang menjawab "terikat ke
      * siapa" hanya tabel ini — dan pesan yang menyebut nomor kartunya membuat
      * orang bisa mencarinya, bukan menebak.
@@ -463,35 +496,38 @@ export class BelanjaService {
       .where(eq(kanbanPairings.wipKanbanId, kartu.kanbanId))
       .limit(1);
     if (terikat) {
-      return {
-        hasil: 'DITOLAK',
-        pesan: `Kartu ini sudah terikat pada ${terikat.fgPart} seri ${terikat.fgSerial}.`,
-        rawCode: input.rawCode,
-        sisi: 'WIP',
-        sesi: await this.sesi(plantId, fg, sudah),
-      };
+      return ditolak(`Kartu ini sudah terikat pada ${terikat.fgPart} seri ${terikat.fgSerial}.`);
     }
 
-    const sesi = await this.sesi(plantId, fg, [...sudah, kartu.kanbanId]);
-    const bukan = sesi.komponen.every((k) => k.partId !== kartu.partId);
-    if (bukan) {
-      return {
-        hasil: 'DITOLAK',
-        pesan: `${kartu.partNumber} bukan komponen ${fg.partNumber} menurut Part Pairing.`,
-        rawCode: input.rawCode,
-        sisi: 'WIP',
-        sesi: await this.sesi(plantId, fg, sudah),
-      };
+    const sebelum = await sesiKini();
+    const indukPart = sebelum.induk[0]?.partNumber ?? 'induk';
+    if (sebelum.komponen.every((k) => k.partId !== kartu.partId)) {
+      return ditolak(
+        `${kartu.partNumber} bukan turunan ${indukPart} menurut BOM — model atau warnanya berbeda.`,
+      );
+    }
+    const dipilih = sebelum.komponen.find((k) => k.dipilih);
+    if (dipilih && dipilih.partId !== kartu.partId) {
+      return ditolak(
+        `Belanja ini memakai turunan ${dipilih.partNumber} — jangan dicampur dengan ${kartu.partNumber}.`,
+      );
+    }
+    if (dipilih?.cukup) {
+      return ditolak(`${dipilih.partNumber} sudah cukup ${dipilih.dibawa}/${dipilih.dibutuhkan}.`);
     }
 
+    const sesi = await this.sesi(plantId, indukIds, [...sudah, kartu.kanbanId]);
     const komp = sesi.komponen.find((k) => k.partId === kartu.partId)!;
+    const kartuKe = komp.kartuDibutuhkan
+      ? ` · kartu ${komp.jumlahKartu}/${komp.kartuDibutuhkan}`
+      : ` · ${komp.jumlahKartu} kartu`;
     return {
       hasil: 'DITERIMA',
-      pesan: komp.pas
-        ? `${komp.partNumber} pas — ${komp.dibawa}/${komp.dibutuhkan}`
-        : `${komp.partNumber} ${komp.dibawa}/${komp.dibutuhkan}`,
+      pesan: komp.cukup
+        ? `${komp.partNumber} cukup ${komp.dibawa}/${komp.dibutuhkan}.`
+        : `${komp.partNumber} ${komp.dibawa}/${komp.dibutuhkan}${kartuKe}`,
       rawCode: input.rawCode,
-      sisi: 'WIP',
+      sisi: 'TURUNAN',
       sesi,
     };
   }
@@ -503,39 +539,25 @@ export class BelanjaService {
     const npk = principal?.kind === 'user' ? principal.npk : null;
     const userId = principal?.kind === 'user' ? principal.sub : null;
     const sekarang = new Date();
+    /** Mengikat seluruh kartu satu belanja — dipakai pembatalan. */
+    const idBelanja = randomUUID();
 
     try {
       return await this.db.transaction(async (tx) => {
         /*
-         * Seluruh kartu dikunci — kartu FG dan tiap kartu WIP.
+         * Seluruh kartu dikunci — kartu induk dan tiap kartu turunan.
          *
          * Pemeriksaan di layar terjadi sebelum ini dan tidak mengikat apa pun:
          * dua orang bisa membelanjakan box yang sama dalam selisih detik, dan
-         * keduanya melihat "pas" di layarnya masing-masing.
+         * keduanya melihat "cukup" di layarnya masing-masing.
          */
-        const [fg] = await tx
-          .select({ id: kanbans.id, status: kanbans.status, plantId: kanbans.plantId })
-          .from(kanbans)
-          .where(eq(kanbans.id, input.fgKanbanId))
-          .for('update');
+        const ids = [...input.indukKanbanIds, ...input.wipKanbanIds];
+        await tx.select({ id: kanbans.id }).from(kanbans).where(inArray(kanbans.id, ids)).for('update');
 
-        if (!fg || fg.plantId !== pabrik.id) {
-          return { hasil: 'DITOLAK' as const, pesan: PESAN_BELANJA.FG_TIDAK_TERDAFTAR, sesi: null };
-        }
-        const tolakFg = fgSiapBelanja(fg.status);
-        if (tolakFg) {
-          return { hasil: 'DITOLAK' as const, pesan: PESAN_BELANJA[tolakFg], sesi: null };
-        }
-
-        await tx
-          .select({ id: kanbans.id })
-          .from(kanbans)
-          .where(inArray(kanbans.id, input.wipKanbanIds))
-          .for('update');
-
-        const [fgKartu] = await this.kartuPerId(tx, pabrik.id, [input.fgKanbanId]);
-        const wip = await this.kartuPerId(tx, pabrik.id, input.wipKanbanIds);
-        if (!fgKartu || wip.length !== input.wipKanbanIds.length) {
+        const semua = await this.kartuPerId(tx, pabrik.id, ids);
+        const induk = urut(semua, input.indukKanbanIds);
+        const wip = urut(semua, input.wipKanbanIds);
+        if (induk.length !== input.indukKanbanIds.length || wip.length !== input.wipKanbanIds.length) {
           return {
             hasil: 'DITOLAK' as const,
             pesan: 'Ada kartu yang tidak terdaftar di pabrik ini. Ulangi belanjanya.',
@@ -544,6 +566,16 @@ export class BelanjaService {
         }
 
         // Status diperiksa ULANG di bawah kunci, bukan dipercaya dari layar.
+        for (const k of induk) {
+          const tolak = fgSiapBelanja(k.status);
+          if (tolak) {
+            return {
+              hasil: 'DITOLAK' as const,
+              pesan: `Induk seri ${k.serialNumber}: ${PESAN_BELANJA[tolak]}`,
+              sesi: null,
+            };
+          }
+        }
         for (const k of wip) {
           const tolak = wipSiapBelanja(k.status);
           if (tolak) {
@@ -555,28 +587,36 @@ export class BelanjaService {
           }
         }
 
-        const komponen = await this.komponenBelanja(fgKartu.partId);
+        const komponen = await this.komponenBelanja(induk[0]!.partId);
         const hasil = periksaBelanja({
-          kartuFg: this.kartuBelanja(fgKartu),
+          kartuInduk: induk.map((k) => this.kartuBelanja(k)),
           komponen,
           kartuWip: wip.map((k) => this.kartuBelanja(k)),
         });
         if (!hasil.bolehDisimpan) {
           return {
             hasil: 'DITOLAK' as const,
-            pesan: hasil.galat[0] ?? 'Jumlahnya belum pas.',
-            sesi: await this.sesi(pabrik.id, fgKartu, input.wipKanbanIds),
+            pesan: hasil.galat[0] ?? 'Belanja belum lengkap.',
+            sesi: await this.sesi(pabrik.id, input.indukKanbanIds, input.wipKanbanIds),
           };
         }
 
+        const qtyPer = komponen.find((k) => k.partId === wip[0]!.partId)!.qtyPer;
+        const alokasi = alokasiBelanja(
+          induk.map((k) => this.kartuBelanja(k)),
+          wip.map((k) => this.kartuBelanja(k)),
+          qtyPer,
+        );
+        const perId = new Map(semua.map((k) => [k.kanbanId, k]));
+
         await tx.insert(kanbanPairings).values(
-          wip.map((k) => ({
-            fgKanbanId: fgKartu.kanbanId,
-            wipKanbanId: k.kanbanId,
-            qty: k.qty,
+          alokasi.map((a) => ({
+            fgKanbanId: a.indukKanbanId,
+            wipKanbanId: a.wipKanbanId,
+            qty: Math.round(a.qty),
             // Keadaan box SEBELUM kartunya dilepas, supaya pembatalan bisa
             // memasangnya kembali dengan waktu produksi yang benar.
-            wipProducedAt: k.producedAt,
+            wipProducedAt: perId.get(a.wipKanbanId)!.producedAt,
             npk,
             userId,
             pairedAt: sekarang,
@@ -584,20 +624,16 @@ export class BelanjaService {
         );
 
         // Kartu induk menunggu discan produksi.
-        await tx.update(kanbans).set({ status: 'SHOPPED' }).where(eq(kanbans.id, fgKartu.kanbanId));
+        await tx
+          .update(kanbans)
+          .set({ status: 'SHOPPED' })
+          .where(inArray(kanbans.id, input.indukKanbanIds));
 
         /*
          * Kartu box DILEPAS DI SINI — inilah titik yang membuat interlock ke
-         * hulu bekerja.
-         *
-         * Di sinilah kartunya benar-benar dicopot dari box dan dibawa pulang ke
-         * posnya; box-nya berjalan ke proses berikutnya diantar kartu induk.
-         * Selama belum dibelanjakan, kartu itu masih PRODUCED dan stasiun scan
-         * menolaknya — jadi lini pembuatnya tidak bisa membuat box baru sebelum
-         * box lamanya terambil.
-         *
-         * Satu per satu karena cycleCount tiap kartu berbeda: satu putaran
-         * penuh adalah pergi-dan-kembali, dan di sinilah kembalinya.
+         * hulu bekerja: kartunya kembali ke pos, box-nya berjalan ke proses
+         * berikutnya diantar kartu induk. Satu per satu karena cycleCount tiap
+         * kartu berbeda: satu putaran penuh adalah pergi-dan-kembali.
          */
         for (const k of wip) {
           await tx
@@ -612,60 +648,52 @@ export class BelanjaService {
         }
 
         /*
-         * Dua event per pasangan, satu di tiap kartu — plus pelepasan.
-         *
-         * Riwayat sebuah kartu harus bisa dibaca dari kartunya sendiri. Satu
-         * baris saja memaksa setiap penelusuran menyapu tabel mencari dirinya
-         * di kolom pasangan — dan yang lupa melakukannya akan melaporkan kartu
-         * box seolah tidak pernah dibelanjakan.
-         *
-         * Kartu box mendapat DUA event: SHOPPED (box-nya masuk ke kartu induk)
-         * dan RELEASED (kartunya kembali ke pos). Keduanya terjadi bersamaan,
-         * dan keduanya perlu — yang pertama menjawab "box ini masuk ke mana",
-         * yang kedua menutup putaran kartunya.
+         * Event per pasangan di kedua kartu (riwayat bisa dibaca dari kartunya
+         * sendiri), plus satu RELEASED per kartu turunan. `belanja` mengikat
+         * seluruh kartu satu belanja untuk pembatalan.
          */
-        await tx.insert(kanbanEvents).values(
-          wip.flatMap((k) => [
+        const meta = (lain: Record<string, unknown>) => ({ module: 'BELANJA', belanja: idBelanja, ...lain });
+        await tx.insert(kanbanEvents).values([
+          ...alokasi.flatMap((a) => [
             {
-              kanbanId: fgKartu.kanbanId,
+              kanbanId: a.indukKanbanId,
               type: 'SHOPPED' as const,
-              pairedKanbanId: k.kanbanId,
-              qty: k.qty,
+              pairedKanbanId: a.wipKanbanId,
+              qty: Math.round(a.qty),
               userId,
               occurredAt: sekarang,
-              meta: { module: 'BELANJA', sisi: 'INDUK', serialPasangan: k.serialNumber },
+              meta: meta({ sisi: 'INDUK', serialPasangan: perId.get(a.wipKanbanId)!.serialNumber }),
             },
             {
-              kanbanId: k.kanbanId,
+              kanbanId: a.wipKanbanId,
               type: 'SHOPPED' as const,
-              pairedKanbanId: fgKartu.kanbanId,
-              qty: k.qty,
+              pairedKanbanId: a.indukKanbanId,
+              qty: Math.round(a.qty),
               userId,
               occurredAt: sekarang,
-              meta: { module: 'BELANJA', sisi: 'BOX', serialPasangan: fgKartu.serialNumber },
-            },
-            {
-              kanbanId: k.kanbanId,
-              type: 'RELEASED' as const,
-              pairedKanbanId: fgKartu.kanbanId,
-              qty: k.qty,
-              userId,
-              occurredAt: sekarang,
-              meta: { module: 'BELANJA', sebab: 'dibelanjakan proses berikutnya' },
+              meta: meta({ sisi: 'BOX', serialPasangan: perId.get(a.indukKanbanId)!.serialNumber }),
             },
           ]),
-        );
+          ...wip.map((k) => ({
+            kanbanId: k.kanbanId,
+            type: 'RELEASED' as const,
+            qty: k.qty,
+            userId,
+            occurredAt: sekarang,
+            meta: meta({ sebab: 'dibelanjakan proses berikutnya' }),
+          })),
+        ]);
 
         this.logger.log(
-          `belanja ${fgKartu.partNumber} seri ${fgKartu.serialNumber}: ` +
-            `${wip.length} kartu, ${hasil.perKomponen.map((k) => `${k.partNumber} ${k.dibawa}`).join(', ')}`,
+          `belanja ${induk[0]!.partNumber}: ${induk.length} induk ` +
+            `(${induk.map((k) => k.serialNumber).join(', ')}), ${wip.length} kartu ${wip[0]!.partNumber}`,
         );
 
         return {
           hasil: 'DITERIMA' as const,
           pesan:
-            `Belanja tersimpan. Kartu ${fgKartu.serialNumber} siap discan produksi, ` +
-            `${wip.length} kartu kembali ke pos.`,
+            `Belanja tersimpan. ${induk.length} kartu induk siap discan produksi, ` +
+            `${wip.length} kartu turunan kembali ke pos.`,
           sesi: null,
         };
       });
@@ -674,9 +702,6 @@ export class BelanjaService {
        * Penjaga sesungguhnya adalah kunci baris dan status kartu: dua belanja
        * yang menyertakan box yang sama diserialkan oleh `for('update')`, dan
        * yang kedua membaca statusnya sudah AVAILABLE lalu ditolak.
-       *
-       * Duplikat masih mungkin datang dari arah lain, dan pesannya tetap
-       * diarahkan ke tindakan yang benar.
        */
       if (sebabGalatDb(err) === 'DUPLIKAT') {
         return {
@@ -691,51 +716,98 @@ export class BelanjaService {
 
   /* ── Membatalkan ────────────────────────────────────────────────────────── */
 
-  async batal(
-    input: BatalBelanjaInput,
-    principal?: Principal,
-  ): Promise<{ hasil: 'DITERIMA' | 'DITOLAK'; pesan: string }> {
+  /**
+   * Membatalkan belanja sebuah kartu induk — beserta SELURUH kartu induk satu
+   * belanjanya, karena satu box turunan bisa terbagi ke beberapa induk.
+   * Belanja lama (sebelum ada penanda `belanja`) dibatalkan per kartu.
+   */
+  async batal(input: BatalBelanjaInput, principal?: Principal): Promise<BatalBelanjaResult> {
     const pabrik = await this.pabrikDari(input.plantCode);
     const userId = principal?.kind === 'user' ? principal.sub : null;
     const sekarang = new Date();
+    const tolak = (pesan: string) => ({ hasil: 'DITOLAK' as const, pesan, indukDibatalkan: [] });
 
     return this.db.transaction(async (tx) => {
-      const [fg] = await tx
-        .select({ id: kanbans.id, status: kanbans.status, plantId: kanbans.plantId })
+      // Belanja mana kartu ini — dari event SHOPPED terakhirnya.
+      const [terakhir] = await tx
+        .select({ belanja: sql<string | null>`${kanbanEvents.meta}->>'belanja'` })
+        .from(kanbanEvents)
+        .where(
+          and(
+            eq(kanbanEvents.kanbanId, input.fgKanbanId),
+            eq(kanbanEvents.type, 'SHOPPED'),
+            sql`${kanbanEvents.meta}->>'sisi' = 'INDUK'`,
+          ),
+        )
+        .orderBy(desc(kanbanEvents.id))
+        .limit(1);
+
+      const indukIds = terakhir?.belanja
+        ? [
+            ...new Set(
+              (
+                await tx
+                  .select({ id: kanbanEvents.kanbanId })
+                  .from(kanbanEvents)
+                  .where(
+                    and(
+                      eq(kanbanEvents.type, 'SHOPPED'),
+                      sql`${kanbanEvents.meta}->>'sisi' = 'INDUK'`,
+                      sql`${kanbanEvents.meta}->>'belanja' = ${terakhir.belanja}`,
+                    ),
+                  )
+              ).map((r) => r.id),
+            ),
+          ]
+        : [input.fgKanbanId];
+
+      const induk = await tx
+        .select({
+          id: kanbans.id,
+          status: kanbans.status,
+          plantId: kanbans.plantId,
+          serialNumber: kanbans.serialNumber,
+        })
         .from(kanbans)
-        .where(eq(kanbans.id, input.fgKanbanId))
+        .where(inArray(kanbans.id, indukIds))
         .for('update');
-      if (!fg || fg.plantId !== pabrik.id) {
-        return { hasil: 'DITOLAK' as const, pesan: PESAN_BELANJA.FG_TIDAK_TERDAFTAR };
+
+      const milik = induk.find((k) => k.id === input.fgKanbanId);
+      if (!milik || milik.plantId !== pabrik.id) return tolak(PESAN_BELANJA.FG_TIDAK_TERDAFTAR);
+      if (milik.status !== 'SHOPPED') {
+        return tolak('Kartu ini tidak sedang dalam keadaan sudah belanja.');
       }
-      if (fg.status !== 'SHOPPED') {
-        return {
-          hasil: 'DITOLAK' as const,
-          pesan: 'Kartu ini tidak sedang dalam keadaan sudah belanja.',
-        };
+      /*
+       * Satu induk yang sudah discan produksi berarti isi turunannya sudah
+       * terpakai sebagian — memasang kembali box turunan ke rak akan
+       * menghidupkan barang yang sudah tidak ada.
+       */
+      const sudahProduksi = induk.filter((k) => k.status !== 'SHOPPED');
+      if (sudahProduksi.length > 0) {
+        return tolak(
+          `Tidak bisa dibatalkan: induk seri ${sudahProduksi.map((k) => k.serialNumber).join(', ')} ` +
+            'dari belanja yang sama sudah discan produksi. Selesaikan saja scan produksinya.',
+        );
       }
 
       const pasangan = await tx
         .select({
+          fgKanbanId: kanbanPairings.fgKanbanId,
           wipKanbanId: kanbanPairings.wipKanbanId,
           qty: kanbanPairings.qty,
           wipProducedAt: kanbanPairings.wipProducedAt,
         })
         .from(kanbanPairings)
-        .where(eq(kanbanPairings.fgKanbanId, input.fgKanbanId));
+        .where(inArray(kanbanPairings.fgKanbanId, indukIds));
+      const wipIds = [...new Set(pasangan.map((p) => p.wipKanbanId))];
 
       /*
        * Pembatalan harus MEMASANG KEMBALI kartu box ke box-nya, dan itu hanya
-       * mungkin kalau kartu itu belum dipakai lagi.
-       *
-       * Belanja melepaskan kartunya ke pos, jadi lini pembuatnya boleh saja
-       * sudah memakainya untuk box baru. Kalau itu terjadi, kartu itu sekarang
-       * membawa barang LAIN — dan menariknya kembali ke box lama berarti box
-       * baru kehilangan kartunya tanpa ada yang tahu. Lebih baik pembatalannya
-       * ditolak dengan menyebut kartu mana yang sudah jalan.
+       * mungkin kalau kartu itu belum dipakai lagi di lini pembuatnya. Kalau
+       * sudah, kartu itu kini membawa barang LAIN — pembatalannya ditolak.
        */
       const kartuBox =
-        pasangan.length > 0
+        wipIds.length > 0
           ? await tx
               .select({
                 id: kanbans.id,
@@ -744,61 +816,49 @@ export class BelanjaService {
                 serialNumber: kanbans.serialNumber,
               })
               .from(kanbans)
-              .where(
-                inArray(
-                  kanbans.id,
-                  pasangan.map((p) => p.wipKanbanId),
-                ),
-              )
+              .where(inArray(kanbans.id, wipIds))
               .for('update')
           : [];
-
       const sudahJalan = kartuBox.filter((k) => k.status !== 'AVAILABLE');
       if (sudahJalan.length > 0) {
-        return {
-          hasil: 'DITOLAK' as const,
-          pesan:
-            `Tidak bisa dibatalkan: kartu ${sudahJalan.map((k) => k.serialNumber).join(', ')} ` +
+        return tolak(
+          `Tidak bisa dibatalkan: kartu ${sudahJalan.map((k) => k.serialNumber).join(', ')} ` +
             'sudah dipakai lagi di lini. Selesaikan saja scan produksinya.',
-        };
+        );
       }
 
-      await tx.delete(kanbanPairings).where(eq(kanbanPairings.fgKanbanId, input.fgKanbanId));
-      await tx.update(kanbans).set({ status: 'AVAILABLE' }).where(eq(kanbans.id, input.fgKanbanId));
+      await tx.delete(kanbanPairings).where(inArray(kanbanPairings.fgKanbanId, indukIds));
+      await tx.update(kanbans).set({ status: 'AVAILABLE' }).where(inArray(kanbans.id, indukIds));
 
       /*
-       * Kartu box kembali ke PRODUCED dengan waktu produksi ASLINYA: box-nya
-       * masih penuh dan masih di rak, dan waktu itulah yang dipakai laporan
-       * maupun FIFO. Putarannya ikut dikurangi — pergi-dan-kembali itu tidak
-       * benar-benar terjadi, dan angka yang menggelembung membuat pertanyaan
-       * "kartu mana yang sudah terlalu sering dipakai" dijawab keliru.
+       * Kartu box kembali ke PRODUCED dengan waktu produksi ASLINYA, dan
+       * putarannya dikurangi — pergi-dan-kembali itu tidak benar-benar terjadi.
        */
-      for (const p of pasangan) {
-        const kartu = kartuBox.find((k) => k.id === p.wipKanbanId);
+      for (const k of kartuBox) {
+        const p = pasangan.find((x) => x.wipKanbanId === k.id);
         await tx
           .update(kanbans)
           .set({
             status: 'PRODUCED',
-            producedAt: p.wipProducedAt,
-            cycleCount: Math.max(0, (kartu?.cycleCount ?? 1) - 1),
+            producedAt: p?.wipProducedAt ?? null,
+            cycleCount: Math.max(0, k.cycleCount - 1),
           })
-          .where(eq(kanbans.id, p.wipKanbanId));
+          .where(eq(kanbans.id, k.id));
       }
 
-      // Koreksi dicatat sebagai ADJUSTED, mengikuti aturan TT_KANBAN_EVENT:
-      // baris lama tidak pernah diubah atau dihapus.
+      // Koreksi dicatat sebagai ADJUSTED: baris event lama tidak pernah diubah.
       await tx.insert(kanbanEvents).values([
-        {
-          kanbanId: input.fgKanbanId,
+        ...indukIds.map((id) => ({
+          kanbanId: id,
           type: 'ADJUSTED' as const,
           userId,
           occurredAt: sekarang,
-          meta: { module: 'BELANJA', sebab: 'belanja dibatalkan', jumlahKartu: pasangan.length },
-        },
+          meta: { module: 'BELANJA', sebab: 'belanja dibatalkan', belanja: terakhir?.belanja ?? null },
+        })),
         ...pasangan.map((p) => ({
           kanbanId: p.wipKanbanId,
           type: 'ADJUSTED' as const,
-          pairedKanbanId: input.fgKanbanId,
+          pairedKanbanId: p.fgKanbanId,
           qty: p.qty,
           userId,
           occurredAt: sekarang,
@@ -807,11 +867,14 @@ export class BelanjaService {
       ]);
 
       this.logger.log(
-        `belanja kartu ${input.fgKanbanId} dibatalkan: ${pasangan.length} kartu lepas`,
+        `belanja dibatalkan: ${indukIds.length} induk, ${kartuBox.length} kartu turunan kembali ke box`,
       );
       return {
         hasil: 'DITERIMA' as const,
-        pesan: `Belanja dibatalkan. ${pasangan.length} kartu dipasang kembali ke box-nya.`,
+        pesan:
+          `Belanja dibatalkan: ${indukIds.length} kartu induk kembali kosong, ` +
+          `${kartuBox.length} kartu turunan dipasang kembali ke box-nya.`,
+        indukDibatalkan: indukIds,
       };
     });
   }
@@ -889,4 +952,10 @@ export class BelanjaService {
       .limit(1);
     return Boolean(ada);
   }
+}
+
+/** Baris kartu dalam urutan id yang diminta (urutan tembakan). */
+function urut(kartu: KartuDb[], ids: number[]): KartuDb[] {
+  const peta = new Map(kartu.map((k) => [k.kanbanId, k]));
+  return ids.map((id) => peta.get(id)).filter((k): k is KartuDb => Boolean(k));
 }

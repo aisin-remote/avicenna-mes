@@ -336,7 +336,20 @@ export function ScanStation({
      * Barcode kanban tidak pernah lolos penyaring ini: bentuknya panjang dan
      * berspasi, sedangkan nomor part tidak.
      */
-    if (perKanban && wajibDandori && sepertiNomorPartPolos(value)) {
+    /*
+     * Nomor part polos di lini yang wajib dandori: bisa master sample (ganti
+     * part — harus lewat DANDORI), bisa juga label kanban customer seperti
+     * MMKI yang isinya hanya nomor part customer. Yang terakhir dikirim ke
+     * server sebagai kartu; server yang tahu pemetaan Part Customer-nya, dan
+     * menolak dengan petunjuk DANDORI bila ternyata bukan label customer.
+     */
+    if (
+      perKanban &&
+      wajibDandori &&
+      sepertiNomorPartPolos(value) &&
+      (!sample || sample.partNumber.replace(/-/g, '').toUpperCase() ===
+        value.replace(/^MODEL-/i, '').replace(/-/g, '').toUpperCase())
+    ) {
       tolakDiLayar('Ganti part lewat tombol DANDORI, lalu scan QR dandori dan master sample-nya.');
       return;
     }

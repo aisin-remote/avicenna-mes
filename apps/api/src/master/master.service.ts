@@ -9,6 +9,7 @@ import { getMasterTable, lines, locations, partProcesses, parts, toolings } from
 import { sebabGalatDb } from '@avicenna/db';
 import {
   getEntityDef,
+  GRUP_PROSES_TERKUNCI,
   buildCreateSchema,
   buildUpdateSchema,
   filterFields,
@@ -177,7 +178,9 @@ export class MasterService {
       .from(table)
       .where(hasActive ? eq(table.isActive, true) : undefined)
       .orderBy(asc(this.sortColumn(entity)))
-      .limit(500);
+      // Dulu 500: part sudah lebih dari 2.000 (BODY + UNIT), dan part di luar
+      // 500 pertama tidak bisa dipilih sama sekali di formulir mana pun.
+      .limit(10000);
 
     return rows.map((r: Record<string, unknown>) => ({
       value: Number(r.id),
@@ -741,7 +744,47 @@ export class MasterService {
    * "nanti saja", dan orang akan menyuntingnya dua kali.
    */
   private segarkanKatalog(entity: MasterEntity): void {
-    if (entity === 'process-types') this.processTypes.segarkan();
+    // Grup ikut dimuat katalog jenis proses (labelGrup, grupDaftar).
+    if (entity === 'process-types' || entity === 'process-groups') this.processTypes.segarkan();
+  }
+
+  /**
+   * Grup proses: bentuk kodenya, dan grup yang dikunci kode.
+   *
+   * RECEIVING dan DELIVERY punya perilaku di kode (lewat dandori, landing
+   * /delivery-scan), jadi kodenya tidak boleh diganti dan barisnya tidak boleh
+   * dinonaktifkan atau dihapus. Labelnya tetap bebas.
+   */
+  private pastikanGrupProses(
+    entity: MasterEntity,
+    values: Record<string, unknown>,
+    barisLama?: Record<string, unknown>,
+  ) {
+    if (entity !== 'process-groups') return;
+    const terkunci = barisLama ? grupTerkunci(barisLama.code) : false;
+    const pesan: { field: string; message: string }[] = [];
+
+    if (values.code !== undefined && values.code !== null) {
+      const kode = String(values.code).trim().toUpperCase();
+      values.code = kode;
+      if (!/^[A-Z][A-Z0-9_]{1,31}$/.test(kode)) {
+        pesan.push({ field: 'code', message: 'Kode grup: HURUF BESAR, angka, dan garis bawah, mis. PACKING_ELC.' });
+      } else if (terkunci && kode !== barisLama?.code) {
+        pesan.push({ field: 'code', message: `Kode ${String(barisLama?.code)} dipakai langsung oleh program — tidak bisa diganti.` });
+      }
+    }
+    if (terkunci && values.isActive === false) {
+      pesan.push({ field: 'isActive', message: `Grup ${String(barisLama?.code)} dipakai langsung oleh program — tidak bisa dinonaktifkan.` });
+    }
+
+    if (pesan.length > 0) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'ValidationError',
+        message: 'Data yang dikirim tidak valid',
+        details: pesan,
+      });
+    }
   }
 
   async create(entity: MasterEntity, body: unknown) {
@@ -756,6 +799,7 @@ export class MasterService {
     await this.pastikanSlocSesuaiBlueprint(entity, parsed.data as Record<string, unknown>);
     await this.pastikanProductionVersion(entity, parsed.data as Record<string, unknown>);
     await this.pastikanSatuUtama(entity, parsed.data as Record<string, unknown>);
+    this.pastikanGrupProses(entity, parsed.data as Record<string, unknown>);
 
     const table = this.table(entity);
     try {
@@ -789,6 +833,7 @@ export class MasterService {
     await this.pastikanSlocTujuanPart(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanProductionVersion(entity, values, barisLama as Record<string, unknown>);
     await this.pastikanSatuUtama(entity, values, barisLama as Record<string, unknown>);
+    this.pastikanGrupProses(entity, values, barisLama as Record<string, unknown>);
 
     try {
       await this.db.update(table).set(values).where(eq(table.id, id));
@@ -801,7 +846,12 @@ export class MasterService {
 
   async remove(entity: MasterEntity, id: number) {
     const table = this.table(entity);
-    await this.findOne(entity, id);
+    const baris = await this.findOne(entity, id);
+    if (entity === 'process-groups' && grupTerkunci((baris as Record<string, unknown>).code)) {
+      throw new BadRequestException(
+        `Grup ${String((baris as Record<string, unknown>).code)} dipakai langsung oleh program — tidak bisa dihapus.`,
+      );
+    }
 
     try {
       await this.db.delete(table).where(eq(table.id, id));
@@ -819,11 +869,18 @@ export class MasterService {
       throw new BadRequestException(`${def.label} tidak punya status aktif`);
     }
     const table = this.table(entity);
-    await this.findOne(entity, id);
+    const baris = await this.findOne(entity, id);
+    if (entity === 'process-groups') {
+      this.pastikanGrupProses(entity, { isActive }, baris as Record<string, unknown>);
+    }
     await this.db.update(table).set({ isActive }).where(eq(table.id, id));
     this.segarkanKatalog(entity);
     return this.findOne(entity, id);
   }
+}
+
+function grupTerkunci(kode: unknown): boolean {
+  return (GRUP_PROSES_TERKUNCI as readonly string[]).includes(String(kode ?? ''));
 }
 
 /** Menebak kolom mana yang paling layak jadi label pilihan. */

@@ -21,6 +21,7 @@ import {
 } from '@avicenna/db';
 import {
   bacaKodeDandori,
+  bacaKodeSample,
   metodeDandori,
   normalkanNomorPart,
   pilihBarisRute,
@@ -361,7 +362,8 @@ export class DandoriService {
           'Scan QR dandori dulu (DANDORI-<nomor part>), baru master sample.',
         );
       }
-      const sample = await this.partDiPabrik(raw, line.plantId);
+      // Label sample BODY: `MODEL-<nomor part>`; nomor polos juga diterima.
+      const sample = await this.partDiPabrik(bacaKodeSample(raw), line.plantId);
       if (!sample || sample.id !== baris.partId) {
         const [dipasang] = await this.db
           .select({ partNumber: parts.partNumber })

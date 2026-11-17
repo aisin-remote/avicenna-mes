@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { processTypeSchema, PROCESS_GROUPS } from './common';
+import { processTypeSchema, processGroupSchema } from './common';
 
 /**
  * ─── NG: barang yang dinyatakan tidak baik ──────────────────────────────────
@@ -44,8 +44,6 @@ export const NG_SOURCE_LABELS: Record<NgSource, string> = {
   PART_CODE: 'Scan part code',
   KANBAN: 'Scan kanban',
 };
-
-const processGroupSchema = z.enum(PROCESS_GROUPS);
 
 /** Satu jenis NG di master — isi tombol di layar operator. */
 export const ngTypeSchema = z.object({

@@ -8,11 +8,11 @@ import {
   bacaQrLogin,
   sepertiKartuLogin,
   QrLoginTidakTerbaca,
-  PROCESS_GROUPS,
   ROLE_KINDS,
   ROLE_KIND_LABELS,
-  PROCESS_GROUP_LABELS,
 } from './role';
+
+const GRUP_UJI = KATALOG_UJI.grupDaftar.map((g) => g.code);
 
 describe('grupProses', () => {
   it('WIP dan FG masuk grup yang sama', () => {
@@ -32,7 +32,7 @@ describe('grupProses', () => {
     // Menambah jenis proses tanpa menentukan grupnya akan membuat role tidak
     // pernah cocok dengan lini itu, tanpa error apa pun.
     for (const p of KATALOG_UJI.kode) {
-      expect(PROCESS_GROUPS).toContain(grupProses(KATALOG_UJI, p));
+      expect(GRUP_UJI).toContain(grupProses(KATALOG_UJI, p));
     }
   });
 
@@ -68,7 +68,7 @@ describe('halamanAwal', () => {
 
   it('setiap kombinasi menghasilkan alamat, bukan kosong', () => {
     for (const kind of ROLE_KINDS) {
-      for (const g of [null, ...PROCESS_GROUPS]) {
+      for (const g of [null, ...GRUP_UJI, 'PACKING_ELC']) {
         expect(halamanAwal({ kind, processGroup: g })).toMatch(/^\//);
       }
     }
@@ -158,7 +158,7 @@ describe('bacaQrLogin', () => {
 describe('label', () => {
   it('setiap jabatan dan grup punya labelnya', () => {
     for (const k of ROLE_KINDS) expect(ROLE_KIND_LABELS[k]).toBeTruthy();
-    for (const g of PROCESS_GROUPS) expect(PROCESS_GROUP_LABELS[g]).toBeTruthy();
+    for (const g of GRUP_UJI) expect(KATALOG_UJI.labelGrup(g)).toBeTruthy();
   });
 });
 

@@ -12,7 +12,7 @@ import {
   timestamps,
   type ProcessType,
 } from './_shared';
-import { PROCESS_GROUPS, SAP_CLASSES, SCAN_MODE_ENUM } from '@avicenna/contracts';
+import { SAP_CLASSES, SCAN_MODE_ENUM } from '@avicenna/contracts';
 import { plants } from './org';
 
 /** Line produksi. Satu line terikat pada satu pabrik dan satu jenis proses. */
@@ -136,6 +136,25 @@ export const customers = masterSchema.table(
      * dicocokkan tiga arah: loading list, kanban internal, kanban customer.
      */
     directKanban: boolean('FLG_DIRECT_KANBAN').notNull().default(false),
+    /*
+     * ── ATURAN BACA LABEL KANBAN CUSTOMER ─────────────────────────────────────
+     *
+     * Disalin dari master `customers` bella (char_total / char_first /
+     * char_length / serial_first / serial_length), 17 Nov 2026. Posisi mulai
+     * dari 0 seperti `substr` PHP; label di-trim dulu sebelum diukur.
+     *
+     *   INT_LABEL_LENGTH        panjang label; kosong/0 = tanpa penjagaan panjang
+     *   INT_LABEL_PART_START    posisi nomor part customer
+     *   INT_LABEL_PART_LENGTH   panjangnya; kosong/0 = seluruh label
+     *   INT_LABEL_SERIAL_*      posisi seri label, bila customer punya
+     *
+     * Dipakai lini BODY yang men-scan label customer sebagai pengganti kartu.
+     */
+    labelLength: integer('INT_LABEL_LENGTH'),
+    labelPartStart: integer('INT_LABEL_PART_START'),
+    labelPartLength: integer('INT_LABEL_PART_LENGTH'),
+    labelSerialStart: integer('INT_LABEL_SERIAL_START'),
+    labelSerialLength: integer('INT_LABEL_SERIAL_LENGTH'),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
@@ -252,6 +271,34 @@ export const parts = masterSchema.table(
 );
 
 /**
+ * ─── GRUP PROSES — lingkup role ─────────────────────────────────────────────
+ *
+ * Dulu daftar tetap PROCESS_GROUPS di kontrak, dijaga CHECK di tiga tabel;
+ * menambah satu grup (PACKING_ELC, 16 Nov 2026) berarti migrasi. Sekarang
+ * baris master, dan CHR_PROCESS_GROUP di TM_PROCESS_TYPE, TM_ROLE, dan TM_NG
+ * menunjuk KODE-nya lewat foreign key — alasan memakai kode, bukan id, sama
+ * dengan jenis proses: kolomnya sudah berisi kode di seluruh data lama.
+ *
+ * RECEIVING dan DELIVERY tidak bisa diubah kodenya atau dinonaktifkan
+ * (GRUP_PROSES_TERKUNCI); penjaganya di MasterService.
+ */
+export const processGroups = masterSchema.table(
+  'TM_PROCESS_GROUP',
+  {
+    id: pk(),
+    code: varchar('CHR_CODE', { length: 32 }).notNull(),
+    label: varchar('CHR_LABEL', { length: 64 }).notNull(),
+    sortOrder: integer('INT_SORT_ORDER').notNull().default(0),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('TM_PROCESS_GROUP_CODE_UNIQUE').on(t.code),
+    index('TM_PROCESS_GROUP_ORDER_IDX').on(t.sortOrder),
+  ],
+);
+
+/**
  * ─── JENIS PROSES — kosakata yang dulu ditanam di kode ──────────────────────
  *
  * Satu baris = satu LINI yang berbeda secara fisik: Casting WIP dan Casting FG
@@ -294,7 +341,9 @@ export const processTypes = masterSchema.table(
     code: varchar('CHR_CODE', { length: 32 }).notNull(),
     /** Yang dibaca orang di kepala kolom dan di laporan. */
     label: varchar('CHR_LABEL', { length: 64 }).notNull(),
-    processGroup: enumCol('CHR_PROCESS_GROUP', PROCESS_GROUPS).notNull(),
+    processGroup: varchar('CHR_PROCESS_GROUP', { length: 32 })
+      .notNull()
+      .references(() => processGroups.code),
     sapClass: enumCol('CHR_SAP_CLASS', SAP_CLASSES).notNull(),
     /** Metode scan proses ini. TM_LINE boleh menimpanya per lini. */
     scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM).notNull(),
@@ -312,7 +361,6 @@ export const processTypes = masterSchema.table(
   (t) => [
     uniqueIndex('TM_PROCESS_TYPE_CODE_UNIQUE').on(t.code),
     index('TM_PROCESS_TYPE_ORDER_IDX').on(t.sortOrder),
-    daftarNilai('TM_PROCESS_TYPE_CHR_PROCESS_GROUP_CHK', t.processGroup, PROCESS_GROUPS),
     daftarNilai('TM_PROCESS_TYPE_CHR_SAP_CLASS_CHK', t.sapClass, SAP_CLASSES),
     daftarNilai('TM_PROCESS_TYPE_CHR_SCAN_MODE_CHK', t.scanMode, SCAN_MODE_ENUM),
   ],
