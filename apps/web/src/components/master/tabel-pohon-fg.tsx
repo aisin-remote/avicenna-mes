@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useTransition } from 'react';
+import { useCallback, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-react';
 import { getEntityDef, SCAN_MODE_LABELS } from '@avicenna/contracts';
@@ -18,6 +18,59 @@ type IsiFormulir = {
 const JUDUL = ['Part', 'Qty', 'BOM SAP', 'Rute proses'];
 
 const LABEL_SOURCE: Record<string, string> = { E: 'Buatan sendiri', F: 'Beli' };
+
+/** Lebar satu tingkat pohon dan jarak kiri sel, dalam px. */
+const INDEN = 28;
+const TEPI = 16;
+/** Tinggi tengah baris pertama sel (padding atas + setengah tinggi teks). */
+const TENGAH_BARIS = 22;
+
+type Garis = 'lanjut' | 'kosong' | 'cabang' | 'akhir';
+
+/**
+ * Garis pohon tiap baris, satu entri per tingkat 1..kedalaman.
+ *
+ * Tingkat di atas baris itu sendiri bergaris lurus bila leluhurnya masih punya
+ * saudara di bawah; tingkat baris itu sendiri bercabang bila ia bukan anak
+ * terakhir. Dihitung dari bawah karena "masih ada saudara" baru diketahui
+ * setelah melihat baris sesudahnya.
+ */
+function garisPohon(simpul: SimpulBomFg[]): Garis[][] {
+  const hasil: Garis[][] = new Array(simpul.length);
+  const masihAda: boolean[] = [];
+  for (let i = simpul.length - 1; i >= 0; i--) {
+    const d = simpul[i]!.kedalaman;
+    const baris: Garis[] = [];
+    for (let t = 1; t < d; t++) baris.push(masihAda[t] ? 'lanjut' : 'kosong');
+    if (d > 0) baris.push(masihAda[d] ? 'cabang' : 'akhir');
+    hasil[i] = baris;
+    masihAda[d] = true;
+    masihAda.length = d + 1;
+  }
+  return hasil;
+}
+
+function GarisPohon({ garis }: { garis: Garis[] }) {
+  return garis.map((g, i) => {
+    if (g === 'kosong') return null;
+    const x = TEPI + i * INDEN + 8;
+    const lurus = g !== 'akhir';
+    return (
+      <span key={i} aria-hidden>
+        <span
+          className="absolute w-px bg-ink-muted/55"
+          style={{ left: x, top: 0, ...(lurus ? { bottom: -1 } : { height: TENGAH_BARIS }) }}
+        />
+        {g !== 'lanjut' ? (
+          <span
+            className="absolute h-px bg-ink-muted/55"
+            style={{ left: x, top: TENGAH_BARIS, width: INDEN - 12 }}
+          />
+        ) : null}
+      </span>
+    );
+  });
+}
 
 /** Pohon satu FG. Susunan dan kolom BOM hanya dibaca; part dan rutenya bisa disunting. */
 export function TabelPohonFg({
@@ -41,6 +94,7 @@ export function TabelPohonFg({
   const toast = useToast();
 
   const pabrikAkar = simpul[0]?.part?.plantId;
+  const garis = useMemo(() => garisPohon(simpul), [simpul]);
 
   function buka(isi: IsiFormulir) {
     setForm(isi);
@@ -70,6 +124,10 @@ export function TabelPohonFg({
     return options.locations?.find((o) => o.short === kode && o.plantId === plantId)?.value;
   }
 
+  function kodeLokasi(id: number | null) {
+    return id === null ? undefined : options.locations?.find((o) => o.value === id)?.short;
+  }
+
   function tambahPart(s: SimpulBomFg) {
     buka({
       entity: 'parts',
@@ -77,6 +135,7 @@ export function TabelPohonFg({
         plantId: pabrikAkar,
         partNumber: s.partNumberMaster,
         uom: s.uom,
+        outputLocationId: pabrikAkar ? lokasiDariKode(s.sloc, pabrikAkar) : undefined,
         sourceType: s.source === 'F' ? 'PURCHASED' : 'MANUFACTURED',
         partType: s.kedalaman === 0 ? 'FINISHED_GOOD' : s.source === 'F' ? 'COMPONENT' : 'WIP',
       },
@@ -91,7 +150,6 @@ export function TabelPohonFg({
         plantId: s.part.plantId,
         partId: s.part.id,
         seqNo: (s.rute.length + 1) * 10,
-        outputLocationId: lokasiDariKode(s.sloc, s.part.plantId),
       },
     });
   }
@@ -114,12 +172,13 @@ export function TabelPohonFg({
             </tr>
           </thead>
           <tbody>
-            {simpul.map((s) => (
+            {simpul.map((s, i) => (
               <tr key={s.kunci}>
                 <td
-                  className="min-w-[320px] border-b border-line py-3 pr-4 align-top"
-                  style={{ paddingLeft: `${16 + s.kedalaman * 20}px` }}
+                  className="relative min-w-[320px] border-b border-line py-3 pr-4 align-top"
+                  style={{ paddingLeft: `${TEPI + s.kedalaman * INDEN}px` }}
                 >
+                  <GarisPohon garis={garis[i] ?? []} />
                   <div className="tabular whitespace-nowrap font-semibold text-ink">
                     {s.partNumber}
                     {s.part?.backNumber ? ` (${s.part.backNumber})` : ''}
@@ -128,7 +187,8 @@ export function TabelPohonFg({
                     <>
                       <div className="text-[13px] text-ink-soft">{s.part.name}</div>
                       <div className="text-[12px] text-ink-muted">
-                        PV {s.part.productionVersion ?? 'kosong'}
+                        PV {s.part.productionVersion ?? 'kosong'} · SLOC tujuan{' '}
+                        {kodeLokasi(s.part.outputLocationId) ?? 'kosong'}
                       </div>
                       <div className="mt-1.5 flex items-center gap-1.5">
                         <TombolKecil
@@ -255,6 +315,7 @@ function BarisRute({
             {r.scanMode ? (SCAN_MODE_LABELS[r.scanMode as ScanMode] ?? r.scanMode) : 'Mode kosong'}
             {' · '}SAP {r.sapProductionEnabled ? 'ya' : 'tidak'}
             {r.requirePairing ? ' · Wajib belanja' : ''}
+            {r.cycleTime !== null ? ` · CT ${r.cycleTime} dtk` : ' · CT kosong'}
             {' · '}Seq {r.seqNo}
           </div>
         </div>

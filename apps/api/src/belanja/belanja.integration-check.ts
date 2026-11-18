@@ -18,7 +18,6 @@ import {
 import { susunKodeKartuKanban } from '@avicenna/domain';
 import { BelanjaService } from './belanja.service';
 import { ProcessTypeService } from '../master/process-type.service';
-import { KomponenService } from '../komponen/komponen.service';
 
 /**
  * Pemeriksaan alur belanja dari ujung ke ujung, memakai service yang SAMA
@@ -66,7 +65,7 @@ async function main() {
           processType: 'ASSEMBLING_BODY_FG',
           partType: 'FINISHED_GOOD',
           sourceType: 'MANUFACTURED',
-          qtyPerKanban: 100,
+          qtyPerKanban: 8,
         })
         .returning({ id: parts.id });
 
@@ -80,7 +79,7 @@ async function main() {
           processType: 'PAINTING_FG',
           partType: 'WIP',
           sourceType: 'MANUFACTURED',
-          qtyPerKanban: 50,
+          qtyPerKanban: 16,
         })
         .returning({ id: parts.id });
 
@@ -117,26 +116,26 @@ async function main() {
         },
       ]);
 
-      const [kartuFg] = await tx
-        .insert(kanbans)
-        .values({
+      // Enam kartu induk isi 8 (9006 cadangan untuk sesi kedua).
+      await tx.insert(kanbans).values(
+        ['9001', '9002', '9003', '9004', '9005', '9006'].map((seri) => ({
           plantId: pabrik.id,
           partId: partFg!.id,
-          serialNumber: '9001',
-          qtyPerBox: 100,
-          status: 'AVAILABLE',
-        })
-        .returning({ id: kanbans.id });
+          serialNumber: seri,
+          qtyPerBox: 8,
+          status: 'AVAILABLE' as const,
+        })),
+      );
 
       const penuhPada = new Date('2026-11-01T01:00:00.000Z');
       const kartuWip = await tx
         .insert(kanbans)
         .values(
-          ['9101', '9102', '9103'].map((seri) => ({
+          ['9101', '9102', '9103', '9104'].map((seri) => ({
             plantId: pabrik.id,
             partId: partWip!.id,
             serialNumber: seri,
-            qtyPerBox: 50,
+            qtyPerBox: 16,
             status: 'PRODUCED' as const,
             producedAt: penuhPada,
             cycleCount: 7,
@@ -152,102 +151,139 @@ async function main() {
         requirePairing: true,
       });
 
-      /* ── 1. Membuka sesi dengan kartu FG ───────────────────────────────── */
+      /* ── 1. Membuka sesi dengan kartu induk ────────────────────────────── */
       const buka = await belanja.scan({
         plantCode: 'BODY',
         rawCode: 'ZA01|9001',
+        indukKanbanIds: [],
         wipKanbanIds: [],
       });
       assert.equal(buka.hasil, 'DITERIMA', buka.pesan);
-      assert.equal(buka.sisi, 'FG');
-      assert.equal(buka.sesi?.unitFg, 100);
-      catat('kartu FG membuka sesi, isi box terbaca 100 unit');
+      assert.equal(buka.sisi, 'INDUK');
+      assert.equal(buka.sesi?.unitInduk, 8);
+      catat('kartu induk membuka sesi, isi box terbaca 8 unit');
 
       // Part beli tidak ikut: ia datang lewat kartu ARES, bukan dari rak.
       assert.equal(buka.sesi?.komponen.length, 1);
       assert.equal(buka.sesi?.komponen[0]?.partNumber, 'UJI-PAINT-660A');
-      assert.equal(buka.sesi?.komponen[0]?.dibutuhkan, 100);
       catat('hanya komponen buatan sendiri yang diminta; part beli dilewati');
 
-      const fgId = buka.sesi!.fg.kanbanId;
+      const fgId = buka.sesi!.induk[0]!.kanbanId;
 
-      /*
-       * Isi QR kartu CETAKAN SENDIRI harus membuka kartu yang sama.
-       *
-       * Di atas kartunya dibuka dengan bentuk ketik manual (`ZA01|9001`), yang
-       * memang masih sah. Tetapi yang discan sehari-hari adalah QR-nya, dan
-       * isinya lima ruas lengkap — kalau stasiun ini hanya mengerti bentuk
-       * pendeknya, belanja mustahil dilakukan dengan kartu sungguhan.
-       */
+      // Isi QR kartu cetakan sendiri harus membuka kartu yang sama dengan ketik manual.
       const lewatQr = await belanja.scan({
         plantCode: 'BODY',
         rawCode: susunKodeKartuKanban({
           partNumber: 'UJI-ASSY-660A',
           backNumber: 'ZA01',
           serialNumber: '9001',
-          qtyPerBox: 100,
+          qtyPerBox: 8,
         }),
+        indukKanbanIds: [],
         wipKanbanIds: [],
       });
       assert.equal(lewatQr.hasil, 'DITERIMA', lewatQr.pesan);
-      assert.equal(lewatQr.sesi?.fg.kanbanId, fgId, 'QR dan ketik manual menuju kartu yang sama');
+      assert.equal(lewatQr.sesi?.induk[0]?.kanbanId, fgId, 'QR dan ketik manual menuju kartu yang sama');
       catat('isi QR kartu cetakan sendiri terbaca di stasiun belanja');
 
-      /* ── 2. Menembak kartu WIP satu per satu ───────────────────────────── */
+      /* ── 2. Kartu induk tambahan: 5 × 8 = 40 unit ──────────────────────── */
+      let indukIds = [fgId];
+      for (const seri of ['9002', '9003', '9004', '9005']) {
+        const r = await belanja.scan({
+          plantCode: 'BODY',
+          rawCode: `ZA01|${seri}`,
+          indukKanbanIds: indukIds,
+          wipKanbanIds: [],
+        });
+        assert.equal(r.hasil, 'DITERIMA', r.pesan);
+        assert.equal(r.sisi, 'INDUK');
+        indukIds = r.sesi!.induk.map((k) => k.kanbanId);
+      }
+      const limaInduk = await belanja.scan({
+        plantCode: 'BODY',
+        rawCode: 'ZA01|9005',
+        indukKanbanIds: indukIds,
+        wipKanbanIds: [],
+      });
+      assert.match(limaInduk.pesan, /sudah ditembak/);
+      assert.equal(limaInduk.sesi?.unitInduk, 40);
+      assert.equal(limaInduk.sesi?.komponen[0]?.dibutuhkan, 40);
+      catat('lima kartu induk isi 8: kebutuhan 40 unit, induk kembar ditolak');
+
+      /* ── 3. Kartu turunan isi 16: cukup 3 kartu ────────────────────────── */
       const satu = await belanja.scan({
         plantCode: 'BODY',
-        fgKanbanId: fgId,
         rawCode: 'ZP01|9101',
+        indukKanbanIds: indukIds,
         wipKanbanIds: [],
       });
       assert.equal(satu.hasil, 'DITERIMA', satu.pesan);
-      assert.equal(satu.sesi?.komponen[0]?.dibawa, 50);
+      assert.equal(satu.sisi, 'TURUNAN');
+      assert.equal(satu.sesi?.komponen[0]?.kartuDibutuhkan, 3);
       assert.equal(satu.sesi?.bolehDisimpan, false);
-      catat('satu box: 50/100, belum boleh disimpan');
+      catat('turunan isi 16 untuk 40 unit: butuh 3 kartu, belum boleh disimpan');
+
+      const tambahInduk = await belanja.scan({
+        plantCode: 'BODY',
+        rawCode: 'ZA01|9006',
+        indukKanbanIds: indukIds,
+        wipKanbanIds: [kartuWip[0]!.id],
+      });
+      assert.equal(tambahInduk.hasil, 'DITOLAK');
+      assert.match(tambahInduk.pesan, /tidak bisa ditambah/);
+      catat('induk tidak bisa ditambah setelah turunan mulai discan');
 
       const dua = await belanja.scan({
         plantCode: 'BODY',
-        fgKanbanId: fgId,
         rawCode: 'ZP01|9102',
+        indukKanbanIds: indukIds,
         wipKanbanIds: [kartuWip[0]!.id],
       });
-      assert.equal(dua.sesi?.komponen[0]?.dibawa, 100);
-      assert.equal(dua.sesi?.bolehDisimpan, true);
-      catat('dua box: 100/100, boleh disimpan');
-
       const tiga = await belanja.scan({
         plantCode: 'BODY',
-        fgKanbanId: fgId,
         rawCode: 'ZP01|9103',
+        indukKanbanIds: indukIds,
         wipKanbanIds: [kartuWip[0]!.id, kartuWip[1]!.id],
       });
-      assert.equal(tiga.sesi?.bolehDisimpan, false, 'kelebihan harus menghalangi');
-      assert.match(tiga.sesi!.galat.join(' '), /lebih 50/);
-      catat('tiga box: 150/100 ditolak, bukan dibiarkan lolos');
+      assert.equal(dua.sesi?.bolehDisimpan, false);
+      assert.equal(tiga.sesi?.komponen[0]?.dibawa, 48);
+      assert.equal(tiga.sesi?.bolehDisimpan, true, tiga.sesi?.galat.join(' '));
+      catat('tiga kartu isi 16 = 48 untuk 40: cukup, sisa 8 tidak menghalangi');
+
+      const empat = await belanja.scan({
+        plantCode: 'BODY',
+        rawCode: 'ZP01|9104',
+        indukKanbanIds: indukIds,
+        wipKanbanIds: kartuWip.slice(0, 3).map((k) => k.id),
+      });
+      assert.equal(empat.hasil, 'DITOLAK');
+      assert.match(empat.pesan, /sudah cukup/);
+      catat('kartu turunan keempat ditolak: kebutuhan sudah terpenuhi');
 
       const ulang = await belanja.scan({
         plantCode: 'BODY',
-        fgKanbanId: fgId,
         rawCode: 'ZP01|9101',
+        indukKanbanIds: indukIds,
         wipKanbanIds: [kartuWip[0]!.id],
       });
       assert.equal(ulang.hasil, 'DITOLAK');
       assert.match(ulang.pesan, /sudah ditembak/);
       catat('kartu yang sama ditembak dua kali ditolak');
 
-      /* ── 3. Menyimpan ──────────────────────────────────────────────────── */
+      /* ── 4. Menyimpan ──────────────────────────────────────────────────── */
       const gagal = await belanja.simpan({
         plantCode: 'BODY',
-        fgKanbanId: fgId,
+        indukKanbanIds: indukIds,
         wipKanbanIds: kartuWip.map((k) => k.id),
       });
-      assert.equal(gagal.hasil, 'DITOLAK', 'tiga box tidak boleh tersimpan');
-      catat('simpan dengan jumlah tidak pas ditolak di server, bukan hanya di layar');
+      assert.equal(gagal.hasil, 'DITOLAK', 'box yang tidak dibutuhkan tidak boleh ikut tersimpan');
+      catat('simpan dengan box berlebih ditolak di server, bukan hanya di layar');
 
+      const tigaWip = kartuWip.slice(0, 3).map((k) => k.id);
       const simpan = await belanja.simpan({
         plantCode: 'BODY',
-        fgKanbanId: fgId,
-        wipKanbanIds: [kartuWip[0]!.id, kartuWip[1]!.id],
+        indukKanbanIds: indukIds,
+        wipKanbanIds: tigaWip,
       });
       assert.equal(simpan.hasil, 'DITERIMA', simpan.pesan);
 
@@ -259,103 +295,83 @@ async function main() {
           producedAt: kanbans.producedAt,
         })
         .from(kanbans)
-        .where(inArray(kanbans.id, [fgId, ...kartuWip.map((k) => k.id)]));
+        .where(inArray(kanbans.id, [...indukIds, ...kartuWip.map((k) => k.id)]));
+      assert.ok(indukIds.every((id) => sesudah.find((k) => k.id === id)?.status === 'SHOPPED'));
+      catat('kelima kartu induk menunggu produksi: SHOPPED');
 
-      assert.equal(sesudah.find((k) => k.id === fgId)?.status, 'SHOPPED');
-      catat('kartu induk menunggu produksi: SHOPPED');
-
-      /*
-       * Inilah perubahan pentingnya: kartu box LEPAS di belanja, bukan nanti
-       * saat induknya discan produksi. Di situlah kartunya benar-benar dicopot
-       * dan dibawa pulang ke pos.
-       */
       const box1 = sesudah.find((k) => k.id === kartuWip[0]!.id)!;
       assert.equal(box1.status, 'AVAILABLE', 'kartu box lepas pada saat belanja');
       assert.equal(box1.producedAt, null);
       assert.equal(box1.cycleCount, 8, 'putaran kartu box bertambah satu');
-      catat('kartu box lepas ke AVAILABLE saat belanja, putaran bertambah');
-
-      assert.equal(
-        sesudah.find((k) => k.id === kartuWip[2]!.id)?.status,
-        'PRODUCED',
-        'box yang tidak ikut belanja tidak boleh berubah',
-      );
-      catat('box yang tidak ikut belanja tetap PRODUCED di rak');
+      assert.equal(sesudah.find((k) => k.id === kartuWip[3]!.id)?.status, 'PRODUCED');
+      catat('kartu turunan lepas ke AVAILABLE; box yang tidak ikut tetap PRODUCED');
 
       const pasangan = await tx
         .select()
         .from(kanbanPairings)
-        .where(eq(kanbanPairings.fgKanbanId, fgId));
-      assert.equal(pasangan.length, 2);
-      assert.equal(pasangan[0]?.qty, 50, 'jumlah per box ikut disalin ke pasangannya');
-      assert.deepEqual(
-        pasangan[0]?.wipProducedAt,
-        penuhPada,
-        'waktu box dinyatakan penuh ikut disalin, supaya pembatalan bisa memulihkannya',
+        .where(inArray(kanbanPairings.fgKanbanId, indukIds));
+      const susunan = indukIds.map((id) =>
+        pasangan.filter((p) => p.fgKanbanId === id).map((p) => [p.wipKanbanId, p.qty]),
       );
-      catat('pasangan menyimpan jumlah dan waktu produksi box');
-
-      const eventInduk = await tx
-        .select()
-        .from(kanbanEvents)
-        .where(and(eq(kanbanEvents.kanbanId, fgId), eq(kanbanEvents.type, 'SHOPPED')));
-      assert.equal(eventInduk.length, 2, 'satu event per pasangan di kartu induk');
-      assert.ok(eventInduk.every((e) => e.pairedKanbanId !== null));
+      assert.deepEqual(susunan, [
+        [[kartuWip[0]!.id, 8]],
+        [[kartuWip[0]!.id, 8]],
+        [[kartuWip[1]!.id, 8]],
+        [[kartuWip[1]!.id, 8]],
+        [[kartuWip[2]!.id, 8]],
+      ]);
+      assert.deepEqual(pasangan[0]?.wipProducedAt, penuhPada);
+      catat('satu box isi 16 terbagi ke dua induk isi 8, dicatat per pasangan');
 
       const eventBox = await tx
         .select()
         .from(kanbanEvents)
         .where(eq(kanbanEvents.kanbanId, kartuWip[0]!.id));
-      assert.ok(
-        eventBox.some((e) => e.type === 'SHOPPED') && eventBox.some((e) => e.type === 'RELEASED'),
-        'kartu box dapat SHOPPED (masuk ke mana) dan RELEASED (putarannya tutup)',
-      );
-      catat('riwayat tercatat di kedua kartu: SHOPPED di induk, SHOPPED+RELEASED di box');
+      assert.equal(eventBox.filter((e) => e.type === 'SHOPPED').length, 2);
+      assert.equal(eventBox.filter((e) => e.type === 'RELEASED').length, 1);
+      catat('riwayat box: SHOPPED ke dua induk, satu RELEASED');
 
-      /* ── 4. Interlock ke HULU ──────────────────────────────────────────── */
+      /* ── 5. Interlock ke HULU ──────────────────────────────────────────── */
+      const [kartuEnam] = await tx
+        .select({ id: kanbans.id })
+        .from(kanbans)
+        .where(and(eq(kanbans.partId, partFg!.id), eq(kanbans.serialNumber, '9006')));
       const belumTerisi = await belanja.scan({
         plantCode: 'BODY',
-        fgKanbanId: fgId,
         rawCode: 'ZP01|9101',
+        indukKanbanIds: [kartuEnam!.id],
         wipKanbanIds: [],
       });
       assert.equal(belumTerisi.hasil, 'DITOLAK');
       assert.match(belumTerisi.pesan, /belum berisi barang/);
       catat('kartu box yang sudah lepas tidak bisa dibelanjakan lagi sebelum terisi');
 
-      assert.equal(
-        await belanja.menungguBelanjaHilir(pabrik.id, partWip!.id),
-        true,
-        'part painting punya induk yang mewajibkan belanja',
-      );
-      assert.equal(
-        await belanja.menungguBelanjaHilir(pabrik.id, partFg!.id),
-        false,
-        'part assembling tidak punya induk berbelanja',
-      );
+      assert.equal(await belanja.menungguBelanjaHilir(pabrik.id, partWip!.id), true);
+      assert.equal(await belanja.menungguBelanjaHilir(pabrik.id, partFg!.id), false);
       catat('stasiun scan bisa membedakan "box belum diambil hilir" dari "kartu sudah dipakai"');
 
       const sudahBelanjaLagi = await belanja.scan({
         plantCode: 'BODY',
         rawCode: 'ZA01|9001',
+        indukKanbanIds: [],
         wipKanbanIds: [],
       });
       assert.equal(sudahBelanjaLagi.hasil, 'DITOLAK');
       assert.match(sudahBelanjaLagi.pesan, /sudah belanja/);
       catat('kartu induk yang sudah belanja tidak bisa membuka sesi kedua');
 
-      /* ── 5. Daftar tunggu ──────────────────────────────────────────────── */
+      /* ── 6. Daftar tunggu ──────────────────────────────────────────────── */
       const stasiun = await belanja.stasiun('BODY');
       assert.ok(stasiun.prosesWajib.includes('ASSEMBLING_BODY_FG'));
       const menunggu = stasiun.menunggu.find((m) => m.fgKanbanId === fgId);
       assert.ok(menunggu, 'kartu yang sudah belanja harus muncul di daftar tunggu');
-      assert.equal(menunggu.jumlahKartu, 2);
-      assert.equal(menunggu.unit, 100);
-      catat('daftar tunggu menampilkan 2 box / 100 unit');
+      assert.equal(menunggu.unit, 8);
+      catat('daftar tunggu menampilkan tiap induk dengan bagiannya: 8 unit');
 
-      /* ── 6. Membatalkan ───────────────────────────────────────────────── */
-      const batal = await belanja.batal({ plantCode: 'BODY', fgKanbanId: fgId });
+      /* ── 7. Membatalkan satu induk = membatalkan seluruh belanjanya ────── */
+      const batal = await belanja.batal({ plantCode: 'BODY', fgKanbanId: indukIds[2]! });
       assert.equal(batal.hasil, 'DITERIMA', batal.pesan);
+      assert.deepEqual([...batal.indukDibatalkan].sort(), [...indukIds].sort());
       const setelahBatal = await tx
         .select({
           id: kanbans.id,
@@ -364,52 +380,56 @@ async function main() {
           producedAt: kanbans.producedAt,
         })
         .from(kanbans)
-        .where(inArray(kanbans.id, [fgId, kartuWip[0]!.id]));
-      assert.equal(setelahBatal.find((k) => k.id === fgId)?.status, 'AVAILABLE');
+        .where(inArray(kanbans.id, [...indukIds, ...tigaWip]));
+      assert.ok(indukIds.every((id) => setelahBatal.find((k) => k.id === id)?.status === 'AVAILABLE'));
       const dipulihkan = setelahBatal.find((k) => k.id === kartuWip[0]!.id)!;
       assert.equal(dipulihkan.status, 'PRODUCED', 'kartu dipasang kembali ke box-nya');
-      assert.deepEqual(
-        dipulihkan.producedAt,
-        penuhPada,
-        'waktu produksi box dipulihkan apa adanya',
-      );
+      assert.deepEqual(dipulihkan.producedAt, penuhPada);
       assert.equal(dipulihkan.cycleCount, 7, 'putaran dikurangi: pergi-dan-kembali tidak terjadi');
       assert.equal(
-        (await tx.select().from(kanbanPairings).where(eq(kanbanPairings.fgKanbanId, fgId))).length,
+        (await tx.select().from(kanbanPairings).where(inArray(kanbanPairings.fgKanbanId, indukIds)))
+          .length,
         0,
       );
-      catat('pembatalan memasang kartu kembali dengan waktu dan putaran yang benar');
+      catat('batal satu induk membatalkan kelima induk dan memasang kembali tiga box');
 
-      /* ── 7. Pembatalan DITOLAK bila kartunya sudah jalan ─────────────── */
+      /* ── 8. Pembatalan DITOLAK bila kartunya sudah jalan ─────────────── */
       const simpanLagi = await belanja.simpan({
         plantCode: 'BODY',
-        fgKanbanId: fgId,
-        wipKanbanIds: [kartuWip[0]!.id, kartuWip[1]!.id],
+        indukKanbanIds: indukIds,
+        wipKanbanIds: tigaWip,
       });
       assert.equal(simpanLagi.hasil, 'DITERIMA', simpanLagi.pesan);
 
-      // Lini painting memakai kartu yang baru kembali itu untuk box baru.
       await tx
         .update(kanbans)
         .set({ status: 'PRODUCED', producedAt: new Date() })
         .where(eq(kanbans.id, kartuWip[0]!.id));
-
       const batalTerlambat = await belanja.batal({ plantCode: 'BODY', fgKanbanId: fgId });
       assert.equal(batalTerlambat.hasil, 'DITOLAK');
       assert.match(batalTerlambat.pesan, /sudah dipakai lagi/);
-      catat('pembatalan ditolak kalau kartunya sudah membawa box lain — bukan ditarik diam-diam');
+      catat('pembatalan ditolak kalau kartu turunan sudah membawa box lain');
 
-      /* ── 8. Scan produksi induk menutup pasangannya ──────────────────── */
+      // Kartu turunan dikembalikan; kini satu induk discan produksi.
+      await tx
+        .update(kanbans)
+        .set({ status: 'AVAILABLE', producedAt: null })
+        .where(eq(kanbans.id, kartuWip[0]!.id));
       assert.equal(await belanja.sudahBelanja(fgId), true);
-      const ditutup = await belanja.tutupPasangan(tx, fgId);
-      assert.equal(ditutup, 2);
+      assert.equal(await belanja.tutupPasangan(tx, fgId), 1);
+      await tx.update(kanbans).set({ status: 'PRODUCED' }).where(eq(kanbans.id, fgId));
       assert.equal(await belanja.sudahBelanja(fgId), false);
+
+      const batalSebagian = await belanja.batal({ plantCode: 'BODY', fgKanbanId: indukIds[1]! });
+      assert.equal(batalSebagian.hasil, 'DITOLAK');
+      assert.match(batalSebagian.pesan, /sudah discan produksi/);
+      catat('pembatalan ditolak bila induk lain dari belanja yang sama sudah diproduksi');
       assert.equal(
         (await belanja.stasiun('BODY')).menunggu.some((m) => m.fgKanbanId === fgId),
         false,
-        'kartu yang sudah produksi hilang dari daftar tunggu',
+        'induk yang sudah produksi hilang dari daftar tunggu',
       );
-      catat('scan produksi induk menutup pasangan dan mengosongkan daftar tunggu');
+      catat('scan produksi induk menutup pasangannya sendiri');
 
       /* ── 9. Berjenjang: painting juga wajib belanja ──────────────────── */
       await tx.insert(partProcesses).values({
@@ -444,69 +464,45 @@ async function main() {
 
       const kartuInj = await tx
         .insert(kanbans)
-        .values(
-          ['9201'].map((seri) => ({
-            plantId: pabrik.id,
-            partId: partInj!.id,
-            serialNumber: seri,
-            qtyPerBox: 50,
-            status: 'PRODUCED' as const,
-            producedAt: penuhPada,
-          })),
-        )
+        .values({
+          plantId: pabrik.id,
+          partId: partInj!.id,
+          serialNumber: '9201',
+          qtyPerBox: 50,
+          status: 'PRODUCED' as const,
+          producedAt: penuhPada,
+        })
         .returning({ id: kanbans.id });
 
       // Kartu painting 9102 sedang AVAILABLE — baru lepas dari belanja assy.
       const belanjaPainting = await belanja.scan({
         plantCode: 'BODY',
         rawCode: 'ZP01|9102',
+        indukKanbanIds: [],
         wipKanbanIds: [],
       });
       assert.equal(belanjaPainting.hasil, 'DITERIMA', belanjaPainting.pesan);
       assert.equal(belanjaPainting.sesi?.komponen[0]?.partNumber, 'UJI-INJ-660A');
-      assert.equal(belanjaPainting.sesi?.komponen[0]?.dibutuhkan, 50);
-      catat('kartu painting kini jadi INDUK: meminta kartu injection sesuai pasangannya');
+      catat('kartu painting kini jadi INDUK: meminta kartu injection sesuai BOM-nya');
 
-      const paintingId = belanjaPainting.sesi!.fg.kanbanId;
+      const paintingId = belanjaPainting.sesi!.induk[0]!.kanbanId;
       const simpanPainting = await belanja.simpan({
         plantCode: 'BODY',
-        fgKanbanId: paintingId,
+        indukKanbanIds: [paintingId],
         wipKanbanIds: [kartuInj[0]!.id],
       });
       assert.equal(simpanPainting.hasil, 'DITERIMA', simpanPainting.pesan);
-
-      const berjenjang = await tx
-        .select({ id: kanbans.id, status: kanbans.status })
-        .from(kanbans)
-        .where(inArray(kanbans.id, [paintingId, kartuInj[0]!.id]));
-      assert.equal(berjenjang.find((k) => k.id === paintingId)?.status, 'SHOPPED');
-      assert.equal(berjenjang.find((k) => k.id === kartuInj[0]!.id)?.status, 'AVAILABLE');
       catat('satu kartu bisa jadi induk di satu tingkat dan box di tingkat lain');
 
       const paintingSebagaiBox = await belanja.scan({
         plantCode: 'BODY',
-        fgKanbanId: fgId,
         rawCode: 'ZP01|9102',
+        indukKanbanIds: [kartuEnam!.id],
         wipKanbanIds: [],
       });
       assert.equal(paintingSebagaiBox.hasil, 'DITOLAK');
       assert.match(paintingSebagaiBox.pesan, /belum discan produksi/);
       catat('kartu SHOPPED tidak bisa dibelanjakan: box-nya belum penuh');
-
-      /* ── 10. Stasiun kanban tidak melayani kartu internal ───────────── */
-      const komponen = new KomponenService(sebagaiDb);
-
-      /*
-       * Kartu 9103 masih PRODUCED dan kartunya milik kita sendiri. Stasiun
-       * Scan Komponen hanya untuk kartu ARES — menerimanya di sana akan
-       * melepaskan kartu tanpa box-nya pernah dicocokkan, dan interlock
-       * belanja hilang tanpa jejak.
-       */
-      const lewatStasiun = await komponen.scan({ plantCode: 'BODY', rawCode: 'ZP01|9103' });
-      assert.equal(lewatStasiun.hasil, 'DITOLAK');
-      assert.match(lewatStasiun.pesan, /kartu kanban internal/);
-      assert.equal(lewatStasiun.jenisKartu, null, 'bukan kartu ARES, jadi jenisnya tidak diakui');
-      catat('stasiun Scan Komponen menolak kartu kanban internal');
 
       /*
        * Dibatalkan, SELALU. Lihat catatan di kepala berkas: fixture yang

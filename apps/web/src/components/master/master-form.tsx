@@ -12,6 +12,7 @@ import { saveMasterAction, type FormState } from '@/app/(app)/master/actions';
 import { useToast } from '../ui/toast';
 import { useHasilAksi } from '../ui/use-hasil-aksi';
 import { BidangGambar } from './bidang-gambar';
+import { PilihCari, PilihCariBanyak } from '../ui/pilih-cari';
 import { durations, easeSoft, springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
@@ -100,17 +101,22 @@ export function MasterForm({
 
   useHasilAksi(state, (hasil) => {
     if (!hasil.ok) return;
-    toast.ok(`${def.singular} tersimpan.`);
+    toast.ok(
+      hasil.jumlah && hasil.jumlah > 1
+        ? `${hasil.jumlah} ${def.singular} tersimpan.`
+        : `${def.singular} tersimpan.`,
+    );
     onClose();
     router.refresh();
   });
 
   /*
-   * Galat tingkat formulir (bukan per kolom) jadi toast.
+   * Setiap penolakan jadi toast, termasuk galat per kolom.
    *
-   * Panel ini bisa lebih tinggi dari layar — part punya 14 kolom. Banner di
-   * atasnya luput saat orang menekan Simpan di bawah; toast tidak ikut
-   * menggulir. Galat per kolom tetap di bawah kolomnya: di situlah diperbaiki.
+   * Panel ini bisa lebih tinggi dari layar — part punya 14 kolom. Galat di
+   * bawah kolom yang sudah tergulir ke atas luput saat orang menekan Simpan di
+   * bawah, dan tanpa toast panelnya tampak diam saja. Toast menyebut kolomnya;
+   * pesan di bawah kolom tetap ada, karena di situlah diperbaiki.
    */
   /*
    * Satu hasil = satu toast.
@@ -120,7 +126,15 @@ export function MasterForm({
    * orangnya mengira tombolnya tidak jalan.
    */
   useHasilAksi(state, (hasil) => {
-    if (hasil.error && !hasil.fieldErrors) toast.galat(hasil.error, 'Tidak tersimpan');
+    if (!hasil.error) return;
+    if (!hasil.fieldErrors) {
+      toast.galat(hasil.error, 'Tidak tersimpan');
+      return;
+    }
+    const daftar = Object.entries(hasil.fieldErrors).map(
+      ([nama, pesan]) => `${def.fields.find((f) => f.name === nama)?.label ?? nama}: ${pesan}`,
+    );
+    toast.galat(daftar.join(' · '), 'Tidak tersimpan');
   });
 
   // Esc menutup panel — jalan pintas yang diharapkan ada pada panel semacam ini.
@@ -197,8 +211,12 @@ export function MasterForm({
               <div className="scroll-slim flex-1 space-y-5 overflow-y-auto px-6 py-6">
                 {def.fields.map((field) => (
                   <Field
-                    key={field.name}
+                    // Pemilih part berbasis state sendiri: dipasang ulang saat
+                    // pabrik berganti supaya pilihan milik pabrik lama tidak
+                    // ikut terkirim. Kolom lain tetap, agar isiannya tidak hilang.
+                    key={field.refEntity === 'parts' ? `${field.name}-${plantId}` : field.name}
                     field={field}
+                    tambah={!isEdit}
                     value={isi?.[field.name]}
                     options={saringPerPabrik(options[field.refEntity ?? ''] ?? [], plantId)}
                     dariMaster={
@@ -335,9 +353,12 @@ function Field({
   dariMaster,
   error,
   tergantungPabrik = false,
+  tambah = false,
   onChange,
 }: {
   field: FieldDef;
+  /** Formulir tambah (bukan ubah) — kolom `banyakSaatTambah` jadi pilih-banyak. */
+  tambah?: boolean;
   value: unknown;
   options: RefOption[];
   /** Pilihan untuk kolom `optionsFrom`; kosong berarti kolomnya bukan jenis itu. */
@@ -392,7 +413,14 @@ function Field({
           <label id={id} className="block text-[14px] font-semibold">
             {field.label}
           </label>
-          {field.hint ? (
+          {/* Server juga menolak lewat sakelar (push SAP, Utama); tanpa ini
+              pesannya tidak tampil di mana pun. */}
+          {error ? (
+            <p role="alert" className="mt-0.5 flex items-start gap-1.5 text-[13px] text-ng">
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+              {error}
+            </p>
+          ) : field.hint ? (
             <p className="mt-0.5 text-[13px] leading-snug text-ink-muted">{field.hint}</p>
           ) : null}
         </div>
@@ -437,6 +465,32 @@ function Field({
               : String(value)
           }
         />
+      ) : field.kind === 'reference' && field.refEntity === 'parts' ? (
+        /* Part ribuan baris: dropdown biasa tidak bisa dicari. */
+        field.banyakSaatTambah && tambah ? (
+          <PilihCariBanyak
+            name={field.name}
+            labelName={`__label_${field.name}`}
+            pilihan={options.map((o) => ({
+              value: String(o.value),
+              label: o.label,
+              ringkas: o.short,
+            }))}
+            defaultValue={value === undefined || value === null ? [] : [String(value)]}
+            placeholder={tergantungPabrik ? '— pilih pabrik dulu —' : '— pilih satu atau lebih —'}
+            required={field.required}
+            disabled={tergantungPabrik}
+          />
+        ) : (
+          <PilihCari
+            name={field.name}
+            pilihan={options.map((o) => ({ value: String(o.value), label: o.label }))}
+            defaultValue={value === undefined || value === null ? '' : String(value)}
+            placeholder={tergantungPabrik ? '— pilih pabrik dulu —' : '— pilih —'}
+            required={field.required}
+            disabled={tergantungPabrik}
+          />
+        )
       ) : field.kind === 'reference' ? (
         <select
           id={id}

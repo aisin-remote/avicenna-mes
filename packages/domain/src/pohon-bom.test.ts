@@ -23,7 +23,13 @@ describe('akarBom', () => {
 
 describe('ratakanPohonBom', () => {
   it('sub-assy bersama dirinci di setiap FG yang memakainya', () => {
-    const data = [b('F1', 'F1'), b('F2', 'F2'), b('F1', 'S'), b('F2', 'S'), b('S', 'X', { qty: 4 })];
+    const data = [
+      b('F1', 'F1'),
+      b('F2', 'F2'),
+      b('F1', 'S'),
+      b('F2', 'S'),
+      b('S', 'X', { qty: 4 }),
+    ];
     expect(ratakanPohonBom(data, 'F2').map((s) => [s.kunci, s.kedalaman, s.qty])).toEqual([
       ['F2', 0, 1],
       ['F2>S', 1, 1],
@@ -66,6 +72,26 @@ describe('pasanganDariBom', () => {
     ]);
     expect(dilewati).toEqual([]);
     // Baris milik phantom tidak ikut sebagai induk sendiri.
+    expect(indukTersalin.sort()).toEqual([1, 2, 3]);
+  });
+
+  it('phantom yang ada di master tetap jadi tahap, rantai QR tidak putus', () => {
+    // Bentuk BOM J922: CH11 (MA) dan CG11 (DC) phantom, tetapi di-scan di lantai.
+    const data = [
+      b('FG', 'FG'),
+      b('FG', 'MA', { phantom: 'X' }),
+      b('MA', 'DC', { phantom: 'X' }),
+      b('DC', 'MELT', { phantom: 'X', qty: 2 }),
+      b('MELT', 'ING', { qty: 2178, uom: 'g' }),
+    ];
+    const { pasangan, dilewati, indukTersalin } = pasanganDariBom(data, cari);
+    expect(pasangan).toEqual([
+      { plantId: 9, indukId: 1, komponenId: 2, qtyPer: 1, uom: 'pcs' },
+      { plantId: 9, indukId: 2, komponenId: 3, qtyPer: 1, uom: 'pcs' },
+      // MELT tidak di master: tetap diurai.
+      { plantId: 9, indukId: 3, komponenId: 4, qtyPer: 4356, uom: 'g' },
+    ]);
+    expect(dilewati).toEqual([]);
     expect(indukTersalin.sort()).toEqual([1, 2, 3]);
   });
 

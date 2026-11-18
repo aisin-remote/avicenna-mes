@@ -1,12 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { bacaKanban, KanbanTidakTerbaca, ATURAN_KANBAN_BODY, ATURAN_KANBAN_AIGSYS } from './barcode';
+import {
+  bacaKanban,
+  KanbanTidakTerbaca,
+  KanbanRusakKetik,
+  kanbanAigsysRusak,
+  susunKanbanAigsys,
+  ATURAN_KANBAN_BODY,
+  ATURAN_KANBAN_AIGSYS,
+} from './barcode';
 
 /**
  * Membangun label posisi-tetap dengan panjang tertentu: isi kolom yang
  * dibaca, sisanya dipadatkan. Posisinya persis milik prdreport bella.
  */
-function label(panjang: 230 | 220 | 241 | 218, isi: { part: string; seri: string; back: string; pcs: string }) {
-  const posisi = { 230: [41, 19, 123], 220: [35, 12, 130], 241: [35, 12, 127], 218: [41, 16, 123] }[panjang]!;
+function label(
+  panjang: 230 | 220 | 241 | 218,
+  isi: { part: string; seri: string; back: string; pcs: string },
+) {
+  const posisi = { 230: [41, 19, 123], 220: [35, 12, 130], 241: [35, 12, 127], 218: [41, 16, 123] }[
+    panjang
+  ]!;
   const buf = Array<string>(panjang).fill('X');
   const tulis = (at: number, teks: string) => {
     for (let i = 0; i < teks.length; i += 1) buf[at + i] = teks[i]!;
@@ -78,7 +91,9 @@ describe('kanban AIGSYS bertoken', () => {
   });
 
   it('AIGSYS tanpa token seri tidak diklaim', () => {
-    expect(ATURAN_KANBAN_AIGSYS.baca('AIGSYS 0554321-AB1 BN07 12 END').serialNumber).toBeUndefined();
+    expect(
+      ATURAN_KANBAN_AIGSYS.baca('AIGSYS 0554321-AB1 BN07 12 END').serialNumber,
+    ).toBeUndefined();
     expect(() => bacaKanban('AIGSYS 0554321-AB1 BN07 12 END', BODY)).toThrow(KanbanTidakTerbaca);
   });
 });
@@ -87,5 +102,32 @@ describe('aturan UNIT tidak terganggu', () => {
   it('BACKNUMBER|SERIAL masih terbaca di kedua mode', () => {
     expect(bacaKanban('BN-001|1001', UNIT).serialNumber).toBe('1001');
     expect(bacaKanban('BN-001|1001', BODY).serialNumber).toBe('1001');
+  });
+});
+
+describe('kanban AIGSYS rusak koreksi otomatis', () => {
+  // Isi yang benar-benar masuk di AS0003 (12 Nov 2026): ". " di tempat spasi ganda.
+  const rusak =
+    'AIGSYSG.  922 JE10. JEAS0.  03 J.       021211034.    10.      F. 80000 JE       XXX        0       CI11 0000001000000000000004.                               0.                             0000.    01.             PC.';
+
+  it('ditolak dengan pesan penyebabnya, bukan dibaca jadi back number sampah', () => {
+    expect(kanbanAigsysRusak(rusak)).toBe(true);
+    expect(() => bacaKanban(rusak, { scanMode: 'PART_KANBAN' })).toThrow(KanbanRusakKetik);
+    expect(() => bacaKanban(rusak, { scanMode: 'KANBAN_BOX' })).toThrow(/koreksi otomatis/);
+  });
+
+  it('kartu cetakan Avicenna tetap terbaca', () => {
+    const benar = susunKanbanAigsys({
+      workCenter: 'AS0003',
+      partNumber: '21211034010',
+      sloc: 'F800',
+      backNumber: 'CI11',
+      serialNumber: '0004',
+      qtyPerBox: 1,
+    });
+    expect(kanbanAigsysRusak(benar)).toBe(false);
+    const hasil = bacaKanban(benar, { scanMode: 'PART_KANBAN' });
+    expect(hasil.backNumber).toBe('CI11');
+    expect(hasil.serialNumber).toBe('0004');
   });
 });

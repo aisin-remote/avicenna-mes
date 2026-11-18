@@ -1,161 +1,127 @@
 import { describe, it, expect } from 'vitest';
-import { periksaBelanja, fgSiapBelanja, wipSiapBelanja, type KartuBelanja } from './belanja';
-
-const FG: KartuBelanja = {
-  kanbanId: 1,
-  partId: 100,
-  partNumber: '660A-ASSY',
-  serialNumber: 'A001',
-  qty: 100,
-};
+import {
+  alokasiBelanja,
+  periksaBelanja,
+  fgSiapBelanja,
+  wipSiapBelanja,
+  type KartuBelanja,
+} from './belanja';
 
 function wip(id: number, qty: number, partId = 200): KartuBelanja {
   return { kanbanId: id, partId, partNumber: `PAINT-${partId}`, serialNumber: `P${id}`, qty };
 }
 
-const SATU_KOMPONEN = [{ partId: 200, partNumber: 'PAINT-200', qtyPer: 1 }];
+// KPJ9 (induk, isi 8) dengan dua turunan berkartu: KN2N dan KO47.
+function induk(id: number, qty = 8, partId = 100): KartuBelanja {
+  return { kanbanId: id, partId, partNumber: '42312014170AA7', serialNumber: `I${id}`, qty };
+}
+const KOMPONEN_KPJ9 = [
+  { partId: 200, partNumber: '42311710870AA7', qtyPer: 1 },
+  { partId: 300, partNumber: '42310210290', qtyPer: 1 },
+];
+const limaInduk = [1, 2, 3, 4, 5].map((i) => induk(i));
 
-describe('periksaBelanja', () => {
-  it('pas: dua box isi 50 untuk kartu FG isi 100', () => {
+describe('periksaBelanja — beberapa induk, jumlah box turunan', () => {
+  it('5 induk isi 8 + 5 turunan isi 8: pas', () => {
     const h = periksaBelanja({
-      kartuFg: FG,
-      komponen: SATU_KOMPONEN,
-      kartuWip: [wip(1, 50), wip(2, 50)],
+      kartuInduk: limaInduk,
+      komponen: KOMPONEN_KPJ9,
+      kartuWip: [11, 12, 13, 14, 15].map((i) => wip(i, 8)),
     });
-    expect(h.bolehDisimpan).toBe(true);
+    expect(h.unitInduk).toBe(40);
     expect(h.galat).toEqual([]);
-    expect(h.perKomponen[0]).toMatchObject({
-      dibutuhkan: 100,
-      dibawa: 100,
-      jumlahKartu: 2,
-      pas: true,
-    });
+    expect(h.perKomponen[0]).toMatchObject({ dibutuhkan: 40, kartuDibutuhkan: 5, cukup: true });
   });
 
-  it('kurang satu box: ditolak dan kekurangannya disebut angkanya', () => {
-    const h = periksaBelanja({ kartuFg: FG, komponen: SATU_KOMPONEN, kartuWip: [wip(1, 50)] });
-    expect(h.bolehDisimpan).toBe(false);
-    expect(h.perKomponen[0]!.selisih).toBe(-50);
-    expect(h.galat[0]).toContain('kurang 50');
-  });
-
-  it('kelebihan box ditolak juga, bukan dibiarkan lolos', () => {
-    /*
-     * Box yang terikat tanpa terpakai hilang dari rak bagi lini lain, dan tidak
-     * ada catatan yang menjelaskan ke mana — itu sebabnya "cukup" tidak dipakai
-     * sebagai syarat, yang dipakai "pas".
-     */
+  it('5 induk isi 8 + turunan isi 16: cukup 3 kartu (sisa 8 tidak masalah)', () => {
     const h = periksaBelanja({
-      kartuFg: FG,
-      komponen: SATU_KOMPONEN,
-      kartuWip: [wip(1, 50), wip(2, 50), wip(3, 50)],
+      kartuInduk: limaInduk,
+      komponen: KOMPONEN_KPJ9,
+      kartuWip: [11, 12, 13].map((i) => wip(i, 16, 300)),
     });
-    expect(h.bolehDisimpan).toBe(false);
-    expect(h.perKomponen[0]!.selisih).toBe(50);
-    expect(h.galat[0]).toContain('lebih 50');
-  });
-
-  it('qtyPer 2 menggandakan kebutuhan', () => {
-    const h = periksaBelanja({
-      kartuFg: { ...FG, qty: 50 },
-      komponen: [{ partId: 200, partNumber: 'PAINT-200', qtyPer: 2 }],
-      kartuWip: [wip(1, 50), wip(2, 50)],
-    });
-    expect(h.perKomponen[0]!.dibutuhkan).toBe(100);
     expect(h.bolehDisimpan).toBe(true);
+    expect(h.perKomponen[1]).toMatchObject({ dibutuhkan: 40, dibawa: 48, kartuDibutuhkan: 3 });
   });
 
-  it('qtyPer desimal tidak meninggalkan sisa pembulatan', () => {
-    // 100 × 0,8 = 80, bukan 79,99999999999999.
+  it('kurang: menyebut sisa kartu yang harus discan', () => {
     const h = periksaBelanja({
-      kartuFg: FG,
-      komponen: [{ partId: 200, partNumber: 'RAW-200', qtyPer: 0.8 }],
-      kartuWip: [wip(1, 80)],
-    });
-    expect(h.perKomponen[0]!.dibutuhkan).toBe(80);
-    expect(h.bolehDisimpan).toBe(true);
-  });
-
-  it('komponen BOM yang tidak discan sama sekali ikut menghalangi', () => {
-    const h = periksaBelanja({
-      kartuFg: FG,
-      komponen: [
-        { partId: 200, partNumber: 'PAINT-200', qtyPer: 1 },
-        { partId: 300, partNumber: 'PAINT-300', qtyPer: 1 },
-      ],
-      kartuWip: [wip(1, 50), wip(2, 50)],
+      kartuInduk: limaInduk,
+      komponen: KOMPONEN_KPJ9,
+      kartuWip: [wip(11, 16, 300)],
     });
     expect(h.bolehDisimpan).toBe(false);
-    expect(h.galat.join(' ')).toContain('PAINT-300 belum discan');
+    expect(h.galat[0]).toContain('scan 2 kartu lagi');
   });
 
-  it('kartu yang bukan komponen BOM disebut namanya, bukan hanya ditolak', () => {
+  it('kartu turunan yang tidak dibutuhkan ditolak', () => {
     const h = periksaBelanja({
-      kartuFg: FG,
-      komponen: SATU_KOMPONEN,
-      kartuWip: [wip(1, 50), wip(2, 50), wip(9, 10, 999)],
+      kartuInduk: limaInduk,
+      komponen: KOMPONEN_KPJ9,
+      kartuWip: [11, 12, 13, 14].map((i) => wip(i, 16, 300)),
     });
     expect(h.bolehDisimpan).toBe(false);
+    expect(h.galat.join(' ')).toContain('kelebihan box');
+  });
+
+  it('turunan dicampur dua part ditolak', () => {
+    const h = periksaBelanja({
+      kartuInduk: [induk(1)],
+      komponen: KOMPONEN_KPJ9,
+      kartuWip: [wip(11, 8), wip(12, 32, 300)],
+    });
+    expect(h.bolehDisimpan).toBe(false);
+    expect(h.galat.join(' ')).toContain('jangan dicampur');
+  });
+
+  it('part di luar BOM ditolak — model atau warnanya berbeda', () => {
+    const h = periksaBelanja({
+      kartuInduk: [induk(1)],
+      komponen: KOMPONEN_KPJ9,
+      kartuWip: [wip(11, 8, 999)],
+    });
     expect(h.bukanKomponen).toHaveLength(1);
-    expect(h.galat.join(' ')).toContain('bukan komponen');
+    expect(h.galat.join(' ')).toContain('warnanya berbeda');
+  });
+
+  it('induk dari dua part berbeda ditolak', () => {
+    const h = periksaBelanja({
+      kartuInduk: [induk(1), induk(2, 8, 101)],
+      komponen: KOMPONEN_KPJ9,
+      kartuWip: [wip(11, 16)],
+    });
+    expect(h.galat.join(' ')).toContain('satu part yang sama');
   });
 
   it('BOM kosong ditolak, bukan dianggap tidak ada yang perlu diperiksa', () => {
-    const h = periksaBelanja({ kartuFg: FG, komponen: [], kartuWip: [wip(1, 50)] });
+    const h = periksaBelanja({ kartuInduk: [induk(1)], komponen: [], kartuWip: [wip(11, 8)] });
     expect(h.bolehDisimpan).toBe(false);
-    expect(h.galat[0]).toContain('BOM');
+    expect(h.galat.join(' ')).toContain('BOM');
   });
 
-  it('kartu WIP yang sama discan dua kali ditolak', () => {
-    const h = periksaBelanja({
-      kartuFg: FG,
-      komponen: SATU_KOMPONEN,
-      kartuWip: [wip(1, 50), wip(1, 50)],
-    });
-    expect(h.bolehDisimpan).toBe(false);
-    expect(h.galat.join(' ')).toContain('dua kali');
+  it('belum ada kartu turunan: diminta scan', () => {
+    const h = periksaBelanja({ kartuInduk: [induk(1)], komponen: KOMPONEN_KPJ9, kartuWip: [] });
+    expect(h.galat).toContain('Scan kartu turunan.');
+  });
+});
+
+describe('alokasiBelanja', () => {
+  it('turunan isi 16 terbagi ke dua induk isi 8, sisa box terakhir tidak dialokasikan', () => {
+    const a = alokasiBelanja(limaInduk, [11, 12, 13].map((i) => wip(i, 16, 300)), 1);
+    expect(a).toEqual([
+      { indukKanbanId: 1, wipKanbanId: 11, qty: 8 },
+      { indukKanbanId: 2, wipKanbanId: 11, qty: 8 },
+      { indukKanbanId: 3, wipKanbanId: 12, qty: 8 },
+      { indukKanbanId: 4, wipKanbanId: 12, qty: 8 },
+      { indukKanbanId: 5, wipKanbanId: 13, qty: 8 },
+    ]);
   });
 
-  it('belum ada kartu WIP: ditolak tanpa menyebut angka yang membingungkan', () => {
-    const h = periksaBelanja({ kartuFg: FG, komponen: SATU_KOMPONEN, kartuWip: [] });
-    expect(h.bolehDisimpan).toBe(false);
-    expect(h.galat[0]).toBe('Belum ada kartu WIP yang discan.');
-  });
-
-  it('isi box yang tidak habis membagi kebutuhan dinyatakan TIDAK AKAN pas', () => {
-    /*
-     * Butuh 100, satu box isi 30: tiga kartu 90, empat kartu 120. Tanpa
-     * pemberitahuan ini operator akan menambah dan mengurangi kartu berulang
-     * kali mencari angka yang sebenarnya tidak ada.
-     */
-    const h = periksaBelanja({
-      kartuFg: FG,
-      komponen: SATU_KOMPONEN,
-      kartuWip: [wip(1, 30), wip(2, 30), wip(3, 30)],
-    });
-    expect(h.bolehDisimpan).toBe(false);
-    expect(h.perKomponen[0]!.tidakAkanPas).toEqual({ isiBox: 30, kurangKartu: 3, lebihKartu: 4 });
-    expect(h.galat.join(' ')).toContain('satu box isinya 30');
-  });
-
-  it('isi box campur TIDAK dinyatakan mustahil — kombinasi yang pas masih mungkin', () => {
-    const h = periksaBelanja({
-      kartuFg: FG,
-      komponen: SATU_KOMPONEN,
-      kartuWip: [wip(1, 30), wip(2, 50)],
-    });
-    expect(h.perKomponen[0]!.tidakAkanPas).toBeUndefined();
-    expect(h.galat.join(' ')).toContain('kurang 20');
-  });
-
-  it('kartu FG tanpa isi per box ditolak di masternya, bukan dihitung sebagai nol', () => {
-    const h = periksaBelanja({
-      kartuFg: { ...FG, qty: 0 },
-      komponen: SATU_KOMPONEN,
-      kartuWip: [wip(1, 50)],
-    });
-    expect(h.bolehDisimpan).toBe(false);
-    expect(h.galat[0]).toContain('isi per box');
+  it('induk isi 16 diisi dua turunan isi 8', () => {
+    const a = alokasiBelanja([induk(1, 16)], [wip(11, 8), wip(12, 8)], 1);
+    expect(a).toEqual([
+      { indukKanbanId: 1, wipKanbanId: 11, qty: 8 },
+      { indukKanbanId: 1, wipKanbanId: 12, qty: 8 },
+    ]);
   });
 });
 

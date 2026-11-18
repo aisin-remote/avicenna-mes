@@ -2,6 +2,7 @@
 
 import type {
   BatalBelanjaInput,
+  BatalBelanjaResult,
   ScanBelanjaInput,
   ScanBelanjaResult,
   SimpanBelanjaInput,
@@ -52,9 +53,9 @@ export async function simpanBelanjaAction(
 
 export async function batalBelanjaAction(
   input: BatalBelanjaInput,
-): Promise<{ hasil: 'DITERIMA' | 'DITOLAK'; pesan: string } | { error: string }> {
+): Promise<BatalBelanjaResult | { error: string }> {
   try {
-    return await apiFetch<{ hasil: 'DITERIMA' | 'DITOLAK'; pesan: string }>('/belanja/batal', {
+    return await apiFetch<BatalBelanjaResult>('/belanja/batal', {
       method: 'POST',
       body: JSON.stringify(input),
     });

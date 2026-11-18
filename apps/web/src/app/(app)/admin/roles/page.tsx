@@ -1,6 +1,7 @@
 import { ambilRole, ambilKatalogMenu } from '../actions';
 import { PageHeader } from '@/components/ui/page-header';
 import { RoleEditor } from '@/components/admin/role-editor';
+import { katalogProsesServer } from '@/lib/process-types';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,11 @@ export const dynamic = 'force-dynamic';
  * role — dengan dua, "halaman awal" tidak punya jawaban.
  */
 export default async function AdminRolesPage() {
-  const [roles, katalog] = await Promise.all([ambilRole(), ambilKatalogMenu()]);
+  const [roles, katalog, proses] = await Promise.all([
+    ambilRole(),
+    ambilKatalogMenu(),
+    katalogProsesServer(),
+  ]);
 
   return (
     <>
@@ -22,7 +27,7 @@ export default async function AdminRolesPage() {
         title="Role & Hak Menu"
         description="Jabatan, lingkup proses, dan menu yang boleh dilihat pemegangnya"
       />
-      <RoleEditor roles={roles} katalog={katalog} />
+      <RoleEditor roles={roles} katalog={katalog} grupProses={[...proses.grupDaftar]} />
     </>
   );
 }

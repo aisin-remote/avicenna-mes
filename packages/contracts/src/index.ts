@@ -24,3 +24,5 @@ export * from './admin';
 export * from './delivery-documents';
 export * from './driver-attendance';
 export * from './pis';
+export * from './traceability';
+export * from './laporan-produksi';

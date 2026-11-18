@@ -947,9 +947,19 @@ export class SapOutboxService {
     };
   }
 
-  /** Mencoba ulang dokumen yang gagal kirim. */
-  async retry(ids: number[]): Promise<{ diulang: number }> {
-    if (ids.length === 0) return { diulang: 0 };
+  /**
+   * Mencoba ulang dokumen yang gagal kirim.
+   *
+   * Dokumen produksi yang gagal karena PV KOSONG diisi dulu PV-nya dari rute
+   * scan itu (part + line), dengan cara yang sama seperti saat dokumen dibuat.
+   * Tanpa ini mengisi PV di master tidak menolong dokumen yang sudah gagal:
+   * PV disalin ke payload saat dibuat, jadi coba ulang akan gagal lagi dengan
+   * sebab yang sama. PV yang SUDAH terisi tidak disentuh — dokumen tetap
+   * menyebut versi yang berlaku saat barangnya dibuat.
+   */
+  async retry(ids: number[]): Promise<{ diulang: number; pvDiisi: number }> {
+    if (ids.length === 0) return { diulang: 0, pvDiisi: 0 };
+    const pvDiisi = await this.isiPvKosong(ids);
     await this.db
       .update(sapOutbox)
       .set({ status: 'PENDING', lastError: null })
@@ -960,7 +970,62 @@ export class SapOutboxService {
           eq(sapOutbox.status, 'FAILED'),
         ),
       );
-    return { diulang: ids.length };
+    return { diulang: ids.length, pvDiisi };
+  }
+
+  /** Mengisi productionVersion payload yang kosong dari rute scan sumbernya. */
+  private async isiPvKosong(ids: number[]): Promise<number> {
+    const dokumen = await this.db
+      .select({ id: sapOutbox.id, payload: sapOutbox.payload, sourceId: sapOutbox.sourceId })
+      .from(sapOutbox)
+      .where(
+        and(
+          inArray(sapOutbox.id, ids),
+          eq(sapOutbox.status, 'FAILED'),
+          eq(sapOutbox.docType, 'PRODUCTION'),
+          eq(sapOutbox.sourceTable, 'TT_HISTORY_SCAN'),
+        ),
+      );
+
+    let diisi = 0;
+    for (const d of dokumen) {
+      const payload = d.payload as Record<string, unknown>;
+      const lama = payload.productionVersion;
+      if (typeof lama === 'string' && lama.trim() !== '') continue;
+
+      const [rute] = await this.db
+        .select({
+          pv: sql<
+            string | null
+          >`coalesce(nullif(trim(${partProcesses.productionVersion}), ''), nullif(trim(${parts.productionVersion}), ''))`,
+        })
+        .from(scanEvents)
+        .leftJoin(parts, eq(scanEvents.partId, parts.id))
+        .leftJoin(
+          partProcesses,
+          and(
+            eq(partProcesses.partId, scanEvents.partId),
+            or(
+              eq(partProcesses.lineId, scanEvents.lineId),
+              and(
+                isNull(partProcesses.lineId),
+                eq(partProcesses.processType, scanEvents.processType),
+              ),
+            ),
+          ),
+        )
+        .where(eq(scanEvents.id, d.sourceId))
+        .limit(1);
+      if (!rute?.pv) continue;
+
+      await this.db
+        .update(sapOutbox)
+        .set({ payload: { ...payload, productionVersion: rute.pv } })
+        .where(and(eq(sapOutbox.id, d.id), eq(sapOutbox.status, 'FAILED')));
+      diisi++;
+    }
+    if (diisi > 0) this.logger.log(`coba ulang: PV diisi dari rute untuk ${diisi} dokumen`);
+    return diisi;
   }
 
   /** Menutup satu Good Issue secara manual hanya untuk trial tanpa koneksi SAP. */

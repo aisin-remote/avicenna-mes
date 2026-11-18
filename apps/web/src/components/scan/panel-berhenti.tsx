@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { OctagonPause, Play, Wrench, ClipboardCheck, AlertTriangle, Package } from 'lucide-react';
 import { nadaPanel, nadaTombol } from '@avicenna/contracts';
 import type { AlasanBerhenti, BerhentiLini } from '@avicenna/contracts';
@@ -58,11 +58,24 @@ export function PanelBerhenti({
   alasan,
   berhenti,
   onBerubah,
+  kartuBawah,
+  gantiMulai = false,
 }: {
   lineCode: string;
   alasan: AlasanBerhenti[];
   berhenti: BerhentiLini | null;
   onBerubah: (b: BerhentiLini | null) => void;
+  /**
+   * Kartu di dasar kolom, menggantikan "Monitoring aktif" — di line wajib
+   * dandori isinya part aktif dan tombol DANDORI/START. Ditaruh di sini, bukan
+   * di kotak scan, supaya kotak scan tetap lega (permintaan Handika, 12 Nov).
+   */
+  kartuBawah?: ReactNode;
+  /**
+   * Saat berhentinya adalah dandori yang belum di-START, tombol "Mulai"
+   * diganti `kartuBawah`: lini hanya boleh jalan lagi lewat START dandori.
+   */
+  gantiMulai?: boolean;
 }) {
   const [sibuk, setSibuk] = useState(false);
   const [sekarang, setSekarang] = useState(() => new Date());
@@ -168,17 +181,23 @@ export function PanelBerhenti({
           {berhenti.npk ? ` · ${berhenti.npk}` : ''}
         </div>
 
-        {/* Tombol didorong ke dasar kolom: posisinya tetap, berapa pun panjang
+        {gantiMulai && kartuBawah ? (
+          <div className="mt-auto pt-5">{kartuBawah}</div>
+        ) : (
+          <>
+            {/* Tombol didorong ke dasar kolom: posisinya tetap, berapa pun panjang
             nama alasannya, jadi tangan hafal tempatnya. */}
-        <button
-          type="button"
-          onClick={() => void selesai()}
-          disabled={sibuk}
-          className="mt-auto inline-flex h-16 w-full items-center justify-center gap-2 rounded-2xl bg-ok text-[19px] font-bold text-white transition-[filter] duration-200 hover:brightness-110 disabled:opacity-60"
-        >
-          <Play className="size-5" strokeWidth={2.4} aria-hidden />
-          Mulai
-        </button>
+            <button
+              type="button"
+              onClick={() => void selesai()}
+              disabled={sibuk}
+              className="mt-auto inline-flex h-16 w-full items-center justify-center gap-2 rounded-2xl bg-ok text-[19px] font-bold text-white transition-[filter] duration-200 hover:brightness-110 disabled:opacity-60"
+            >
+              <Play className="size-5" strokeWidth={2.4} aria-hidden />
+              Mulai
+            </button>
+          </>
+        )}
       </section>
     );
   }
@@ -258,15 +277,17 @@ export function PanelBerhenti({
       {/* Didorong ke dasar: menegaskan lini sedang DIPANTAU, yaitu alasan kenapa
           memilih alasan yang benar itu penting — angkanya masuk laporan. */}
       <div className="shrink-0 pt-5">
-        <div className="rounded-2xl border border-line bg-surface p-4">
-          <p className="flex items-center gap-2 text-[13px] font-semibold">
-            <span className="size-2 shrink-0 rounded-full bg-ok" aria-hidden />
-            Monitoring aktif
-          </p>
-          <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-            Pilih alasan berhenti sesuai kondisi aktual line.
-          </p>
-        </div>
+        {kartuBawah ?? (
+          <div className="rounded-2xl border border-line bg-surface p-4">
+            <p className="flex items-center gap-2 text-[13px] font-semibold">
+              <span className="size-2 shrink-0 rounded-full bg-ok" aria-hidden />
+              Monitoring aktif
+            </p>
+            <p className="mt-1 text-[12px] leading-snug text-ink-muted">
+              Pilih alasan berhenti sesuai kondisi aktual line.
+            </p>
+          </div>
+        )}
       </div>
     </section>
   );

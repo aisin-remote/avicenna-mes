@@ -21,6 +21,7 @@ export interface BarisRutePart {
   seqNo: number;
   inputLocationId: number | null;
   inputLocationCode: string | null;
+  /** SLOC tujuan milik part (TM_PARTS), ikut ditampilkan di tiap baris rutenya. */
   outputLocationId: number | null;
   outputLocationCode: string | null;
   /** SLOC tempat hasil dipindah lagi setelah produksi. */
@@ -34,6 +35,8 @@ export interface BarisRutePart {
   sapTransferEnabled: boolean;
   sapTransferMovementType: string | null;
   requirePairing: boolean;
+  /** Cycle time, detik per pcs. Kosong = efisiensi tidak dihitung. */
+  cycleTime: number | null;
   sapProductionEnabled: boolean;
   isPrimary: boolean;
   isActive: boolean;

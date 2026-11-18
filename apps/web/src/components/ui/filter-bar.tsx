@@ -57,13 +57,17 @@ export function FilterBar({
   q,
   perPage,
   filters,
+  tetap,
 }: {
   /** Alamat tujuan formulir — halaman daftarnya sendiri. */
   action: string;
   cariLabel: string;
   q: string;
-  perPage: number;
+  /** Kosong untuk daftar tanpa halaman; pilihan per halaman tidak ditampilkan. */
+  perPage?: number;
   filters: FilterTampil[];
+  /** Parameter yang ikut terkirim tanpa kendali, mis. tab yang sedang dibuka. */
+  tetap?: Record<string, string>;
 }) {
   const form = useRef<HTMLFormElement>(null);
   const adaYangAktif = q.length > 0 || filters.some((f) => f.nilai !== '');
@@ -103,6 +107,9 @@ export function FilterBar({
       onSubmit={lepasYangKosong}
       className="mb-4 flex flex-wrap items-end gap-2"
     >
+      {Object.entries(tetap ?? {}).map(([nama, nilai]) => (
+        <input key={nama} type="hidden" name={nama} value={nilai} />
+      ))}
       <div className="relative">
         <Search
           className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
@@ -148,25 +155,27 @@ export function FilterBar({
         </label>
       ))}
 
-      <label className="flex flex-col gap-1">
-        <span className="px-1 text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-          Per halaman
-        </span>
-        <select
-          key={perPage}
-          name="perPage"
-          data-nama="perPage"
-          defaultValue={String(perPage)}
-          onChange={() => form.current?.requestSubmit()}
-          className={kelasKendali}
-        >
-          {PER_HALAMAN.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </label>
+      {perPage !== undefined ? (
+        <label className="flex flex-col gap-1">
+          <span className="px-1 text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
+            Per halaman
+          </span>
+          <select
+            key={perPage}
+            name="perPage"
+            data-nama="perPage"
+            defaultValue={String(perPage)}
+            onChange={() => form.current?.requestSubmit()}
+            className={kelasKendali}
+          >
+            {PER_HALAMAN.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
 
       {/* Tetap ada meski dropdown sudah mengirim sendiri saat diubah: kotak
           pencarian dikirim dengan Enter, dan tombol inilah yang membuat itu
@@ -180,7 +189,7 @@ export function FilterBar({
 
       {adaYangAktif ? (
         <Link
-          href={action}
+          href={tetap ? `${action}?${new URLSearchParams(tetap)}` : action}
           className="inline-flex h-10 items-center gap-1.5 rounded-full px-3 text-[14px] font-semibold text-ink-muted transition-colors duration-200 hover:text-ink"
         >
           <RotateCcw className="size-4" strokeWidth={2} aria-hidden />

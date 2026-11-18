@@ -2,17 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { motion } from 'motion/react';
 import {
   ArrowLeftRight,
   Check,
   Keyboard,
   ShoppingCart,
   Trash2,
-  TriangleAlert,
   X,
 } from 'lucide-react';
 import type { BelanjaMenunggu, SesiBelanja, StasiunBelanja } from '@avicenna/contracts';
+import { alokasiBelanja } from '@avicenna/domain';
 import {
   batalBelanjaAction,
   scanBelanjaAction,
@@ -24,19 +23,13 @@ import { cn } from '../ui/cn';
 /**
  * Stasiun belanja — scanner genggam 375×667 tegak.
  *
- * ── Urutannya tetap: kartu FG dulu, lalu box-box-nya ────────────────────────
+ * ── Kartu induk dulu, lalu kartu turunan ──────────────────────────────────
  *
- * Tembakan pertama adalah kartu FG — itulah perintahnya, dan dari situ layar
- * tahu apa yang harus diambil dan berapa. Tembakan berikutnya kartu WIP tiap
- * box yang diambil dari rak. Tidak ada tombol untuk memilih sisi: yang
- * menentukan adalah ada atau belum adanya sesi, dan itu sudah terbaca di layar.
- *
- * ── Yang paling besar adalah KEMAJUAN, bukan hasil tembakan ─────────────────
- *
- * Bedanya dengan stasiun kanban: di sana satu tembakan adalah satu pekerjaan
- * selesai, jadi yang dibesarkan hasilnya. Di sini satu tembakan hanyalah satu
- * langkah dari beberapa, dan yang terus dilihat orang adalah "masih kurang
- * berapa" — jadi itulah yang mengambil ruang.
+ * Tembak satu atau beberapa kartu induk (part yang sama, mis. 5 × KPJ9 isi 8 =
+ * 40 unit), lalu kartu turunan dari SATU part di BOM-nya (KN2N atau KO47,
+ * tidak dicampur). Jumlah kartu turunan mengikuti total isi induk: isi 8 →
+ * 5 kartu, isi 16 → 3 kartu. Begitu cukup, belanja langsung tersimpan.
+ * Belanja adalah pengaman warna/model (Handika, 13 Nov 2026).
  */
 export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: string }) {
   const [kode, setKode] = useState('');
@@ -69,7 +62,7 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
 
     const res = await scanBelanjaAction({
       plantCode: awal.pabrik.code,
-      fgKanbanId: sesi?.fg.kanbanId ?? null,
+      indukKanbanIds: sesi?.induk.map((k) => k.kanbanId) ?? [],
       rawCode: nilai,
       wipKanbanIds: sesi?.kartuWip.map((k) => k.kanbanId) ?? [],
     });
@@ -82,17 +75,23 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
       return;
     }
     lapor(res);
-    // Sesi dari balasan MENANG atas yang di layar: server yang menghitung
-    // kebutuhannya, dan layar tidak boleh punya pendapat sendiri soal itu.
+    // Sesi dari balasan MENANG atas yang di layar: server yang memeriksa
+    // turunannya, dan layar tidak boleh punya pendapat sendiri soal itu.
     if (res.sesi) setSesi(res.sesi);
+
+    // Turunan sudah cukup → langsung simpan. Sesi dari balasan dipakai, bukan state,
+    // karena state baru terbaca di render berikutnya.
+    if (res.hasil === 'DITERIMA' && res.sisi === 'TURUNAN' && res.sesi?.bolehDisimpan) {
+      await simpan(res.sesi);
+    }
   }
 
-  async function simpan() {
-    if (!sesi || sibuk) return;
+  async function simpan(sesi: SesiBelanja | null) {
+    if (!sesi) return;
     setSibuk(true);
     const res = await simpanBelanjaAction({
       plantCode: awal.pabrik.code,
-      fgKanbanId: sesi.fg.kanbanId,
+      indukKanbanIds: sesi.induk.map((k) => k.kanbanId),
       wipKanbanIds: sesi.kartuWip.map((k) => k.kanbanId),
     });
     setSibuk(false);
@@ -109,17 +108,23 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
        * Daftar tunggu ditambah di layar, tidak dimuat ulang dari server.
        * Memuat ulang halaman di stasiun berarti fokus kotak scan lepas.
        */
+      // Pembagiannya sama dengan server (alokasiBelanja), jadi angka box per
+      // induk di daftar ini cocok dengan yang tercatat.
+      const dipilih = sesi.komponen.find((k) => k.dipilih);
+      const qtyPer = dipilih && sesi.unitInduk > 0 ? dipilih.dibutuhkan / sesi.unitInduk : 1;
+      const alokasi = alokasiBelanja(sesi.induk, sesi.kartuWip, qtyPer);
+      const sekarang = new Date().toISOString();
       setMenunggu((lama) => [
-        {
-          fgKanbanId: sesi.fg.kanbanId,
-          partNumber: sesi.fg.partNumber,
-          backNumber: sesi.fg.backNumber,
-          serialNumber: sesi.fg.serialNumber,
-          jumlahKartu: sesi.kartuWip.length,
-          unit: sesi.unitFg,
-          pairedAt: new Date().toISOString(),
+        ...sesi.induk.map((k) => ({
+          fgKanbanId: k.kanbanId,
+          partNumber: k.partNumber,
+          backNumber: k.backNumber,
+          serialNumber: k.serialNumber,
+          jumlahKartu: alokasi.filter((a) => a.indukKanbanId === k.kanbanId).length,
+          unit: k.qty,
+          pairedAt: sekarang,
           npk,
-        },
+        })),
         ...lama,
       ]);
       setSesi(null);
@@ -141,7 +146,9 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
     }
     lapor(res);
     if (res.hasil === 'DITERIMA') {
-      setMenunggu((lama) => lama.filter((m) => m.fgKanbanId !== fgKanbanId));
+      // Satu belanja bisa berisi beberapa induk; semuanya ikut batal.
+      const batalSemua = new Set([fgKanbanId, ...res.indukDibatalkan]);
+      setMenunggu((lama) => lama.filter((m) => !batalSemua.has(m.fgKanbanId)));
     }
   }
 
@@ -197,99 +204,77 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
               Perintah
             </div>
             <div className="tabular mt-0.5 truncate text-[16px] font-extrabold leading-tight">
-              {sesi.fg.partNumber}
-              {sesi.fg.backNumber ? (
+              {sesi.induk[0]?.partNumber}
+              {sesi.induk[0]?.backNumber ? (
                 <span className="ml-1.5 text-[13px] font-semibold text-ink-muted">
-                  {sesi.fg.backNumber}
+                  {sesi.induk[0].backNumber}
                 </span>
               ) : null}
             </div>
             <div className="tabular mt-0.5 text-[11.5px] text-ink-muted">
-              seri {sesi.fg.serialNumber} · {sesi.unitFg} unit
+              <span className="font-bold text-ink">
+                {sesi.induk.length} kartu · {sesi.unitInduk} unit
+              </span>
+              <span className="block truncate">
+                seri {sesi.induk.map((k) => k.serialNumber).join(', ')}
+              </span>
             </div>
           </section>
 
-          {/* ── Kemajuan per komponen: bagian terpenting layar ──────────── */}
-          <section className="flex shrink-0 flex-col gap-2">
-            {sesi.komponen.map((k) => {
-              const rasio = k.dibutuhkan > 0 ? Math.min(1, k.dibawa / k.dibutuhkan) : 0;
-              return (
-                <div
-                  key={k.partId}
-                  className={cn(
-                    'rounded-2xl border px-3 py-2',
-                    k.pas ? 'border-ok/45 bg-ok/8' : 'border-line bg-card',
-                  )}
-                >
-                  <div className="flex items-baseline gap-2">
-                    <span className="tabular min-w-0 flex-1 truncate text-[13px] font-bold">
-                      {k.partNumber}
-                    </span>
-                    <span
-                      className={cn(
-                        'tabular text-[17px] font-extrabold leading-none',
-                        k.pas ? 'text-ok' : k.dibawa > k.dibutuhkan ? 'text-ng' : 'text-ink',
-                      )}
-                    >
-                      {k.dibawa}
-                      <span className="text-[12px] font-bold text-ink-muted">/{k.dibutuhkan}</span>
-                    </span>
-                    {k.pas ? (
-                      <Check className="size-4 shrink-0 text-ok" strokeWidth={3} aria-hidden />
-                    ) : null}
-                  </div>
-                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line">
-                    <motion.div
-                      className={cn('h-full rounded-full', k.pas ? 'bg-ok' : 'bg-ink')}
-                      initial={false}
-                      animate={{ width: `${rasio * 100}%` }}
-                      transition={{ duration: 0.2 }}
-                    />
-                  </div>
-                  <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-ink-muted">
-                    <span>{k.jumlahKartu} kartu</span>
-                    {k.tidakAkanPas ? (
-                      <span className="flex items-center gap-1 text-ng">
-                        <TriangleAlert className="size-3" strokeWidth={2.2} aria-hidden />
-                        isi box {k.tidakAkanPas.isiBox} tidak bisa pas
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </section>
-
-          {/* ── Kartu WIP yang sudah ditembak ───────────────────────────── */}
+          {/* ── Turunan yang boleh discan: pilih SATU ───────────────────── */}
           <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-line bg-card">
             <header className="flex shrink-0 items-center justify-between border-b border-line px-3 py-1.5">
               <h2 className="text-[10.5px] font-bold uppercase tracking-wide text-ink-muted">
-                Box diambil
+                Turunan — satu part saja
               </h2>
-              <span className="text-[10.5px] text-ink-muted">{sesi.kartuWip.length}</span>
+              <span className="text-[10.5px] text-ink-muted">{sesi.komponen.length}</span>
             </header>
-            {sesi.kartuWip.length === 0 ? (
-              <p className="flex flex-1 items-center justify-center px-4 text-center text-[11.5px] text-ink-muted">
-                Tembak kartu WIP tiap box yang diambil dari rak.
-              </p>
-            ) : (
-              <ul className="scroll-slim min-h-0 flex-1 overflow-y-auto">
-                {[...sesi.kartuWip].reverse().map((k) => (
+            <ul className="scroll-slim min-h-0 flex-1 overflow-y-auto">
+              {sesi.komponen.map((k) => {
+                const kartu = sesi.kartuWip.filter((w) => w.partId === k.partId);
+                return (
                   <li
-                    key={k.kanbanId}
-                    className="flex items-center gap-2 border-b border-line/60 px-3 py-1.5 text-[12px] last:border-b-0"
+                    key={k.partId}
+                    className={cn(
+                      'flex items-center gap-2 border-b border-line/60 px-3 py-2 last:border-b-0',
+                      k.cukup ? 'bg-ok/8' : k.dipilih && 'bg-surface',
+                      // Part lain redup setelah satu dipilih: tidak boleh dicampur.
+                      sesi.komponen.some((x) => x.dipilih) && !k.dipilih && 'opacity-45',
+                    )}
                   >
-                    <span className="tabular min-w-0 flex-1 truncate font-semibold">
-                      {k.partNumber}
-                    </span>
-                    <span className="tabular w-16 shrink-0 truncate text-right text-ink-muted">
-                      {k.serialNumber}
-                    </span>
-                    <span className="tabular w-10 shrink-0 text-right">{k.qty}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="tabular truncate text-[13px] font-bold">{k.partNumber}</div>
+                      <div className="tabular truncate text-[10.5px] text-ink-muted">
+                        {k.dipilih
+                          ? `seri ${kartu.map((w) => w.serialNumber).join(', ')}`
+                          : (k.partName ?? `butuh ${k.dibutuhkan} unit`)}
+                      </div>
+                    </div>
+                    {k.dipilih ? (
+                      <div className="shrink-0 text-right">
+                        <div
+                          className={cn(
+                            'tabular text-[17px] font-extrabold leading-none',
+                            k.cukup ? 'text-ok' : 'text-ink',
+                          )}
+                        >
+                          {k.jumlahKartu}
+                          <span className="text-[12px] font-bold text-ink-muted">
+                            /{k.kartuDibutuhkan ?? '?'} kartu
+                          </span>
+                        </div>
+                        <div className="tabular mt-0.5 text-[10.5px] text-ink-muted">
+                          {k.dibawa}/{k.dibutuhkan} unit
+                        </div>
+                      </div>
+                    ) : null}
+                    {k.cukup ? (
+                      <Check className="size-5 shrink-0 text-ok" strokeWidth={3} aria-hidden />
+                    ) : null}
                   </li>
-                ))}
-              </ul>
-            )}
+                );
+              })}
+            </ul>
           </section>
 
           {/* ── Simpan / buang sesi ─────────────────────────────────────── */}
@@ -309,7 +294,7 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
             </button>
             <button
               type="button"
-              onClick={() => void simpan()}
+              onClick={() => void simpan(sesi)}
               disabled={sibuk || !sesi.bolehDisimpan}
               className={cn(
                 'h-12 min-w-0 flex-1 rounded-xl text-[16px] font-bold transition-[filter] duration-200',
@@ -318,7 +303,7 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
                   : 'cursor-not-allowed bg-line text-ink-muted',
               )}
             >
-              {sesi.bolehDisimpan ? 'SIMPAN BELANJA' : (sesi.galat[0] ?? 'Belum pas')}
+              {sesi.bolehDisimpan ? 'SIMPAN BELANJA' : (sesi.galat[0] ?? 'Scan kartu turunan')}
             </button>
           </div>
         </>
@@ -328,10 +313,10 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
           <section className="flex shrink-0 flex-col items-center justify-center rounded-card border-2 border-line bg-card px-4 py-6 text-center">
             <ShoppingCart className="size-10 text-ink-muted" strokeWidth={1.6} aria-hidden />
             <div className="mt-2 text-[22px] font-extrabold leading-tight text-ink-muted">
-              SCAN KARTU FG
+              SCAN KARTU INDUK
             </div>
             <p className="mt-1 text-[12px] leading-snug text-ink-muted">
-              Kartu FG dulu sebagai perintah, lalu kartu WIP tiap box
+              Kartu induk dulu (boleh beberapa), lalu kartu turunan — tersimpan otomatis saat cukup
             </p>
           </section>
 
@@ -394,7 +379,13 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
           }}
           disabled={sibuk}
           inputMode={ketikManual ? 'text' : 'none'}
-          placeholder={sesi ? 'Tembak kartu WIP…' : 'Tembak kartu FG…'}
+          placeholder={
+            !sesi
+              ? 'Tembak kartu induk…'
+              : sesi.kartuWip.length === 0
+                ? 'Tembak induk lagi, atau turunan…'
+                : 'Tembak kartu turunan…'
+          }
           aria-label="Scan kartu"
           spellCheck={false}
           autoComplete="off"

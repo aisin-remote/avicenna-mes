@@ -23,25 +23,26 @@ import { z } from 'zod';
 
 const kodePabrik = z.string().trim().min(1).max(32);
 const kodeKartu = z.string().trim().min(1).max(191);
-/** Kartu WIP yang SUDAH ditembak di layar, dikirim ulang tiap kali. */
-const daftarWip = z.array(z.number().int().positive()).max(64);
+/** Kartu yang SUDAH ditembak di layar, dikirim ulang tiap kali. */
+const daftarKartu = z.array(z.number().int().positive()).max(64);
 
 export const scanBelanjaSchema = z.object({
   plantCode: kodePabrik,
-  /** Kosong berarti tembakan ini kartu FG-nya — pembuka sesi. */
-  fgKanbanId: z.number().int().positive().nullable().optional(),
+  /** Kartu induk yang sudah ditembak. Kosong berarti tembakan ini pembuka sesi. */
+  indukKanbanIds: daftarKartu.default([]),
   rawCode: kodeKartu,
-  wipKanbanIds: daftarWip.default([]),
+  wipKanbanIds: daftarKartu.default([]),
 });
 export type ScanBelanjaInput = z.infer<typeof scanBelanjaSchema>;
 
 export const simpanBelanjaSchema = z.object({
   plantCode: kodePabrik,
-  fgKanbanId: z.number().int().positive(),
-  wipKanbanIds: daftarWip.min(1),
+  indukKanbanIds: daftarKartu.min(1),
+  wipKanbanIds: daftarKartu.min(1),
 });
 export type SimpanBelanjaInput = z.infer<typeof simpanBelanjaSchema>;
 
+/** Membatalkan belanja kartu ini — beserta seluruh kartu induk satu belanjanya. */
 export const batalBelanjaSchema = z.object({
   plantCode: kodePabrik,
   fgKanbanId: z.number().int().positive(),
@@ -60,24 +61,27 @@ export interface KartuBelanjaRingkas {
   qty: number;
 }
 
-/** Satu komponen beserta kemajuan pengambilannya. */
+/** Satu komponen turunan beserta kemajuan pengambilannya. */
 export interface KebutuhanKomponen {
   partId: number;
   partNumber: string;
   partName: string | null;
+  /** Unit untuk seluruh kartu induk. */
   dibutuhkan: number;
   dibawa: number;
   jumlahKartu: number;
-  selisih: number;
-  pas: boolean;
-  /** Kekurangannya tidak bisa digenapi dengan isi box yang sedang dipakai. */
-  tidakAkanPas: { isiBox: number; kurangKartu: number; lebihKartu: number } | null;
+  /** Kartu turunan yang diperlukan dengan isi box yang dipakai; kosong bila belum diketahui. */
+  kartuDibutuhkan: number | null;
+  /** Komponen inilah yang dipilih kartu turunannya. */
+  dipilih: boolean;
+  cukup: boolean;
 }
 
 export interface SesiBelanja {
-  fg: KartuBelanjaRingkas;
-  /** Unit FG yang akan dihasilkan kartu itu. */
-  unitFg: number;
+  /** Kartu induk dalam belanja ini, urut tembakan. */
+  induk: KartuBelanjaRingkas[];
+  /** Total unit seluruh kartu induk. */
+  unitInduk: number;
   komponen: KebutuhanKomponen[];
   kartuWip: KartuBelanjaRingkas[];
   bolehDisimpan: boolean;
@@ -92,7 +96,7 @@ export interface ScanBelanjaResult {
   pesan: string;
   rawCode: string;
   /** Sisi mana yang terbaca dari tembakan ini. */
-  sisi: 'FG' | 'WIP' | null;
+  sisi: 'INDUK' | 'TURUNAN' | null;
   /** Keadaan sesi setelah tembakan ini; kosong kalau sesinya belum/gagal dibuka. */
   sesi: SesiBelanja | null;
 }
@@ -102,6 +106,13 @@ export interface SimpanBelanjaResult {
   pesan: string;
   /** Terisi saat gagal, supaya layar tetap menunjukkan kekurangannya. */
   sesi: SesiBelanja | null;
+}
+
+export interface BatalBelanjaResult {
+  hasil: HasilBelanjaScan;
+  pesan: string;
+  /** Seluruh kartu induk yang kembali AVAILABLE — satu belanja bisa berisi beberapa. */
+  indukDibatalkan: number[];
 }
 
 /** Kartu FG yang sudah belanja dan belum discan produksi. */

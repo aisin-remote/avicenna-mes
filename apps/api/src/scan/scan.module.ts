@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScanService } from './scan.service';
 import { PapanService } from './papan.service';
 import { MoldScanService } from './mold-scan.service';
+import { DandoriService } from './dandori.service';
 import { ScanController } from './scan.controller';
 import { LoadingModule } from '../loading/loading.module';
 import { BelanjaModule } from '../belanja/belanja.module';
@@ -12,7 +13,7 @@ import { BelanjaModule } from '../belanja/belanja.module';
   // memakai pasangannya.
   imports: [LoadingModule, BelanjaModule],
   controllers: [ScanController],
-  providers: [ScanService, PapanService, MoldScanService],
-  exports: [ScanService, PapanService, MoldScanService],
+  providers: [ScanService, PapanService, MoldScanService, DandoriService],
+  exports: [ScanService, PapanService, MoldScanService, DandoriService],
 })
 export class ScanModule {}

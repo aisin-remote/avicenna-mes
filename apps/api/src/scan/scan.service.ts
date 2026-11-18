@@ -7,6 +7,7 @@ import {
   desc,
   asc,
   gte,
+  lte,
   lt,
   count,
   sum,
@@ -43,9 +44,11 @@ import {
   normalizeScan,
   normalkanNomorPart,
   nomorPartSama,
+  potongLabelCustomer,
   bacaBarcode,
   BarcodeTidakDikenali,
   punyaIdentitasPart,
+  rencanaMutasiScanPenerimaan,
   rencanaMutasiScanProduksi,
   productionDateKey,
   productionDayWindow,
@@ -56,8 +59,8 @@ import {
   grupProses,
   prosesDalamGrup,
   bolehScanDi,
-  PROCESS_GROUP_LABELS,
   bacaKanban,
+  KanbanRusakKetik,
   KanbanTidakTerbaca,
   syaratScan,
   modeScanBawaan,
@@ -70,6 +73,7 @@ import {
   type PartNumberFormat,
   REJECT_MESSAGES,
   type ScanRejectReason,
+  bacaKodeSample,
 } from '@avicenna/domain';
 import type {
   AlasanBerhenti,
@@ -87,6 +91,7 @@ import type {
 import { InjectDb } from '../db/db.module';
 import { ProcessTypeService } from '../master/process-type.service';
 import { BelanjaService } from '../belanja/belanja.service';
+import { DandoriService } from './dandori.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { QueueService } from '../queue/queue.service';
 import { QUEUES, JOBS } from '../queue/queue.constants';
@@ -151,6 +156,20 @@ interface LabelDn {
   qtyPerKanban: number;
 }
 
+/**
+ * Label kanban customer yang menggantikan kartu internal di lini BODY.
+ *
+ * Didaftarkan sebagai kartu CUSTOMER supaya aturan per-box (isi dari kartu,
+ * tolak kartu yang sudah terproduksi) berlaku tanpa jalur khusus.
+ */
+interface LabelCustomer {
+  serialNumber: string;
+  customerId: number;
+  customerCode: string;
+  customerPartNumber: string;
+  qtyPerKanban: number;
+}
+
 @Injectable()
 export class ScanService {
   private readonly logger = new Logger(ScanService.name);
@@ -162,6 +181,7 @@ export class ScanService {
     private readonly loading: LoadingService,
     private readonly processTypes: ProcessTypeService,
     private readonly belanja: BelanjaService,
+    private readonly dandori: DandoriService,
   ) {}
 
   /**
@@ -250,21 +270,55 @@ export class ScanService {
      */
     const prosesAwal = normalized.processType ?? line?.processType ?? null;
     const modeAwal: ScanMode =
-      line && prosesAwal
-        ? await this.modeScanLini(prosesAwal, line.scanMode)
-        : 'PART_SAJA';
+      line && prosesAwal ? await this.modeScanLini(prosesAwal, line.scanMode) : 'PART_SAJA';
     const konteksBarcode = {
       processType: prosesAwal,
       scanMode: modeAwal,
+      // Line receiving hanya membaca kanban ARES; lihat ATURAN_KANBAN_ARES.
+      penerimaan:
+        normalized.kind === 'PRODUCTION' &&
+        (await this.processTypes.katalog()).grup(prosesAwal) === 'RECEIVING',
     };
     let parsed;
     try {
       parsed = bacaBarcode(normalized.rawCode, konteksBarcode);
     } catch (err) {
       if (err instanceof BarcodeTidakDikenali) {
-        throw new ScanRejected('BARCODE_UNREADABLE', REJECT_MESSAGES.BARCODE_UNREADABLE);
+        throw new ScanRejected(
+          'BARCODE_UNREADABLE',
+          konteksBarcode.penerimaan
+            ? `${REJECT_MESSAGES.BARCODE_UNREADABLE} (${line?.code} hanya menerima kanban ARES ` +
+              'ARES:K:<id>|<nomor part>|<qty>)'
+            : REJECT_MESSAGES.BARCODE_UNREADABLE,
+        );
       }
       throw err;
+    }
+
+    /*
+     * Dandori lebih dulu: line yang belum di-dandori, atau sedang dandori,
+     * tidak menerima scan produksi apa pun. Part yang sedang dipasang juga
+     * dipakai mengenali QR berkode program — lihat kenaliPart.
+     */
+    const dandoriAktif =
+      normalized.kind === 'PRODUCTION' && line && !konteksBarcode.penerimaan && !line.tanpaDandori
+        ? await this.dandori.terbuka(line.id)
+        : null;
+    if (
+      normalized.kind === 'PRODUCTION' &&
+      line &&
+      !konteksBarcode.penerimaan &&
+      !line.tanpaDandori
+    ) {
+      if (!dandoriAktif) {
+        throw new ScanRejected('DANDORI_REQUIRED', REJECT_MESSAGES.DANDORI_REQUIRED);
+      }
+      if (dandoriAktif.status !== 'BERJALAN') {
+        throw new ScanRejected(
+          'DANDORI_REQUIRED',
+          `Line ${line.code} sedang dandori. Scan kode dandori lalu tekan START.`,
+        );
+      }
     }
 
     /*
@@ -284,6 +338,7 @@ export class ScanService {
       parsed,
       line?.plantId,
       line ? { id: line.id, processType: normalized.processType ?? line.processType } : undefined,
+      dandoriAktif?.partId ?? undefined,
     );
 
     /*
@@ -305,17 +360,45 @@ export class ScanService {
        */
       const sebab = ambigu
         ? `QR ini cocok ke beberapa part di line ${line?.code}: ${ambigu.join(', ')}`
-        : parsed.programCode
-        ? `program number "${parsed.programCode}" belum terdaftar di master`
-        : punyaIdentitasPart(parsed)
-          ? `part "${parsed.partNumber ?? parsed.backNumber}" tidak ada di master`
-          : `barcode terbaca aturan ${parsed.aturan} yang tidak memuat nomor part`;
+        : !konteksBarcode.penerimaan && /^ARES:/i.test(normalized.rawCode)
+          ? `kanban ARES hanya di-scan di line receiving, bukan ${line?.code ?? 'di sini'}`
+          : parsed.programCode
+            ? `program number "${parsed.programCode}" belum terdaftar di master`
+            : punyaIdentitasPart(parsed)
+              ? `part "${parsed.partNumber ?? parsed.backNumber}" tidak ada di master`
+              : `barcode terbaca aturan ${parsed.aturan} yang tidak memuat nomor part`;
       this.logger.warn(`scan produksi ditolak — ${sebab}: ${normalized.rawCode}`);
       throw new ScanRejected(
         'PART_NOT_RECOGNIZED',
         `${REJECT_MESSAGES.PART_NOT_RECOGNIZED} (${sebab})`,
       );
     }
+    /*
+     * Hanya part yang sedang dipasang. Part lain berarti model berganti tanpa
+     * dandori — stok dan dokumennya akan masuk ke part yang tidak sedang
+     * diproduksi, dan box FG yang terbuka tercampur.
+     */
+    if (dandoriAktif?.status === 'BERJALAN' && part) {
+      const anggota = dandoriAktif.toolingId
+        ? await this.dandori.anggotaMold(dandoriAktif.toolingId)
+        : null;
+      const cocok = anggota ? anggota.includes(part.id) : dandoriAktif.partId === part.id;
+      if (!cocok) {
+        const [dipasang] = dandoriAktif.partId
+          ? await this.db
+              .select({ partNumber: parts.partNumber })
+              .from(parts)
+              .where(eq(parts.id, dandoriAktif.partId))
+              .limit(1)
+          : [];
+        throw new ScanRejected(
+          'DANDORI_MODEL_MISMATCH',
+          `${REJECT_MESSAGES.DANDORI_MODEL_MISMATCH} (dandori: ${dipasang?.partNumber ?? 'mold aktif'}, ` +
+            `discan: ${part.partNumber})`,
+        );
+      }
+    }
+
     const machine = normalized.machineCode
       ? await this.findMachine(normalized.machineCode)
       : undefined;
@@ -337,8 +420,9 @@ export class ScanService {
      * WIP dan FG sekaligus. Proses, SLOC, metode, dan izin SAP semuanya dari
      * baris yang terpilih.
      *
-     * Tidak ada pemeriksaan tahap sebelumnya: part number berubah di tiap tahap,
-     * jadi riwayat kode yang sama tidak bisa menjawabnya.
+     * Tahap sebelumnya hanya diperiksa untuk QR casting (lihat
+     * periksaTahapSebelumnya): part number berubah di tiap tahap, dan hanya QR
+     * itu yang membawa identitas unit yang sama dari DC sampai FG.
      */
     const rute = part
       ? await this.db
@@ -359,29 +443,62 @@ export class ScanService {
       null;
 
     /*
+     * Work center receiving (mis. SE0800) tidak membuat barang: scan-nya hanya
+     * memindah komponen beli dari SLOC part (WH80) ke SLOC Keluar line (WP80),
+     * dan transfer 311-nya selalu dikirim ke SAP. Aturannya milik line, karena
+     * SEMUA komponen beli di-scan di sini — rute per part hanya pengecualian.
+     * Tanpa hasil produksi, tanpa backflush, dan tanpa dokumen produksi SAP.
+     *
+     * Yang di-scan kanban ARES: qty-nya isi box tercetak, seri-nya id kanban,
+     * jadi box yang sama tertolak DUPLICATE di station().
+     */
+    const penerimaan =
+      normalized.kind === 'PRODUCTION' &&
+      (await this.processTypes.katalog()).grup(processType) === 'RECEIVING';
+    if (penerimaan && part?.sourceType !== 'PURCHASED') {
+      throw new ScanRejected(
+        'PROCESS_NOT_IN_ROUTE',
+        `${REJECT_MESSAGES.PROCESS_NOT_IN_ROUTE} (${part?.partNumber} bukan komponen beli; ` +
+          `${line?.code} hanya menerima part beli)`,
+      );
+    }
+
+    /*
      * Di luar rute tetap diterima dengan peringatan: barangnya sudah jadi, dan
      * menolaknya menghentikan line karena data master. Pengaturannya memakai
      * milik line, dan dokumen SAP-nya ditahan sampai rutenya didaftarkan.
      */
-    const diLuarRute = normalized.kind === 'PRODUCTION' && Boolean(line && part && !barisRute);
+    const diLuarRute =
+      normalized.kind === 'PRODUCTION' && !penerimaan && Boolean(line && part && !barisRute);
     if (diLuarRute) {
       this.logger.warn(
         `part ${part?.partNumber} tidak terdaftar di work center ${line?.code} — dokumen SAP ditahan`,
       );
     }
 
+    if (normalized.kind === 'PRODUCTION' && !penerimaan && part && parsed.programCode) {
+      await this.periksaTahapSebelumnya(part, parsed.serialNumber ?? normalized.rawCode);
+    }
+
     const inputLocationId = barisRute?.inputLocationId ?? line?.inputLocationId ?? null;
-    const outputLocationId = barisRute?.outputLocationId ?? line?.outputLocationId ?? null;
-    const transferLocationId = barisRute?.transferLocationId ?? null;
+    // SLOC tujuan milik part — SAP membukukan GR ke sana dari work center mana pun.
+    // Receiving tidak jatuh ke SLOC line: di sana SLOC Keluar line adalah TUJUAN pindahnya.
+    const outputLocationId = penerimaan
+      ? (part?.outputLocationId ?? null)
+      : (part?.outputLocationId ?? line?.outputLocationId ?? null);
+    const transferLocationId =
+      barisRute?.transferLocationId ?? (penerimaan ? (line?.outputLocationId ?? null) : null);
     /*
      * Kebijakan DISALIN ke meta scan (lihat insert di bawah). Outbox SAP dan
      * pencatatan NG membaca salinan itu, bukan master — supaya mengubah
      * pengaturan hari ini tidak mengubah nasib scan kemarin yang belum terkirim.
      */
     const sapRoute = {
-      productionEnabled: barisRute?.sapProductionEnabled ?? false,
-      transferEnabled: barisRute?.sapTransferEnabled ?? false,
-      transferMovementType: barisRute?.sapTransferMovementType ?? null,
+      productionEnabled: penerimaan ? false : (barisRute?.sapProductionEnabled ?? false),
+      transferEnabled: penerimaan ? true : (barisRute?.sapTransferEnabled ?? false),
+      transferMovementType: penerimaan
+        ? (barisRute?.sapTransferMovementType ?? '311')
+        : (barisRute?.sapTransferMovementType ?? null),
       ...(diLuarRute ? { diLuarRute: true } : {}),
       inputLocationId,
       outputLocationId,
@@ -421,11 +538,17 @@ export class ScanService {
 
       if ((sapRoute.productionEnabled || transferLocationId) && !outputLocationId) {
         tolakSloc(
-          'SLOC Keluar kosong padahal push produksi atau transfer aktif — isi Tujuan di Master Data › Rute Proses per Part',
+          'SLOC Keluar kosong padahal push produksi atau transfer aktif — isi SLOC Tujuan di Master Data › Part',
         );
       }
       if (sapRoute.transferEnabled && !transferLocationId) {
         tolakSloc('push transfer aktif tetapi SLOC Transfer kosong');
+      }
+      if (penerimaan && (!outputLocationId || !transferLocationId)) {
+        tolakSloc(
+          'work center receiving memindah komponen dari SLOC Tujuan part ke SLOC Keluar line ' +
+            '(atau SLOC Transfer rute part) — isi keduanya di Master Data › Part dan › Line',
+        );
       }
       if (transferLocationId && transferLocationId === outputLocationId) {
         tolakSloc(
@@ -487,6 +610,8 @@ export class ScanService {
     }
 
     let labelDn: LabelDn | null = null;
+    /** Label kanban customer yang menggantikan kartu internal (lini BODY). */
+    let labelCustomer: LabelCustomer | null = null;
     /*
      * Peringatan dari KARTUNYA, bukan dari prosesnya — lihat pemeriksaan qty
      * di bawah. Disimpan dulu karena `hasilDasar` baru ada setelah seluruh
@@ -520,14 +645,35 @@ export class ScanService {
           throw new ScanRejected('KANBAN_REQUIRED', REJECT_MESSAGES.KANBAN_REQUIRED);
         }
 
-        let kb;
+        let kb: ReturnType<typeof bacaKanban> | undefined;
         try {
           kb = bacaKanban(normalized.kanbanCode, konteksBarcode);
         } catch (err) {
-          if (err instanceof KanbanTidakTerbaca) {
-            throw new ScanRejected('KANBAN_UNREADABLE', REJECT_MESSAGES.KANBAN_UNREADABLE);
+          if (!(err instanceof KanbanTidakTerbaca)) throw err;
+          if (err instanceof KanbanRusakKetik) {
+            throw new ScanRejected('KANBAN_UNREADABLE', err.message);
           }
-          throw err;
+          /*
+           * Bukan kanban internal: mungkin label kanban CUSTOMER yang di BODY
+           * boleh menggantikan kartu (Handika, 16–17 Nov 2026). Hanya di lini
+           * per-box; di lini lain label customer tidak punya arti.
+           */
+          labelCustomer = syarat.qtyDariKartu
+            ? await this.bacaLabelCustomer(normalized.kanbanCode, part, plantId, opsi)
+            : null;
+          if (!labelCustomer) {
+            throw new ScanRejected(
+              'KANBAN_UNREADABLE',
+              `${REJECT_MESSAGES.KANBAN_UNREADABLE} Bukan kartu internal maupun label customer ` +
+                'yang terdaftar di Master › Part Customer. Untuk ganti part, pakai tombol DANDORI.',
+            );
+          }
+          kb = {
+            raw: normalized.kanbanCode,
+            partNumber: part.partNumber,
+            serialNumber: labelCustomer.serialNumber,
+            aturan: 'LABEL_CUSTOMER',
+          } as ReturnType<typeof bacaKanban>;
         }
 
         /*
@@ -598,6 +744,20 @@ export class ScanService {
           .from(kanbans)
           .where(and(eq(kanbans.partId, part.id), eq(kanbans.serialNumber, kb.serialNumber ?? '')))
           .limit(1);
+
+        if (!kartu && labelCustomer && opsi.ujiSaja) {
+          // Mode uji tidak mendaftarkan label customer; pemetaannya sudah sah.
+          return {
+            duplicated: false,
+            partId: part.id,
+            productionDate: prodDate,
+            qty: labelCustomer.qtyPerKanban,
+            serialNumber: null,
+            kanbanOwner: 'CUSTOMER',
+            loadingList: null,
+            peringatan: null,
+          };
+        }
 
         if (!kartu && labelDn && opsi.ujiSaja) {
           // Mode uji tidak mendaftarkan label; sampai di sini berarti label
@@ -932,6 +1092,34 @@ export class ScanService {
             occurredAt: normalized.scannedAt,
             meta: { serialUnit: seriUnit, scanEventId: insertedId },
           });
+
+          /*
+           * Box PENUH → kartu PRODUCED, sama seperti mode per kanban.
+           *
+           * Sebelumnya kartu berseri tetap AVAILABLE walau penuh, dan penuhnya
+           * hanya terbaca dari TT_KANBAN_ITEM. Akibatnya: belanja menolak kartu
+           * WIP-nya ("belum terisi" — wipSiapBelanja menunggu PRODUCED), tanggal
+           * produksi kartu kosong, dan layar Trace Kanban menyebutnya kosong.
+           * Box yang baru sebagian terisi tetap pada statusnya. Kembali ke
+           * AVAILABLE lewat delivery/pulling dan pembatalan NG, seperti
+           * kartu per kanban. Handika, 12 Nov 2026.
+           */
+          if (isiSetelahScan >= kanbanTerpilih.capacity) {
+            await tx
+              .update(kanbans)
+              .set({ status: 'PRODUCED', producedAt: normalized.scannedAt })
+              .where(eq(kanbans.id, kanbanTerpilih.id));
+            await tx.insert(kanbanEvents).values({
+              kanbanId: kanbanTerpilih.id,
+              type: 'PRODUCED',
+              lineId: line?.id ?? null,
+              qty: isiSetelahScan,
+              userId: principal?.kind === 'user' ? principal.sub : null,
+              deviceId: principal?.kind === 'device' ? principal.sub : null,
+              occurredAt: normalized.scannedAt,
+              meta: { scanEventId: insertedId, scanMode: modeScan, boxPenuh: true },
+            });
+          }
         }
 
         // Scan produksi menambah stok; jenis scan lain belum menulis mutasi
@@ -949,7 +1137,9 @@ export class ScanService {
             userId: principal?.kind === 'user' ? principal.sub : null,
             occurredAt: normalized.scannedAt,
           };
-          const rencana = rencanaMutasiScanProduksi(qty, outputLocationId, transferLocationId);
+          const rencana = penerimaan
+            ? rencanaMutasiScanPenerimaan(qty, outputLocationId, transferLocationId)
+            : rencanaMutasiScanProduksi(qty, outputLocationId, transferLocationId);
           // Hasil produksi dan dua sisi transfer adalah satu perubahan stok.
           // Jika sisi masuk gagal, sisi keluar juga harus dibatalkan.
           await tx.insert(mutations).values(
@@ -991,7 +1181,7 @@ export class ScanService {
      * perhitungan material, dan kegagalannya tidak boleh menggagalkan
      * pencatatan produksi yang barangnya sudah terlanjur jadi.
      */
-    if (insertedId && normalized.kind === 'PRODUCTION') {
+    if (insertedId && normalized.kind === 'PRODUCTION' && !penerimaan) {
       try {
         await this.queue.add(QUEUES.STOCK, JOBS.BACKFLUSH_CONSUMPTION, {
           scanEventId: insertedId,
@@ -1017,8 +1207,24 @@ export class ScanService {
      * barangnya sudah jadi. Yang dilakukan: dicatat keras, dan operator diberi
      * tahu lewat peringatan supaya box-nya di-pull manual.
      */
+    /*
+     * Direct pulling hanya di pabrik yang menyalakannya (UNIT). Di BODY kanban
+     * customer hanya menggantikan kartu: box tetap PRODUCED dan di-pull
+     * belakangan lewat layar pulling (Handika, 16–17 Nov 2026).
+     */
+    const pullingDiLini =
+      labelDn && plantId
+        ? ((
+            await this.db
+              .select({ ya: plants.directPullingDiLini })
+              .from(plants)
+              .where(eq(plants.id, plantId))
+              .limit(1)
+          )[0]?.ya ?? false)
+        : false;
     if (
       labelDn &&
+      pullingDiLini &&
       kanbanTerpilih &&
       insertedId &&
       syarat?.tempelUnitKeKartu &&
@@ -1208,6 +1414,126 @@ export class ScanService {
     };
   }
 
+  /**
+   * Label kanban CUSTOMER di lini BODY — pengganti kartu internal.
+   *
+   * Aturan bacanya data per customer (master Customer, disalin dari bella);
+   * pemetaannya master Part Customer. Label harus menunjuk part yang sedang
+   * didandori — label part lain ditolak di sini, bukan ketahuan di dock.
+   *
+   * Hasilnya didaftarkan sebagai kartu CUSTOMER:
+   *   - label BERSERI (mis. TMMIN 39 karakter): seri = identitas box, jadi
+   *     label yang sama tidak bisa dicatat dua kali;
+   *   - label TANPA seri (MMKI hanya nomor part, Suzuki QR): tiap scan = satu
+   *     box baru. Scan ganda label yang sama tidak terdeteksi — risiko yang
+   *     diterima Handika, sama dengan praktik sekarang.
+   *
+   * Tidak ada pulling di sini: di BODY box tetap PRODUCED dan di-pull
+   * belakangan. `null` = bukan label customer yang dikenal.
+   */
+  private async bacaLabelCustomer(
+    raw: string,
+    part: { id: number; partNumber: string; backNumber: string | null; qtyPerKanban: number | null },
+    plantId: number,
+    opsi: OpsiIngest,
+  ): Promise<LabelCustomer | null> {
+    const aturan = await this.db
+      .select({
+        customerId: customers.id,
+        labelLength: customers.labelLength,
+        labelPartStart: customers.labelPartStart,
+        labelPartLength: customers.labelPartLength,
+        labelSerialStart: customers.labelSerialStart,
+        labelSerialLength: customers.labelSerialLength,
+      })
+      .from(customers)
+      .where(eq(customers.isActive, true));
+    const potongan = potongLabelCustomer(raw, aturan);
+    if (potongan.length === 0) return null;
+
+    const baku = sql<string>`upper(replace(replace(${customerParts.customerPartNumber}, '-', ''), ' ', ''))`;
+    const baris = await this.db
+      .select({
+        customerId: customerParts.customerId,
+        customerCode: customers.code,
+        customerPartNumber: customerParts.customerPartNumber,
+        qtyPerKanban: customerParts.qtyPerKanban,
+        partId: customerParts.partId,
+        partNumber: parts.partNumber,
+        backNumber: parts.backNumber,
+        baku,
+      })
+      .from(customerParts)
+      .innerJoin(customers, eq(customers.id, customerParts.customerId))
+      .innerJoin(parts, eq(parts.id, customerParts.partId))
+      .where(inArray(baku, [...new Set(potongan.map((p) => p.nomorPart))]));
+
+    // Utamakan pasangan customer + nomor yang dibaca menurut aturan customer
+    // itu sendiri; bila tidak ada, nomor yang sama milik customer lain (bella).
+    const sepasang = baris.filter((b) =>
+      potongan.some((p) => p.customerId === b.customerId && p.nomorPart === b.baku),
+    );
+    const kandidat = sepasang.length > 0 ? sepasang : baris;
+    if (kandidat.length === 0) return null;
+
+    const cocok =
+      kandidat.find((b) => b.partId === part.id) ??
+      kandidat.find((b) => nomorPartSama(b.partNumber, part.partNumber));
+    if (!cocok) {
+      const milik = [...new Set(kandidat.map((b) => b.backNumber ?? b.partNumber))].join(', ');
+      throw new ScanRejected(
+        'KANBAN_PART_MISMATCH',
+        `${REJECT_MESSAGES.KANBAN_PART_MISMATCH} (label customer ${kandidat[0]!.customerPartNumber} ` +
+          `untuk ${milik}, yang didandori ${part.backNumber ?? part.partNumber})`,
+      );
+    }
+
+    const isiMaster = part.qtyPerKanban ?? null;
+    const isiCustomer = cocok.qtyPerKanban && cocok.qtyPerKanban > 0 ? cocok.qtyPerKanban : null;
+    if (isiCustomer && isiMaster && isiCustomer !== isiMaster) {
+      throw new ScanRejected(
+        'CUSTOMER_LABEL_QTY_MISMATCH',
+        `${REJECT_MESSAGES.CUSTOMER_LABEL_QTY_MISMATCH} (${cocok.customerCode} ${cocok.customerPartNumber}: ` +
+          `${isiCustomer}/box, master ${part.backNumber ?? part.partNumber}: ${isiMaster}/box)`,
+      );
+    }
+    const qtyPerKanban = isiCustomer ?? isiMaster ?? 1;
+
+    const seri = potongan.find((p) => p.customerId === cocok.customerId && p.seri)?.seri ?? null;
+    const serialNumber = seri
+      ? `${cocok.customerCode}:${seri}`
+      : `${cocok.customerCode}:${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+    if (!opsi.ujiSaja) {
+      const [ada] = await this.db
+        .select({ id: kanbans.id })
+        .from(kanbans)
+        .where(and(eq(kanbans.partId, part.id), eq(kanbans.serialNumber, serialNumber)))
+        .limit(1);
+      if (!ada) {
+        await this.db.insert(kanbans).values({
+          plantId,
+          partId: part.id,
+          serialNumber,
+          owner: 'CUSTOMER',
+          kanbanType: 'REGULER',
+          qtyPerBox: qtyPerKanban,
+          unitPerKanban: qtyPerKanban,
+          customerId: cocok.customerId,
+          status: 'AVAILABLE',
+        });
+      }
+    }
+
+    return {
+      serialNumber,
+      customerId: cocok.customerId,
+      customerCode: cocok.customerCode,
+      customerPartNumber: cocok.customerPartNumber,
+      qtyPerKanban,
+    };
+  }
+
   /** Detail loading list untuk panel di layar FG: tiap part, box terambil dari rencana. */
   private async ringkasanLoadingList(deliveryId: number): Promise<StationResult['loadingList']> {
     const [doc] = await this.db
@@ -1349,6 +1675,8 @@ export class ScanService {
     parsed: { partNumber?: string; backNumber?: string; programCode?: string },
     plantId?: number,
     line?: { id: number; processType: string | null },
+    /** Part yang sedang di-dandori di line ini; dipilih bila ada di rantai QR. */
+    partAktifId?: number,
   ): Promise<{
     part?: typeof parts.$inferSelect;
     model: string | null;
@@ -1385,7 +1713,7 @@ export class ScanService {
      * menunjuk FG. Di DC dan MA barang yang sama masih bernomor part tahapnya,
      * jadi part dipilih dari rantai Part Pairing FG itu yang dikerjakan line ini.
      */
-    const tahap = await this.partTahap(keluarga.id, line);
+    const tahap = await this.partTahap(keluarga.id, line, partAktifId);
     if (!tahap) return { part: keluarga, model: pn.product };
     if ('ambigu' in tahap) {
       const nomor = await this.db
@@ -1398,10 +1726,88 @@ export class ScanService {
     return { part: await this.partById(tahap.partId), model: pn.product, keluarga };
   }
 
+  /**
+   * QR casting wajib sudah lewat tahap sebelumnya.
+   *
+   * QR yang sama dibawa dari DC sampai FG, tetapi nomor part-nya berganti di
+   * tiap tahap, jadi "tahap sebelumnya" dibaca dari Part Pairing: komponen
+   * langsung part ini yang dibuat sendiri dan dilacak per seri (CI11 → CH11,
+   * CH11 → CG11). QR ini harus sudah pernah tercatat sebagai salah satunya.
+   * Part tanpa komponen seperti itu adalah tahap pertama — CG11, yang
+   * komponennya Melting -02 dilacak per qty — dan tidak diperiksa.
+   *
+   * Hanya untuk barcode berkode program (QR casting); barcode lain tidak
+   * membawa identitas unit yang sama di setiap tahap. Keputusan Handika
+   * 11 Nov 2026: scan di AS0003 tanpa scan MA0001 harus GAGAL, bukan peringatan.
+   */
+  private async periksaTahapSebelumnya(
+    part: { id: number; partNumber: string },
+    serial: string,
+  ): Promise<void> {
+    const hariIni = toLocalDateKey(new Date());
+    const sebelumnya = await this.db
+      .select({ id: parts.id, partNumber: parts.partNumber, backNumber: parts.backNumber })
+      .from(partPairings)
+      .innerJoin(parts, eq(parts.id, partPairings.componentPartId))
+      .where(
+        and(
+          eq(partPairings.parentPartId, part.id),
+          lte(partPairings.effectiveFrom, hariIni),
+          or(isNull(partPairings.effectiveTo), gte(partPairings.effectiveTo, hariIni)),
+          eq(parts.trackingMode, 'SERIAL'),
+          eq(parts.sourceType, 'MANUFACTURED'),
+        ),
+      );
+    if (sebelumnya.length === 0) return;
+
+    const [sudah] = await this.db
+      .select({ id: scanEvents.id })
+      .from(scanEvents)
+      .where(
+        and(
+          eq(scanEvents.kind, 'PRODUCTION'),
+          eq(scanEvents.serialNumber, serial),
+          inArray(
+            scanEvents.partId,
+            sebelumnya.map((p) => p.id),
+          ),
+        ),
+      )
+      .limit(1);
+    if (sudah) return;
+
+    const rute = await this.db
+      .select({ partId: partProcesses.partId, line: lines.code })
+      .from(partProcesses)
+      .innerJoin(lines, eq(lines.id, partProcesses.lineId))
+      .where(
+        and(
+          inArray(
+            partProcesses.partId,
+            sebelumnya.map((p) => p.id),
+          ),
+          eq(partProcesses.isActive, true),
+        ),
+      );
+    // Yang disebut hanya komponen ber-rute — itulah tahap yang memang di-scan.
+    const berRute = sebelumnya.filter((p) => rute.some((r) => r.partId === p.id));
+    const sebut = (berRute.length ? berRute : sebelumnya)
+      .map((p) => {
+        const wc = rute.filter((r) => r.partId === p.id).map((r) => r.line);
+        return `${p.partNumber}${p.backNumber ? ` (${p.backNumber})` : ''}${wc.length ? ` di ${wc.join('/')}` : ''}`;
+      })
+      .join(' atau ');
+    throw new ScanRejected(
+      'MISSING_PREVIOUS_PROCESS',
+      `${REJECT_MESSAGES.MISSING_PREVIOUS_PROCESS} (QR ${serial} belum discan sebagai ${sebut})`,
+    );
+  }
+
   /** Anggota rantai Part Pairing sebuah FG yang punya rute di line ini. */
   private async partTahap(
     fgPartId: number,
     line: { id: number; processType: string | null },
+    partAktifId?: number,
   ): Promise<ReturnType<typeof pilihPartTahap>> {
     const hariIni = toLocalDateKey(new Date());
     // Batas kedalaman menjaga data pasangan yang melingkar.
@@ -1419,6 +1825,8 @@ export class ScanService {
       SELECT part_id, min(kedalaman)::int AS kedalaman FROM rantai GROUP BY part_id
     `);
     const daftar = turunan.rows.map((t) => ({ partId: Number(t.part_id), kedalaman: t.kedalaman }));
+    // Part yang di-dandori menjawab langsung: dua tahap satu rantai di satu line tidak lagi ambigu.
+    if (partAktifId && daftar.some((d) => d.partId === partAktifId)) return { partId: partAktifId };
     if (daftar.length <= 1) return null;
 
     const rute = await this.db
@@ -1850,7 +2258,7 @@ export class ScanService {
 
     let parsed;
     try {
-      parsed = bacaBarcode(kode.trim(), { processType: line.processType, scanMode: mode });
+      parsed = bacaBarcode(bacaKodeSample(kode), { processType: line.processType, scanMode: mode });
     } catch (err) {
       if (err instanceof BarcodeTidakDikenali) {
         throw new BadRequestException(REJECT_MESSAGES.BARCODE_UNREADABLE);
@@ -1909,7 +2317,9 @@ export class ScanService {
          */
         scanMode: await this.modeScanLini(line.processType, line.scanMode),
         menerimaKartu: await this.lineMenerimaKartu(line),
+        wajibDandori: await this.dandori.wajib(line),
       },
+      dandori: await this.dandori.keadaan(line),
       ...(await this.hitunganUntukHasil(lineCode)),
       berhenti: await this.berhentiTerbuka(line.id),
       alasanBerhenti: await this.alasanUntukLini(line.plantId, line.id),
@@ -2253,10 +2663,12 @@ export class ScanService {
   async liniGrup(grup: string, principal?: Principal) {
     const katalogGrup = await this.processTypes.katalog();
     const g = grup.toUpperCase() as Parameters<typeof prosesDalamGrup>[1];
-    const jenis = prosesDalamGrup(katalogGrup, g);
-    if (jenis.length === 0) {
+    if (!katalogGrup.cariGrup(g)) {
       throw new BadRequestException(`Grup proses "${grup}" tidak dikenal`);
     }
+    const jenis = prosesDalamGrup(katalogGrup, g);
+    // Grup baru yang belum punya jenis proses: daftar lini kosong, bukan galat.
+    if (jenis.length === 0) return { grup: g, label: katalogGrup.labelGrup(g), lines: [] };
 
     const rows = await this.db
       .select({
@@ -2277,7 +2689,7 @@ export class ScanService {
       )
       .orderBy(lines.sortOrder);
 
-    return { grup: g, label: PROCESS_GROUP_LABELS[g], lines: rows };
+    return { grup: g, label: katalogGrup.labelGrup(g), lines: rows };
   }
 
   /**
@@ -2320,7 +2732,7 @@ export class ScanService {
 
     if (grupProses(katalogLini, line.processType) !== g) {
       throw new BadRequestException(
-        `Lini ${bersih} bukan lini ${PROCESS_GROUP_LABELS[g] ?? grup}. Periksa barcode lininya.`,
+        `Lini ${bersih} bukan lini ${katalogLini.labelGrup(g)}. Periksa barcode lininya.`,
       );
     }
 

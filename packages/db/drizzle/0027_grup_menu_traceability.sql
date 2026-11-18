@@ -1,0 +1,2 @@
+ALTER TABLE "org"."TM_MENU" DROP CONSTRAINT "TM_MENU_CHR_MENU_GROUP_CHK";--> statement-breakpoint
+ALTER TABLE "org"."TM_MENU" ADD CONSTRAINT "TM_MENU_CHR_MENU_GROUP_CHK" CHECK ("org"."TM_MENU"."CHR_MENU_GROUP" IN ('Produksi', 'Logistik', 'Traceability', 'Integrasi', 'Master Data', 'Administrasi'));

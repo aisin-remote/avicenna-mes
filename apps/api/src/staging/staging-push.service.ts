@@ -332,7 +332,7 @@ export class StagingPushService {
       throw new Error(
         `part ${hasil.partNumber} belum punya Production Version — ` +
           'SAP menurunkan plant dan SLOC dari versi itu, jadi tanpanya hasil produksi ' +
-          'tidak bisa dibukukan. Isi CHR_PRODUCTION_VERSION di master Part.',
+          'tidak bisa dibukukan. Isi PV di rute part + work center (Master › Rute), lalu coba ulang.',
       );
     }
     if (Math.round(hasil.qtyAbsolute) === 0) {

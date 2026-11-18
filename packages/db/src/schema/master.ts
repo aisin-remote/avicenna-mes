@@ -1,4 +1,4 @@
-import { boolean, index, integer, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import { boolean, decimal, index, integer, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import {
   PART_TYPES,
@@ -12,7 +12,7 @@ import {
   timestamps,
   type ProcessType,
 } from './_shared';
-import { PROCESS_GROUPS, SAP_CLASSES, SCAN_MODE_ENUM } from '@avicenna/contracts';
+import { SAP_CLASSES, SCAN_MODE_ENUM } from '@avicenna/contracts';
 import { plants } from './org';
 
 /** Line produksi. Satu line terikat pada satu pabrik dan satu jenis proses. */
@@ -80,6 +80,16 @@ export const lines = masterSchema.table(
     inputLocationId: fk('INT_INPUT_LOCATION_ID'),
     outputLocationId: fk('INT_OUTPUT_LOCATION_ID'),
     sortOrder: integer('INT_SORT_ORDER').notNull().default(0),
+    /**
+     * Line yang boleh berproduksi TANPA dandori.
+     *
+     * Bawaannya wajib (keputusan Handika, 11 Nov 2026): sebelum scan produksi
+     * diterima, MP harus men-scan QR dandori (dan master sample di BODY, atau
+     * tag mold di injection) lalu menekan START, supaya part yang tercatat
+     * adalah part yang memang sedang dipasang. Tanda ini pengecualian per line.
+     * Line receiving tidak memproduksi apa pun dan tidak pernah diminta dandori.
+     */
+    tanpaDandori: boolean('FLG_TANPA_DANDORI').notNull().default(false),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
@@ -126,6 +136,25 @@ export const customers = masterSchema.table(
      * dicocokkan tiga arah: loading list, kanban internal, kanban customer.
      */
     directKanban: boolean('FLG_DIRECT_KANBAN').notNull().default(false),
+    /*
+     * ── ATURAN BACA LABEL KANBAN CUSTOMER ─────────────────────────────────────
+     *
+     * Disalin dari master `customers` bella (char_total / char_first /
+     * char_length / serial_first / serial_length), 17 Nov 2026. Posisi mulai
+     * dari 0 seperti `substr` PHP; label di-trim dulu sebelum diukur.
+     *
+     *   INT_LABEL_LENGTH        panjang label; kosong/0 = tanpa penjagaan panjang
+     *   INT_LABEL_PART_START    posisi nomor part customer
+     *   INT_LABEL_PART_LENGTH   panjangnya; kosong/0 = seluruh label
+     *   INT_LABEL_SERIAL_*      posisi seri label, bila customer punya
+     *
+     * Dipakai lini BODY yang men-scan label customer sebagai pengganti kartu.
+     */
+    labelLength: integer('INT_LABEL_LENGTH'),
+    labelPartStart: integer('INT_LABEL_PART_START'),
+    labelPartLength: integer('INT_LABEL_PART_LENGTH'),
+    labelSerialStart: integer('INT_LABEL_SERIAL_START'),
+    labelSerialLength: integer('INT_LABEL_SERIAL_LENGTH'),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
@@ -214,6 +243,16 @@ export const parts = masterSchema.table(
      * ini, tetapi spesifikasi antarmukanya belum ada — lihat docs/sap-integration.md.
      */
     productionVersion: varchar('CHR_PRODUCTION_VERSION', { length: 8 }),
+    /**
+     * SLOC tujuan hasil produksi part ini — padanan CHR_SLOC_TO di
+     * TM_PROCESS_PARTS staging.
+     *
+     * Milik PART, bukan rute: di staging setiap part hanya punya satu SLOC
+     * tujuan, juga part yang dikerjakan di beberapa work center. SAP membukukan
+     * GR ke sini, jadi stok Avicenna harus masuk ke tempat yang sama di work
+     * center mana pun scan-nya. Kosong = pakai SLOC tujuan line.
+     */
+    outputLocationId: fk('INT_OUTPUT_LOCATION_ID'),
     /** Jumlah pcs per kanban standar (bisa dioverride per customer di customer_parts). */
     qtyPerKanban: integer('INT_QTY_PER_BOX'),
     standardStock: integer('INT_STANDARD_STOCK').notNull().default(0),
@@ -228,6 +267,34 @@ export const parts = masterSchema.table(
     daftarNilai('TM_PARTS_CHR_PART_TYPE_CHK', t.partType, PART_TYPES),
     daftarNilai('TM_PARTS_CHR_SOURCE_TYPE_CHK', t.sourceType, SOURCE_TYPES),
     daftarNilai('TM_PARTS_CHR_TRACKING_MODE_CHK', t.trackingMode, TRACKING_MODES),
+  ],
+);
+
+/**
+ * ─── GRUP PROSES — lingkup role ─────────────────────────────────────────────
+ *
+ * Dulu daftar tetap PROCESS_GROUPS di kontrak, dijaga CHECK di tiga tabel;
+ * menambah satu grup (PACKING_ELC, 16 Nov 2026) berarti migrasi. Sekarang
+ * baris master, dan CHR_PROCESS_GROUP di TM_PROCESS_TYPE, TM_ROLE, dan TM_NG
+ * menunjuk KODE-nya lewat foreign key — alasan memakai kode, bukan id, sama
+ * dengan jenis proses: kolomnya sudah berisi kode di seluruh data lama.
+ *
+ * RECEIVING dan DELIVERY tidak bisa diubah kodenya atau dinonaktifkan
+ * (GRUP_PROSES_TERKUNCI); penjaganya di MasterService.
+ */
+export const processGroups = masterSchema.table(
+  'TM_PROCESS_GROUP',
+  {
+    id: pk(),
+    code: varchar('CHR_CODE', { length: 32 }).notNull(),
+    label: varchar('CHR_LABEL', { length: 64 }).notNull(),
+    sortOrder: integer('INT_SORT_ORDER').notNull().default(0),
+    isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('TM_PROCESS_GROUP_CODE_UNIQUE').on(t.code),
+    index('TM_PROCESS_GROUP_ORDER_IDX').on(t.sortOrder),
   ],
 );
 
@@ -274,7 +341,9 @@ export const processTypes = masterSchema.table(
     code: varchar('CHR_CODE', { length: 32 }).notNull(),
     /** Yang dibaca orang di kepala kolom dan di laporan. */
     label: varchar('CHR_LABEL', { length: 64 }).notNull(),
-    processGroup: enumCol('CHR_PROCESS_GROUP', PROCESS_GROUPS).notNull(),
+    processGroup: varchar('CHR_PROCESS_GROUP', { length: 32 })
+      .notNull()
+      .references(() => processGroups.code),
     sapClass: enumCol('CHR_SAP_CLASS', SAP_CLASSES).notNull(),
     /** Metode scan proses ini. TM_LINE boleh menimpanya per lini. */
     scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM).notNull(),
@@ -292,7 +361,6 @@ export const processTypes = masterSchema.table(
   (t) => [
     uniqueIndex('TM_PROCESS_TYPE_CODE_UNIQUE').on(t.code),
     index('TM_PROCESS_TYPE_ORDER_IDX').on(t.sortOrder),
-    daftarNilai('TM_PROCESS_TYPE_CHR_PROCESS_GROUP_CHK', t.processGroup, PROCESS_GROUPS),
     daftarNilai('TM_PROCESS_TYPE_CHR_SAP_CLASS_CHK', t.sapClass, SAP_CLASSES),
     daftarNilai('TM_PROCESS_TYPE_CHR_SCAN_MODE_CHK', t.scanMode, SCAN_MODE_ENUM),
   ],
@@ -384,7 +452,10 @@ export const partProcesses = masterSchema.table(
      */
     /** SLOC asal. */
     inputLocationId: fk('INT_INPUT_LOCATION_ID'),
-    /** SLOC tujuan. */
+    /**
+     * TIDAK DIPAKAI LAGI — SLOC tujuan pindah ke TM_PARTS (migrasi 0024).
+     * Kolomnya dibiarkan sampai data lama dipastikan tidak dibutuhkan.
+     */
     outputLocationId: fk('INT_OUTPUT_LOCATION_ID'),
     /** Metode scan part ini di work center ini. */
     scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM),
@@ -405,6 +476,15 @@ export const partProcesses = masterSchema.table(
     sapTransferMovementType: varchar('CHR_SAP_TRANSFER_MVT', { length: 3 }),
     /** Kartu harus melewati stasiun belanja sebelum boleh discan di sini. */
     requirePairing: boolean('FLG_REQUIRE_PAIRING').notNull().default(false),
+    /**
+     * Cycle time part ini di work center ini, detik per pcs.
+     *
+     * Dasar efisiensi: OK × cycle time ÷ waktu kerja bersih (jam kerja dikurangi
+     * istirahat). Di rute, bukan di part: part yang sama bisa jalan di dua line
+     * dengan mesin berbeda dan cycle time berbeda. Kosong = efisiensi line itu
+     * tidak dihitung, bukan nol (Handika, 12 Nov 2026).
+     */
+    cycleTime: decimal('FLT_CYCLE_TIME', { precision: 8, scale: 2, mode: 'number' }),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
@@ -421,7 +501,9 @@ export const partProcesses = masterSchema.table(
       .on(t.partId, t.processType)
       .where(sql`${t.lineId} is null`),
     index('TM_PROCESS_PARTS_PLANT_PROCESS_IDX').on(t.plantId, t.processType),
-    uniqueIndex('TM_PROCESS_PARTS_PART_PRIMARY_UNIQUE').on(t.partId).where(sql`${t.isPrimary}`),
+    uniqueIndex('TM_PROCESS_PARTS_PART_PRIMARY_UNIQUE')
+      .on(t.partId)
+      .where(sql`${t.isPrimary}`),
     daftarNilai('TM_PROCESS_PARTS_CHR_SCAN_MODE_CHK', t.scanMode, SCAN_MODE_ENUM),
   ],
 );
@@ -477,9 +559,7 @@ export const routeProcesses = masterSchema.table(
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
-  (t) => [
-    uniqueIndex('TM_ROUTE_PROCESS_PLANT_PROCESS_UNIQUE').on(t.plantId, t.processType),
-  ],
+  (t) => [uniqueIndex('TM_ROUTE_PROCESS_PLANT_PROCESS_UNIQUE').on(t.plantId, t.processType)],
 );
 
 export const routeProcessesRelations = relations(routeProcesses, ({ one }) => ({

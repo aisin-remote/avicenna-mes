@@ -122,14 +122,40 @@ describe('pemilihan aturan', () => {
 
   it('aturanBerlaku menyaring menurut keadaan', () => {
     expect(aturanBerlaku().map((a) => a.nama)).toContain('SERIAL_SAJA');
-    // Di proses per barang, aturan nomor-part polos TIDAK berlaku — hanya itu
-    // yang tersaring; sisanya berlaku di mana saja.
+    // Di proses per barang, aturan nomor-part polos TIDAK berlaku, dan kanban
+    // ARES hanya milik line receiving; sisanya berlaku di mana saja.
     const diCasting = aturanBerlaku({ processType: 'CASTING_WIP', scanMode: 'PART_SAJA' });
-    expect(diCasting.length).toBe(DAFTAR_ATURAN.length - 1);
+    expect(diCasting.length).toBe(DAFTAR_ATURAN.length - 2);
     expect(diCasting.map((a) => a.nama)).not.toContain('NOMOR_PART');
+    expect(diCasting.map((a) => a.nama)).not.toContain('KANBAN_ARES');
     expect(aturanBerlaku({ scanMode: 'KANBAN_BOX' }).map((a) => a.nama)).toContain('NOMOR_PART');
     // Nilai lama tetap diterima: snapshot scan yang sudah ada memakainya.
     expect(aturanBerlaku({ scanMode: 'PER_KANBAN' }).map((a) => a.nama)).toContain('NOMOR_PART');
+  });
+});
+
+describe('kanban ARES — hanya di line receiving', () => {
+  const ares = 'ARES:K:01J8Z3M5X8Q9W2Y7V6T5R4S3P2|90312-38013|200';
+  const receiving = { processType: 'RECEIVING', scanMode: 'PART_SAJA', penerimaan: true } as const;
+
+  it('membaca id kanban, nomor part, dan qty per box', () => {
+    expect(bacaBarcode(ares, receiving)).toMatchObject({
+      aturan: 'KANBAN_ARES',
+      serialNumber: '01J8Z3M5X8Q9W2Y7V6T5R4S3P2',
+      partNumber: '90312-38013',
+      qty: 200,
+    });
+  });
+
+  it('line receiving menolak label produksi', () => {
+    expect(() => bacaBarcode('12051421B22A276', receiving)).toThrow(BarcodeTidakDikenali);
+    expect(() => bacaBarcode('ARES:K:01J8Z3M5X8Q9W2Y7V6T5R4S3P2', receiving)).toThrow(
+      BarcodeTidakDikenali,
+    );
+  });
+
+  it('di line lain kanban ARES tidak terbaca sebagai kanban ARES', () => {
+    expect(bacaBarcode(ares, { processType: 'CASTING_WIP' }).aturan).not.toBe('KANBAN_ARES');
   });
 });
 

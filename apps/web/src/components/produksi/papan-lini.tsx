@@ -54,14 +54,14 @@ function jam(iso: string | null): string {
 /**
  * Satu kartu lini.
  *
- * Warnanya yang pertama terbaca dari jauh: biru berjalan, merah berhenti, abu
+ * Warnanya yang pertama terbaca dari jauh: hijau berjalan, merah berhenti, abu
  * diam. Teksnya menyusul. Itu sebabnya status tidak hanya ditulis — lini yang
  * berhenti harus terlihat sebelum ada yang membaca satu kata pun.
  */
 function Kartu({ k }: { k: KartuLini }) {
   const warna =
     k.status === 'RUNNING'
-      ? 'bg-[#1b3a93] text-white'
+      ? 'bg-[#15803d] text-white'
       : k.status === 'STOP'
         ? 'bg-[#cf3030] text-white'
         : 'bg-line text-ink-soft';

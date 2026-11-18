@@ -105,13 +105,18 @@ export type ScanRejectReason =
   | 'DN_CLOSED'
   | 'DN_PART_NOT_LISTED'
   | 'CUSTOMER_PART_UNKNOWN'
-  | 'SCAN_MODE_UNSUPPORTED';
+  | 'CUSTOMER_LABEL_QTY_MISMATCH'
+  | 'SCAN_MODE_UNSUPPORTED'
+  | 'DANDORI_REQUIRED'
+  | 'DANDORI_MODEL_MISMATCH';
 
 /** Pesan untuk operator. Ditulis sebagai instruksi, bukan sekadar keterangan. */
 export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
   DUPLICATE: 'Barcode ini sudah pernah discan. Ambil part berikutnya.',
   UNKNOWN_PROGRAM: 'Kode program tidak dikenal. Laporkan ke leader.',
   MISSING_PREVIOUS_PROCESS: 'Part belum discan di proses sebelumnya. Jangan diproses.',
+  DANDORI_REQUIRED: 'Line belum di-dandori. Tekan DANDORI, scan QR dandori, lalu START.',
+  DANDORI_MODEL_MISMATCH: 'Model berbeda dengan dandori yang berjalan. Lakukan dandori dulu.',
   LINE_NOT_FOUND: 'Line tidak dikenal. Periksa barcode line.',
   PLANT_UNKNOWN: 'Pabrik tidak bisa ditentukan dari scan ini.',
   BARCODE_UNREADABLE: 'Barcode tidak terbaca. Coba scan ulang, lalu laporkan ke leader.',
@@ -156,6 +161,13 @@ export const REJECT_MESSAGES: Record<ScanRejectReason, string> = {
   DN_PART_NOT_LISTED: 'Part ini tidak ada dalam loading list tersebut. Periksa label dan part-nya.',
   CUSTOMER_PART_UNKNOWN:
     'Nomor part customer pada label tidak cocok dengan part ini. Laporkan ke leader.',
+  /*
+   * Label customer di lini BODY (pengganti kartu). Isi box menurut customer
+   * harus sama dengan master part — selisih berarti master keliru atau label
+   * tertukar, dan box-nya akan selisih saat dikirim.
+   */
+  CUSTOMER_LABEL_QTY_MISMATCH:
+    'Isi box pada label customer berbeda dengan master part. Laporkan ke leader.',
 
   /*
    * Metode scan lini ini dikenal tetapi layarnya belum ada. Lebih baik berhenti

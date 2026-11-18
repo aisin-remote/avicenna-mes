@@ -49,6 +49,7 @@ import {
   users,
   sapOutbox,
 } from '@avicenna/db';
+import { DandoriService } from '../scan/dandori.service';
 import { ScanService } from '../scan/scan.service';
 import { SapOutboxService } from '../sap/sap-outbox.service';
 import { StagingPushService } from './staging-push.service';
@@ -361,6 +362,7 @@ async function main() {
     new LoadingService(db),
     processTypes,
     new BelanjaService(db, processTypes),
+    new DandoriService(db, processTypes),
   );
   const outbox = new SapOutboxService(db, processTypes);
   /*

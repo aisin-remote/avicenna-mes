@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ROLE_KINDS, PROCESS_GROUPS } from './common';
+import { ROLE_KINDS } from './common';
 
 export const loginSchema = z.object({
   npk: z.string().trim().min(1, 'NPK wajib diisi').max(32),
@@ -17,7 +17,7 @@ export const loginResponseSchema = z.object({
     /** Jabatan: SCANNING (lasman), VIEW (jp/leader), ADMIN. */
     roleKind: z.enum(ROLE_KINDS).nullable(),
     /** Grup proses yang menjadi lingkupnya. Kosong berarti seluruh proses. */
-    roleProcessGroup: z.enum(PROCESS_GROUPS).nullable(),
+    roleProcessGroup: z.string().nullable(),
     /**
      * Halaman yang dibuka tepat setelah masuk.
      *

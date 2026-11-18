@@ -186,7 +186,11 @@ export interface StationSummary {
     scanMode: ScanMode;
     /** Ada part di line ini yang ditutup kartu, walau bawaan line-nya tidak. */
     menerimaKartu: boolean;
+    /** Scan produksi baru diterima setelah dandori di-START. */
+    wajibDandori: boolean;
   };
+  /** Dandori yang belum selesai di line ini: sedang dandori, atau part/mold yang sedang berjalan. */
+  dandori: DandoriLini | null;
   counterToday: number;
   pcsToday: number;
   /**
@@ -235,6 +239,54 @@ export interface SampleCheck {
   /** true = part ini tidak terdaftar di work center ini. Scan tetap jalan, dokumen SAP ditahan. */
   diLuarRute: boolean;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * DANDORI
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Cara dandori sebuah line, diturunkan dari metode scan line-nya.
+ *
+ * - PART: QR dandori `DANDORI-<nomor part>` saja (UNIT, dan line BODY per barang).
+ * - PART_SAMPLE: QR dandori lalu master sample part yang sama (BODY per kanban).
+ * - MOLD: tag mold `MOLD-<id>`; satu mold berisi beberapa part (injection).
+ */
+export type MetodeDandori = 'PART' | 'PART_SAMPLE' | 'MOLD';
+
+export interface DandoriLini {
+  id: number;
+  /** DANDORI = line berhenti untuk pergantian; BERJALAN = sudah START. */
+  status: 'DANDORI' | 'BERJALAN';
+  metode: MetodeDandori;
+  part: {
+    id: number;
+    partNumber: string;
+    backNumber: string | null;
+    name: string;
+    qtyPerKanban: number | null;
+    photoPath: string | null;
+  } | null;
+  /** Metode scan part itu di work center ini — layar berganti alur saat START. */
+  scanMode: ScanMode | null;
+  mold: { id: number; code: string; name: string; jumlahAnggota: number } | null;
+  /** Master sample sudah discan dan cocok (metode PART_SAMPLE). */
+  sampleOk: boolean;
+  /** START boleh ditekan: part/mold sudah dipilih dan sample (bila perlu) cocok. */
+  siapStart: boolean;
+  mulaiAt: string;
+  startAt: string | null;
+}
+
+export const dandoriLineSchema = z.object({
+  lineCode: z.string().trim().min(1).max(32),
+});
+export type DandoriLineInput = z.infer<typeof dandoriLineSchema>;
+
+export const dandoriKodeSchema = z.object({
+  lineCode: z.string().trim().min(1).max(32),
+  code: z.string().trim().min(1).max(255),
+});
+export type DandoriKodeInput = z.infer<typeof dandoriKodeSchema>;
 
 /* ──────────────────────────────────────────────────────────────────────────
  * BERHENTI PRODUKSI

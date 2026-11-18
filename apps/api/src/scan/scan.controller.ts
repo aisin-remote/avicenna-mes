@@ -4,6 +4,10 @@ import {
   scanInputSchema,
   scanBatchSchema,
   moldScanInputSchema,
+  dandoriLineSchema,
+  dandoriKodeSchema,
+  type DandoriLineInput,
+  type DandoriKodeInput,
   mulaiBerhentiSchema,
   selesaiBerhentiSchema,
   type MulaiBerhentiInput,
@@ -14,6 +18,7 @@ import type { ScanInput, ScanBatchInput } from '@avicenna/contracts';
 import { ScanService } from './scan.service';
 import { PapanService } from './papan.service';
 import { MoldScanService } from './mold-scan.service';
+import { DandoriService } from './dandori.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 
 @Controller('scan')
@@ -22,7 +27,32 @@ export class ScanController {
     private readonly scan: ScanService,
     private readonly papanService: PapanService,
     private readonly moldService: MoldScanService,
+    private readonly dandori: DandoriService,
   ) {}
+
+  /** MP menekan DANDORI: line berhenti, scan produksi ditolak sampai START. */
+  @Post('dandori/mulai')
+  dandoriMulai(
+    @Body(new ZodValidationPipe(dandoriLineSchema)) body: DandoriLineInput,
+    @Req() req: Request,
+  ) {
+    return this.dandori.mulai(body.lineCode, req.principal);
+  }
+
+  /** QR dandori, master sample, atau tag mold yang discan selama dandori. */
+  @Post('dandori/kode')
+  dandoriKode(@Body(new ZodValidationPipe(dandoriKodeSchema)) body: DandoriKodeInput) {
+    return this.dandori.kode(body.lineCode, body.code);
+  }
+
+  /** MP menekan START: part/mold inilah yang boleh discan sampai dandori berikutnya. */
+  @Post('dandori/start')
+  dandoriStart(
+    @Body(new ZodValidationPipe(dandoriLineSchema)) body: DandoriLineInput,
+    @Req() req: Request,
+  ) {
+    return this.dandori.start(body.lineCode, req.principal);
+  }
 
   /** Keadaan putaran dan interlock mold pada lini. */
   @Get('mold')

@@ -48,9 +48,33 @@ export interface KatalogProses {
   modeScan(code: string | null | undefined): ScanModeTersimpan;
   /** Jenis proses yang termasuk sebuah grup role. */
   dalamGrup(grup: ProcessGroup): string[];
+  /** Grup proses yang aktif, terurut — pilihan formulir, saringan monitor. */
+  readonly grupDaftar: readonly GrupProses[];
+  /** Termasuk grup nonaktif. */
+  cariGrup(code: string | null | undefined): GrupProses | undefined;
+  /** Nama grup untuk layar. Kode apa adanya bila tidak dikenal. */
+  labelGrup(code: string | null | undefined): string;
 }
 
-export function katalogProses(baris: readonly JenisProses[]): KatalogProses {
+/**
+ * `grup` boleh kosong (tes, data lama): daftarnya lalu diturunkan dari grup
+ * yang dipakai jenis prosesnya, dengan kode sebagai nama.
+ */
+export function katalogProses(
+  baris: readonly JenisProses[],
+  grup?: readonly GrupProses[],
+): KatalogProses {
+  const semuaGrup = [
+    ...(grup ??
+      [...new Set(baris.map((j) => j.processGroup))].map((code, i) => ({
+        code,
+        label: code,
+        sortOrder: i,
+        isActive: true,
+      }))),
+  ].sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));
+  const grupPerKode = new Map(semuaGrup.map((g) => [g.code, g]));
+  const cariGrup = (code: string | null | undefined) => (code ? grupPerKode.get(code) : undefined);
   const semua = [...baris].sort(
     (a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code),
   );
@@ -68,6 +92,9 @@ export function katalogProses(baris: readonly JenisProses[]): KatalogProses {
     kelasSap: (code) => cari(code)?.sapClass ?? 'NONE',
     modeScan: (code) => cari(code)?.scanMode ?? 'PART_SAJA',
     dalamGrup: (grup) => semua.filter((j) => j.processGroup === grup).map((j) => j.code),
+    grupDaftar: semuaGrup.filter((g) => g.isActive),
+    cariGrup,
+    labelGrup: (code) => cariGrup(code)?.label ?? code ?? '',
   };
 }
 
@@ -173,25 +200,41 @@ export type ApiError = z.infer<typeof apiErrorSchema>;
  * Lingkup dan jabatan role. Dipakai skema database DAN browser, jadi tinggal di
  * kontrak — bukan di domain yang tidak diimpor sisi data.
  */
-export const PROCESS_GROUPS = [
-  'MELTING',
-  'CASTING',
-  'MACHINING',
-  'ASSEMBLING',
-  'INJECTION',
-  'PAINTING',
-  /*
-   * Grup Electric. ASSEMBLING sengaja TIDAK dipecah per pabrik: grup adalah
-   * lingkup ROLE, dan "assembling leader" memang satu jabatan — sedangkan
-   * jenis prosesnya tetap terpisah supaya angkanya tidak bercampur.
-   */
-  'MOUNTING',
-  'INSPECTION',
-  'VACUUM',
-  'ANTENNA',
-  'DELIVERY',
-] as const;
-export type ProcessGroup = (typeof PROCESS_GROUPS)[number];
+/*
+ * ─── GRUP PROSES ────────────────────────────────────────────────────────────
+ *
+ * Daftarnya hidup di master `TM_PROCESS_GROUP` (menu Administrasi › Grup
+ * Proses), bukan lagi ditanam di sini — sama seperti jenis proses. Kolom
+ * CHR_PROCESS_GROUP di jenis proses, role, dan jenis NG menunjuk ke sana lewat
+ * foreign key, jadi kode yang tidak terdaftar ditolak database.
+ *
+ * Handika, 16 Nov 2026: grup baru (mis. PACKING_ELC) cukup ditambah di layar.
+ */
+export type ProcessGroup = string;
+
+/**
+ * Grup yang punya perilaku di kode, jadi kodenya tidak boleh diubah, dihapus,
+ * atau dinonaktifkan dari layar master. Namanya tetap boleh diganti.
+ *
+ *   RECEIVING  penerimaan komponen beli: tanpa dandori, tanpa hasil produksi
+ *   DELIVERY   operator PPIC dibawa ke /delivery-scan, bukan stasiun lini
+ */
+export const GRUP_PROSES_TERKUNCI = ['RECEIVING', 'DELIVERY'] as const;
+
+/** Bentuk kode grup: HURUF BESAR, angka, garis bawah. Daftarnya dijaga FK. */
+export const processGroupSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z][A-Z0-9_]{1,31}$/, 'Kode grup: huruf besar, angka, garis bawah');
+
+/** Satu baris master grup proses. */
+export interface GrupProses {
+  code: ProcessGroup;
+  label: string;
+  sortOrder: number;
+  isActive: boolean;
+}
 
 export const ROLE_KINDS = ['SCANNING', 'VIEW', 'ADMIN'] as const;
 export type RoleKind = (typeof ROLE_KINDS)[number];

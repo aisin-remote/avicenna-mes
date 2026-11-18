@@ -124,14 +124,17 @@ describe('jenisNgUntukGrup', () => {
 });
 
 describe('bacaGrupProses', () => {
+  const dikenal = ['CASTING', 'MACHINING', 'PACKING_ELC'];
+
   it('menerima huruf kecil dari alamat halaman', () => {
-    expect(bacaGrupProses('casting')).toBe('CASTING');
-    expect(bacaGrupProses(' Machining ')).toBe('MACHINING');
+    expect(bacaGrupProses('casting', dikenal)).toBe('CASTING');
+    expect(bacaGrupProses(' Machining ', dikenal)).toBe('MACHINING');
+    expect(bacaGrupProses('packing_elc', dikenal)).toBe('PACKING_ELC');
   });
 
   it('yang tidak dikenal menjadi null, bukan tebakan', () => {
-    expect(bacaGrupProses('cast')).toBeNull();
-    expect(bacaGrupProses(undefined)).toBeNull();
+    expect(bacaGrupProses('cast', dikenal)).toBeNull();
+    expect(bacaGrupProses(undefined, dikenal)).toBeNull();
   });
 });
 

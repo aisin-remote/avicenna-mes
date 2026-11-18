@@ -42,6 +42,8 @@ export interface KunciAlami {
 export const KUNCI_ALAMI: Record<MasterEntity, KunciAlami> = {
   plants: { kolom: 'code', perPabrik: false },
   customers: { kolom: 'code', perPabrik: false },
+  // Identitas sebenarnya customer + nomor part customer; UNIQUE database menjaganya.
+  'customer-parts': { kolom: 'customerId', perPabrik: false },
   'driver-destinations': { kolom: 'code', perPabrik: true },
   suppliers: { kolom: 'code', perPabrik: false },
   lines: { kolom: 'code', perPabrik: true },
@@ -54,6 +56,7 @@ export const KUNCI_ALAMI: Record<MasterEntity, KunciAlami> = {
   'ng-masters': { kolom: 'code', perPabrik: true },
   // Kosakata seluruh sistem, bukan milik satu pabrik.
   'process-types': { kolom: 'code', perPabrik: false },
+  'process-groups': { kolom: 'code', perPabrik: false },
   'program-numbers': { kolom: 'code', perPabrik: true },
   // Satu baris per proses per pabrik — prosesnya sendiri yang jadi kunci.
   'route-processes': { kolom: 'processType', perPabrik: true },

@@ -1,5 +1,4 @@
 import {
-  PROCESS_GROUPS,
   ROLE_KINDS,
   type KatalogProses,
   type ProcessGroup,
@@ -26,7 +25,7 @@ import {
  * WIP maupun Casting FG. Memakai jenis proses sebagai lingkup akan menuntut dua
  * role terpisah untuk satu jabatan yang di lapangan memang satu orang.
  */
-export { PROCESS_GROUPS, type ProcessGroup };
+export type { ProcessGroup };
 
 /*
  * Peta jenis proses -> grup DULU ditulis di sini sebagai Record yang dijaga
@@ -118,19 +117,10 @@ export const ROLE_KIND_LABELS: Record<RoleKind, string> = {
   ADMIN: 'Administrator',
 };
 
-export const PROCESS_GROUP_LABELS: Record<ProcessGroup, string> = {
-  MELTING: 'Melting',
-  CASTING: 'Casting',
-  MACHINING: 'Machining',
-  ASSEMBLING: 'Assembling',
-  INJECTION: 'Injection',
-  PAINTING: 'Painting',
-  MOUNTING: 'Mounting',
-  INSPECTION: 'Inspection',
-  VACUUM: 'Vacuum',
-  ANTENNA: 'Antena',
-  DELIVERY: 'Delivery',
-};
+/*
+ * Nama grup untuk layar tidak lagi di sini: dibaca dari master TM_PROCESS_GROUP
+ * lewat `katalog.labelGrup(kode)`.
+ */
 
 /* ────────────────────────────────────────────────────────────────────────────
  * LOGIN LEWAT QR

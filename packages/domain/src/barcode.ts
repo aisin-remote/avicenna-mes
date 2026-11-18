@@ -62,12 +62,20 @@ export interface KonteksBarcode {
    * NOMOR PART (master sample di BODY) atau nomor SERI (barang di UNIT).
    */
   scanMode?: ScanModeTersimpan | null;
+  /** Line receiving: hanya aturan `khususPenerimaan` yang dibaca. */
+  penerimaan?: boolean;
 }
 
 export interface AturanBarcode {
   /** Nama singkat, ikut tercatat di hasil baca. */
   nama: string;
   keterangan: string;
+  /**
+   * Hanya dibaca di line receiving, dan line receiving HANYA membaca aturan
+   * seperti ini. Komponen beli diterima lewat kanban supplier, bukan label
+   * produksi; label produksi yang terscan di sana adalah salah tempat.
+   */
+  khususPenerimaan?: boolean;
   /**
    * Apakah aturan ini berlaku pada keadaan sekarang.
    *
@@ -226,7 +234,33 @@ export function sepertiNomorPartPolos(raw: string): boolean {
   return ATURAN_NOMOR_PART.cocok(raw.trim());
 }
 
+/**
+ * Kanban supplier dari ARES: `ARES:K:<id 26 karakter>|<nomor part>|<qty/box>`.
+ *
+ * Di-scan di line receiving (SE0700/SE0800/SE0900) saat komponen beli masuk.
+ * Nomor part ditulis berstrip (`90312-38013`) dan dicari dalam bentuk baku. Id
+ * kanban menjadi nomor seri: satu kartu ARES = satu box, dan box yang sama
+ * tidak boleh diterima dua kali.
+ */
+export const ATURAN_KANBAN_ARES: AturanBarcode = {
+  nama: 'KANBAN_ARES',
+  keterangan: 'ARES:K:ID|PART|QTY (kanban supplier, line receiving)',
+  khususPenerimaan: true,
+  cocok: (raw) => /^ARES:K:[0-9A-Z]{26}\|[^|]+\|\d+$/i.test(raw),
+  baca(raw) {
+    const [kepala, partNumber, qtyRaw] = raw.split('|');
+    const qty = Number.parseInt(qtyRaw ?? '', 10);
+    return {
+      raw,
+      serialNumber: kepala!.slice('ARES:K:'.length).toUpperCase(),
+      partNumber: partNumber?.trim() || undefined,
+      qty: Number.isFinite(qty) && qty > 0 ? qty : undefined,
+    };
+  },
+};
+
 export const DAFTAR_ATURAN: AturanBarcode[] = [
+  ATURAN_KANBAN_ARES,
   ATURAN_BERPEMISAH,
   ATURAN_PROGRAM_15,
   ATURAN_NOMOR_PART,
@@ -245,8 +279,7 @@ export function bacaBarcode(raw: string, ctx: KonteksBarcode = {}): HasilBacaBar
   const bersih = raw.trim();
   if (bersih.length === 0) throw new Error('Barcode kosong');
 
-  for (const aturan of DAFTAR_ATURAN) {
-    if (aturan.berlaku && !aturan.berlaku(ctx)) continue;
+  for (const aturan of aturanBerlaku(ctx)) {
     if (!aturan.cocok(bersih)) continue;
     return { ...aturan.baca(bersih), aturan: aturan.nama };
   }
@@ -261,7 +294,10 @@ export function punyaIdentitasPart(hasil: ParsedBarcode): boolean {
 
 /** Daftar aturan yang berlaku pada sebuah keadaan — untuk layar diagnostik. */
 export function aturanBerlaku(ctx: KonteksBarcode = {}): AturanBarcode[] {
-  return DAFTAR_ATURAN.filter((a) => !a.berlaku || a.berlaku(ctx));
+  return DAFTAR_ATURAN.filter(
+    (a) =>
+      Boolean(a.khususPenerimaan) === Boolean(ctx.penerimaan) && (!a.berlaku || a.berlaku(ctx)),
+  );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -323,6 +359,34 @@ export class KanbanTidakTerbaca extends Error {
     super(`Format barcode kanban tidak dikenali: "${raw}"`);
     this.name = 'KanbanTidakTerbaca';
   }
+}
+
+/**
+ * Kartu AIGSYS yang rusak di jalan antara scanner dan layar.
+ *
+ * Isi kartu AIGSYS penuh spasi ganda. Koreksi otomatis macOS ("Add period with
+ * double-space") mengubah dua spasi menjadi ". ", dan karena scanner mengetik
+ * sangat cepat, titiknya jatuh di posisi yang bergeser. Hasilnya tetap
+ * "terbaca" — tetapi back number dan serinya sampah, dan pesan yang keluar
+ * kemudian ("kartu bukan untuk part ini") menyuruh operator mencari kartu lain
+ * padahal kartunya benar. Kartu AIGSYS asli tidak pernah memuat titik, jadi
+ * titik cukup sebagai tanda. Trial Handika di AS0003, 12 Nov 2026.
+ */
+export class KanbanRusakKetik extends KanbanTidakTerbaca {
+  constructor(raw: string) {
+    super(raw);
+    this.message =
+      'Isi kanban berubah saat discan (ada titik di tempat spasi ganda). Kartunya benar — ' +
+      'matikan koreksi otomatis di perangkat ini (macOS: Keyboard › Text Input › ' +
+      '"Add period with double-space"), lalu scan ulang.';
+    this.name = 'KanbanRusakKetik';
+  }
+}
+
+/** Kartu AIGSYS yang memuat titik — tanda koreksi otomatis ikut mengubahnya. */
+export function kanbanAigsysRusak(raw: string): boolean {
+  const bersih = raw.trim();
+  return /^AIGSYS/i.test(bersih) && bersih.includes('.');
 }
 
 /**
@@ -616,7 +680,9 @@ export function susunKanbanAigsys(kartu: {
   if (sloc.length > 4) throw new Error(`SLOC tujuan "${sloc}" lebih dari 4 karakter`);
   if (back.length > 4) throw new Error(`Back number "${back}" lebih dari 4 karakter`);
   if (!/^\d{4}$/.test(seri)) {
-    throw new Error(`Nomor seri "${seri}" harus empat digit (paling besar ${SERI_KANBAN_AIGSYS_MAKS})`);
+    throw new Error(
+      `Nomor seri "${seri}" harus empat digit (paling besar ${SERI_KANBAN_AIGSYS_MAKS})`,
+    );
   }
   if (kartu.qtyPerBox > 9_999_999) throw new Error('Isi box lebih dari tujuh digit');
 
@@ -811,6 +877,7 @@ export function sepertiKanban(raw: string, ctx: KonteksBarcode = {}): boolean {
 export function bacaKanban(raw: string, ctx: KonteksBarcode = {}): HasilBacaKanban {
   const bersih = raw.trim();
   if (bersih.length === 0) throw new Error('Barcode kanban kosong');
+  if (kanbanAigsysRusak(bersih)) throw new KanbanRusakKetik(bersih);
 
   for (const aturan of DAFTAR_ATURAN_KANBAN) {
     if (aturan.berlaku && !aturan.berlaku(ctx)) continue;

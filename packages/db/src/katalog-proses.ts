@@ -1,6 +1,11 @@
 import { eq, asc } from 'drizzle-orm';
-import { katalogProses, type JenisProses, type KatalogProses } from '@avicenna/contracts';
-import { processTypes } from './schema/index';
+import {
+  katalogProses,
+  type GrupProses,
+  type JenisProses,
+  type KatalogProses,
+} from '@avicenna/contracts';
+import { processGroups, processTypes } from './schema/index';
 import type { Database } from './client';
 
 /**
@@ -34,5 +39,15 @@ export async function bacaKatalogProses(
     .orderBy(asc(processTypes.sortOrder), asc(processTypes.code));
 
   const baris = opsi.termasukNonaktif ? await q : await q.where(eq(processTypes.isActive, true));
-  return katalogProses(baris as JenisProses[]);
+  // Grup selalu dibaca utuh: katalog sendiri yang memisahkan yang aktif.
+  const grup = await db
+    .select({
+      code: processGroups.code,
+      label: processGroups.label,
+      sortOrder: processGroups.sortOrder,
+      isActive: processGroups.isActive,
+    })
+    .from(processGroups)
+    .orderBy(asc(processGroups.sortOrder), asc(processGroups.code));
+  return katalogProses(baris as JenisProses[], grup as GrupProses[]);
 }

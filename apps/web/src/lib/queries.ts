@@ -4,6 +4,7 @@ import {
   parts,
   lines,
   plants,
+  processTypes,
   locations,
   partProcesses,
   customers,
@@ -138,12 +139,16 @@ export async function listLines() {
       code: lines.code,
       name: lines.name,
       processType: lines.processType,
+      processLabel: processTypes.label,
+      processGroup: processTypes.processGroup,
+      plantId: lines.plantId,
       plantCode: plants.code,
     })
     .from(lines)
     .leftJoin(plants, eq(lines.plantId, plants.id))
+    .leftJoin(processTypes, eq(processTypes.code, lines.processType))
     .where(eq(lines.isActive, true))
-    .orderBy(plants.code, lines.sortOrder);
+    .orderBy(plants.code, lines.sortOrder, lines.code);
 }
 
 export interface AreaBelanja {

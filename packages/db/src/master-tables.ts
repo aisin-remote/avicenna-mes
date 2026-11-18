@@ -4,6 +4,7 @@ import {
   lines,
   parts,
   customers,
+  customerParts,
   driverDestinations,
   suppliers,
   machines,
@@ -19,6 +20,7 @@ import {
   workTimes,
   workBreaks,
   stopReasons,
+  processGroups,
   processTypes,
 } from './schema/index';
 
@@ -34,6 +36,7 @@ export const MASTER_TABLES = {
   lines,
   parts,
   customers,
+  'customer-parts': customerParts,
   'driver-destinations': driverDestinations,
   suppliers,
   machines,
@@ -45,6 +48,7 @@ export const MASTER_TABLES = {
   'part-processes': partProcesses,
   'route-processes': routeProcesses,
   'process-types': processTypes,
+  'process-groups': processGroups,
   kanbans,
   'program-numbers': programNumbers,
   'work-times': workTimes,

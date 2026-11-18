@@ -59,8 +59,11 @@ export interface BarisRuteUntukPeriksa {
   lineCode: string | null;
   workCenter: string | null;
   inputLocationId: number | null;
+  /** SLOC tujuan milik part, bukan baris rute. */
   outputLocationId: number | null;
   scanMode: string | null;
+  /** Grup jenis prosesnya; RECEIVING tidak punya SLOC asal. */
+  processGroup?: string | null;
 }
 
 /**
@@ -68,17 +71,21 @@ export interface BarisRuteUntukPeriksa {
  *
  * Delivery tidak dikerjakan di work center dan tidak punya SLOC produksi, jadi
  * kolom-kolom itu tidak ditagih darinya. Metode scan tetap ditagih.
+ *
+ * Receiving menerima komponen dari supplier, jadi tidak punya SLOC asal. SLOC
+ * Transfer-nya juga boleh kosong: tujuan pindahnya diambil dari SLOC Keluar line.
  */
 export function masalahBarisRute(baris: BarisRuteUntukPeriksa): string[] {
   const masalah: string[] = [];
   const delivery = baris.processType === 'DELIVERY';
+  const receiving = baris.processGroup === 'RECEIVING';
 
   if (!baris.lineId && !delivery) masalah.push('Work center belum diisi');
   if (baris.lineId && !baris.workCenter) {
     masalah.push(`Line ${baris.lineCode ?? baris.lineId} belum punya kode work center SAP`);
   }
-  if (!delivery && !baris.inputLocationId) masalah.push('SLOC asal kosong');
-  if (!delivery && !baris.outputLocationId) masalah.push('SLOC tujuan kosong');
+  if (!delivery && !receiving && !baris.inputLocationId) masalah.push('SLOC asal kosong');
+  if (!delivery && !baris.outputLocationId) masalah.push('SLOC tujuan part kosong');
   if (!baris.scanMode) masalah.push('Metode scan kosong');
   return masalah;
 }

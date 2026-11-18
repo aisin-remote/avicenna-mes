@@ -77,6 +77,12 @@ describe('masalahBarisRute', () => {
     expect(masalahBarisRute(lengkap)).toEqual([]);
   });
 
+  it('receiving tidak menagih SLOC asal', () => {
+    expect(
+      masalahBarisRute({ ...lengkap, processType: 'RECEIVING', processGroup: 'RECEIVING', inputLocationId: null }),
+    ).toEqual([]);
+  });
+
   it('menagih work center, SLOC, dan metode yang kosong', () => {
     expect(
       masalahBarisRute({
@@ -91,7 +97,7 @@ describe('masalahBarisRute', () => {
     ).toEqual([
       'Work center belum diisi',
       'SLOC asal kosong',
-      'SLOC tujuan kosong',
+      'SLOC tujuan part kosong',
       'Metode scan kosong',
     ]);
   });
