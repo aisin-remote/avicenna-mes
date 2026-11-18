@@ -17,6 +17,7 @@ export const JOBS = {
   FLUSH_SAP_OUTBOX: 'flush-sap-outbox',
   /** Membaca flag balasan yang ditulis SAP di database jembatan. */
   ACK_SAP_STAGING: 'ack-sap-staging',
+  CHECK_FINISH_PULLING_GI: 'check-finish-pulling-gi',
   /** Menarik master data dari database jembatan. */
   PULL_SAP_MASTER: 'pull-sap-master',
   /** Menarik loading list hari aktif (06:00-06:00) dari database jembatan. */

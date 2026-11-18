@@ -17,6 +17,8 @@ import {
   keJamStaging,
 } from './staging-tables';
 import { PETA_GM_KEPALA, PETA_GM_BARIS, BELUM_DIDUKUNG } from './field-map';
+import { finishPullingMovement, storeFinishPullingMovement } from './finish-pulling-goods-movement';
+import type { DeliveryOrderSnapshot } from '@avicenna/contracts';
 
 /** Berhenti mencoba setelah sekian kali; sisanya perlu dilihat orang. */
 const MAX_ATTEMPTS = 8;
@@ -24,7 +26,7 @@ const BATCH_DORONG = 100;
 const BATCH_BALASAN = 200;
 const CHUNK_NOMOR = 400;
 
-/** Jenis dokumen yang sudah punya pemetaan nyata ke tabel staging. */
+/** Writer umum; Finish Pulling ditangani cabang khusus sebelum daftar ini. */
 const DIDUKUNG = new Set(['TRANSFER', 'PRODUCTION']);
 
 interface BarisPayload {
@@ -126,11 +128,8 @@ function wajibMuat(nilai: string | null, n: number, nama: string): string | null
  *
  * ── Setiap jenis dokumen punya tabelnya sendiri ────────────────────────────
  *
- * TRANSFER dan PRODUCTION sudah dipetakan. Penerimaan dan pengiriman punya
- * pasangan tabelnya sendiri di staging dan DITAHAN, bukan
- * didorong ke tabel perpindahan yang kebetulan ada — penerimaan barang yang
- * mendarat di TT_GOODS_MOVEMENT akan diposting SAP sebagai perpindahan antar
- * SLOC, dan koreksinya manual oleh orang finance.
+ * TRANSFER, PRODUCTION, dan Goods Movement Finish Pulling sudah dipetakan.
+ * Penerimaan serta tahap GR AII/GI AII tetap ditahan sampai kontraknya tersedia.
  */
 @Injectable()
 export class StagingPushService {
@@ -179,6 +178,20 @@ export class StagingPushService {
     let ditahan = 0;
 
     for (const row of antre) {
+      if (row.sourceTable === 'TT_DELIVERY_ORDER' && row.docType === 'DELIVERY_GI_AIIA') {
+        try {
+          const result = await this.dorongFinishPulling(row.id);
+          if (result === 'SENT') terkirim++;
+          else ditahan++;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          await this.db.update(sapOutbox).set({
+            status: 'FAILED', attempts: row.attempts + 1, lastError: message.slice(0, 1000),
+          }).where(and(eq(sapOutbox.id, row.id), eq(sapOutbox.status, 'PENDING'), eq(sapOutbox.isSimulation, false)));
+          gagal++;
+        }
+        continue;
+      }
       if (row.sourceTable === 'TT_DELIVERY' || row.sourceTable === 'TT_DELIVERY_ORDER') {
         await this.db.update(sapOutbox).set({ status: 'HELD', lastError: 'Pengiriman wajib alur GI AIIA → GR AII → GI AII; kontrak staging SD belum terkonfirmasi.' }).where(eq(sapOutbox.id, row.id));
         ditahan++;
@@ -478,6 +491,32 @@ export class StagingPushService {
   }
 
   /** Menulis kepala + seluruh barisnya, dalam satu transaksi di sisi staging. */
+  private async dorongFinishPulling(id: number) {
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(sapOutbox).where(and(
+        eq(sapOutbox.id, id), eq(sapOutbox.status, 'PENDING'), eq(sapOutbox.isSimulation, false),
+      )).for('update');
+      if (!row) return 'SKIPPED';
+      const payload = row.payload as { snapshot: DeliveryOrderSnapshot };
+      try {
+        finishPullingMovement(payload?.snapshot);
+      } catch (error) {
+        await tx.update(sapOutbox).set({
+          status: 'HELD',
+          lastError: `Goods Movement Finish Pulling ditahan: ${error instanceof Error ? error.message : String(error)}`.slice(0, 1000),
+        }).where(eq(sapOutbox.id, id));
+        return 'HELD';
+      }
+      const receipt = await storeFinishPullingMovement(this.staging, row);
+      await tx.update(sapOutbox).set({
+        stagingNumber: receipt.number,
+        payload: { ...payload, goodsMovement: receipt },
+        status: 'SENT', sentAt: new Date(), attempts: row.attempts + 1, lastError: null,
+      }).where(eq(sapOutbox.id, id));
+      return 'SENT';
+    });
+  }
+
   private async dorongSatu(
     row: typeof sapOutbox.$inferSelect,
     kodePabrik: Map<number, string>,

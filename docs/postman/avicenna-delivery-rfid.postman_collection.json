@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AVICENNA — Delivery RFID",
-    "description": "Panduan: docs/delivery-rfid-api.md (30 Oktober 2026). Isi variables secara lokal. Pilih login perangkat ATAU operator, lookup dokumen lalu tentukan deliveryId sendiri. Batch menulis progres pulling; gunakan dokumen trial. Dua request batch memakai payload sama untuk uji replay. Tidak menyertakan Finish Pulling atau undo. Hapus token/password sebelum membagikan export. HTTP200 batch tetap perlu pemeriksaan results[].status. Tiap request punya contoh respons sukses & gagal (tab Examples); contoh bertanda \"dari kode\" disusun dari pesan di kode sumber karena kasusnya tidak bisa direkam di DB lokal.",
+    "description": "Panduan: docs/delivery-rfid-api.md (30 Oktober 2026). baseUrl harus berakhiran /api/rfid: request diteruskan web ke API, hanya endpoint di collection ini yang dibuka (lainnya 404 \"Endpoint tidak dibuka untuk perangkat\"). Isi variables secara lokal. Pilih login perangkat ATAU operator, lookup dokumen lalu tentukan deliveryId sendiri. Batch menulis progres pulling; gunakan dokumen trial. Dua request batch memakai payload sama untuk uji replay. Tidak menyertakan Finish Pulling atau undo. Hapus token/password sebelum membagikan export. HTTP200 batch tetap perlu pemeriksaan results[].status. Tiap request punya contoh respons sukses & gagal (tab Examples); contoh bertanda \"dari kode\" disusun dari pesan di kode sumber karena kasusnya tidak bisa direkam di DB lokal.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -17,8 +17,8 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:3004",
-      "description": "API server, tanpa trailing slash. Ganti hostname untuk perangkat lain.",
+      "value": "https://avicenna-next.aiia.co.id/api/rfid",
+      "description": "Selalu lewat web dengan akhiran /api/rfid (API tidak dibuka langsung di server). Live: https://avicenna-next.aiia.co.id/api/rfid. Lokal: http://localhost:3000/api/rfid (atau http://[::1]:3000/api/rfid kalau port 3000 dipakai aplikasi lain). Tanpa trailing slash. Environment Postman yang punya baseUrl sendiri mengalahkan nilai ini.",
       "type": "string"
     },
     {
@@ -30,13 +30,13 @@
     {
       "key": "deviceCode",
       "value": "",
-      "description": "Kode master perangkat RFID aktif.",
+      "description": "Kode master perangkat RFID aktif. Lokal: hasil pnpm --filter @avicenna/db db:seed-rfid-trial (RFID-TRIAL-01).",
       "type": "string"
     },
     {
       "key": "deviceToken",
       "value": "",
-      "description": "Rahasia perangkat; isi lokal, jangan bagikan export yang sudah terisi.",
+      "description": "Rahasia perangkat; isi lokal, jangan bagikan export yang sudah terisi. Seed lokal: lihat output db:seed-rfid-trial.",
       "type": "string"
     },
     {
