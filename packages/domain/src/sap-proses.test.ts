@@ -4,8 +4,7 @@ import {
   kelasHasilSap,
   slocHasilWajib,
   periksaHasilProduksi,
-  periksaTransferSloc,
-} from './sap-proses';
+  periksaTransferSloc, transferMenunggu } from './sap-proses';
 
 describe('kelasHasilSap', () => {
   it('seluruh jenis proses punya kelas — termasuk Electric', () => {
@@ -297,5 +296,37 @@ describe('periksaTransferSloc', () => {
   it('SLOC yang belum terisi menahan', () => {
     expect(periksaTransferSloc({ dariKind: 'WAREHOUSE', keKind: null }).kirim).toBe(false);
     expect(periksaTransferSloc({ dariKind: null, keKind: 'WIP' }).kirim).toBe(false);
+  });
+});
+
+describe('transferMenunggu', () => {
+  const melting = { sapClass: 'NONE' as const };
+  const casting = { sapClass: 'SFG' as const };
+
+  it('proses tanpa dokumen produksi tidak menunggu apa pun', () => {
+    expect(
+      transferMenunggu({ jenis: melting, productionEnabled: false, statusProduksi: 'SKIPPED' }),
+    ).toBeNull();
+  });
+
+  it('proses lain menunggu produksinya dikonfirmasi', () => {
+    expect(
+      transferMenunggu({ jenis: casting, productionEnabled: true, statusProduksi: 'SENT' }),
+    ).toMatch(/dikonfirmasi/);
+    expect(
+      transferMenunggu({ jenis: casting, productionEnabled: true, statusProduksi: 'CONFIRMED' }),
+    ).toBeNull();
+  });
+
+  it('push produksi nonaktif tetap menahan transfer proses biasa', () => {
+    expect(
+      transferMenunggu({ jenis: casting, productionEnabled: false, statusProduksi: undefined }),
+    ).toMatch(/tidak aktif/);
+  });
+
+  it('jenis proses tidak dikenal tidak dilepas', () => {
+    expect(
+      transferMenunggu({ jenis: undefined, productionEnabled: false, statusProduksi: undefined }),
+    ).not.toBeNull();
   });
 });

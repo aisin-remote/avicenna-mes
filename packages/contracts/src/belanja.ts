@@ -5,7 +5,7 @@ import { z } from 'zod';
  *
  * Langkah di antara WIP dan FG: kartu FG dibawa ke rak barang setengah jadi,
  * box-box yang dibutuhkan diambil, lalu kartu FG dan kartu WIP tiap box
- * di-scan bersama. Kalau isinya cocok dengan BOM, pasangannya tercatat dan
+ * di-scan bersama. Kalau isinya cocok dengan Part Pairing, pasangannya tercatat dan
  * scan produksi assembling baru diizinkan untuk kartu FG itu.
  *
  * ── Kenapa seluruh daftar dikirim ulang setiap scan ─────────────────────────
@@ -60,7 +60,7 @@ export interface KartuBelanjaRingkas {
   qty: number;
 }
 
-/** Satu komponen BOM beserta kemajuan pengambilannya. */
+/** Satu komponen beserta kemajuan pengambilannya. */
 export interface KebutuhanKomponen {
   partId: number;
   partNumber: string;

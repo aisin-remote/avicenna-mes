@@ -54,6 +54,7 @@ export function MasterForm({
   def,
   entity,
   row,
+  nilaiAwal,
   options,
   pilihanDariMaster,
   open,
@@ -62,6 +63,8 @@ export function MasterForm({
   def: EntityDef;
   entity: MasterEntity;
   row?: (Record<string, unknown> & { id: number }) | null;
+  /** Isi awal formulir tambah, mis. nomor part dari BOM. */
+  nilaiAwal?: Record<string, unknown>;
   options: RefOptions;
   pilihanDariMaster?: PilihanDariMaster;
   open: boolean;
@@ -77,7 +80,8 @@ export function MasterForm({
    * menolak referensi lintas pabrik — saringan ini supaya orang tidak sampai
    * ke penolakan itu.
    */
-  const [plantId, setPlantId] = useState<string>(row?.plantId == null ? '' : String(row.plantId));
+  const isi = row ?? nilaiAwal;
+  const [plantId, setPlantId] = useState<string>(isi?.plantId == null ? '' : String(isi.plantId));
   const toast = useToast();
   const router = useRouter();
   const titleId = useId();
@@ -89,7 +93,7 @@ export function MasterForm({
   // Disetel ulang tiap kali panel dibuka untuk baris lain — bukan tiap render,
   // supaya pilihan pabrik yang sedang diubah orang tidak melompat balik.
   const rowId = row?.id;
-  const rowPlantId = row?.plantId == null ? '' : String(row.plantId);
+  const rowPlantId = isi?.plantId == null ? '' : String(isi.plantId);
   useEffect(() => {
     if (open) setPlantId(rowPlantId);
   }, [open, rowId, rowPlantId]);
@@ -195,7 +199,7 @@ export function MasterForm({
                   <Field
                     key={field.name}
                     field={field}
-                    value={row?.[field.name]}
+                    value={isi?.[field.name]}
                     options={saringPerPabrik(options[field.refEntity ?? ''] ?? [], plantId)}
                     dariMaster={
                       field.optionsFrom ? pilihanDariMaster?.[field.optionsFrom] : undefined

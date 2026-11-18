@@ -45,7 +45,6 @@ import {
   lines,
   parts,
   partProcesses,
-  routeProcesses,
   kanbans,
   users,
   sapOutbox,
@@ -227,25 +226,8 @@ async function main() {
     },
   ];
 
+  // Pengaturannya menempel di tiap baris rute part; lihat pembuatan rute di bawah.
   for (const a of aturan) {
-    const nilai = {
-      plantId: pabrik.id,
-      processType: a.proses,
-      inputLocationId: WP.id,
-      outputLocationId: a.output,
-      transferLocationId: a.transfer,
-      sapProductionEnabled: a.produksi,
-      sapTransferEnabled: a.transferAktif,
-      sapTransferMovementType: a.mvt,
-      isActive: true,
-    };
-    const [ada] = await db
-      .select({ id: routeProcesses.id })
-      .from(routeProcesses)
-      .where(and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.processType, a.proses)))
-      .limit(1);
-    if (ada) await db.update(routeProcesses).set(nilai).where(eq(routeProcesses.id, ada.id));
-    else await db.insert(routeProcesses).values(nilai);
     console.log(
       `  rute ${a.proses.padEnd(20)} keluar=${a.output === WH.id ? 'WH80' : a.output === WP.id ? 'WP80' : 'FG80'}` +
         `  transfer=${a.transfer ? 'WP80' : '-'}  push produksi=${a.produksi ? 'ya' : 'tidak'}` +
@@ -303,12 +285,19 @@ async function main() {
     await db.delete(partProcesses).where(eq(partProcesses.partId, partId));
     let seq = 10;
     for (const [proses, kodeLini] of m.rute) {
+      const a = aturan.find((x) => x.proses === proses);
       await db.insert(partProcesses).values({
         plantId: pabrik.id,
         partId,
         processType: proses,
         seqNo: seq,
         lineId: lini(kodeLini).id,
+        inputLocationId: WP.id,
+        outputLocationId: a?.output ?? null,
+        transferLocationId: a?.transfer ?? null,
+        sapProductionEnabled: a?.produksi ?? false,
+        sapTransferEnabled: a?.transferAktif ?? false,
+        sapTransferMovementType: a?.mvt ?? null,
         isActive: true,
       });
       seq += 10;
@@ -445,7 +434,7 @@ async function main() {
    * worker, jadi service yang sama dipanggil langsung — bukan penandanya yang
    * dipalsukan.
    *
-   * Part trial tidak punya BOM, jadi hasilnya noBom: tidak ada komponen yang
+   * Part trial tidak punya pasangan part, jadi hasilnya tanpaPasangan: tidak ada komponen yang
    * dipotong, dan penandanya tetap dipasang. Itu perilaku yang benar — tanpa
    * penanda, hasil produksi akan menggantung di luar outbox selamanya.
    */
@@ -455,12 +444,12 @@ async function main() {
     .select({ id: scanEvents.id })
     .from(scanEvents)
     .where(and(inArray(scanEvents.partId, idPart), gte(scanEvents.createdAt, mulai)));
-  let noBom = 0;
+  let tanpaPasangan = 0;
   for (const e of peristiwa) {
     const r = await backflush.run(e.id);
-    if (r.noBom) noBom += 1;
+    if (r.tanpaPasangan) tanpaPasangan += 1;
   }
-  console.log(`\n  backflush: ${peristiwa.length} scan ditandai (${noBom} tanpa BOM)`);
+  console.log(`\n  backflush: ${peristiwa.length} scan ditandai (${tanpaPasangan} tanpa pasangan)`);
 
   // ── 4. Outbox ────────────────────────────────────────────────────────────
   console.log(garis('4. Dokumen outbox'));

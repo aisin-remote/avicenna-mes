@@ -154,6 +154,7 @@ export class NgService {
       input.rawCode,
       line.plantId,
       line.processType,
+      line.id,
     );
 
     return this.catat({
@@ -206,6 +207,7 @@ export class NgService {
       input.rawCode,
       plantAwal,
       line?.processType ?? null,
+      line?.id,
     );
     const jenisNg = await this.jenisNg(
       input.ngMasterId,
@@ -632,7 +634,12 @@ export class NgService {
     const line = lineCode ? await this.line(lineCode) : undefined;
     const plantId = line?.plantId ?? principal?.plantId ?? undefined;
 
-    const { part, sasaran } = await this.dariPartCode(rawCode, plantId, line?.processType ?? null);
+    const { part, sasaran } = await this.dariPartCode(
+      rawCode,
+      plantId,
+      line?.processType ?? null,
+      line?.id,
+    );
 
     return {
       rawCode,
@@ -666,6 +673,7 @@ export class NgService {
     rawCode: string,
     plantId: number | undefined,
     processType: ProcessType | null,
+    lineId?: number,
   ): Promise<{ part: typeof parts.$inferSelect; sasaran: Sasaran }> {
     let parsed;
     try {
@@ -677,9 +685,15 @@ export class NgService {
       throw err;
     }
 
-    const { part } = await this.scan.kenaliPart(parsed, plantId);
-    if (!part) {
-      const sebab = parsed.programCode
+    const { part: dikenali, ambigu } = await this.scan.kenaliPart(
+      parsed,
+      plantId,
+      lineId ? { id: lineId, processType } : undefined,
+    );
+    if (!dikenali) {
+      const sebab = ambigu
+        ? `QR ini cocok ke beberapa part di line ini: ${ambigu.join(', ')}`
+        : parsed.programCode
         ? `program number "${parsed.programCode}" belum terdaftar di master`
         : `part "${parsed.partNumber ?? parsed.backNumber ?? rawCode}" tidak ada di master`;
       throw new NgRejected(
@@ -703,6 +717,7 @@ export class NgService {
         id: scanEvents.id,
         lineId: scanEvents.lineId,
         processType: scanEvents.processType,
+        partId: scanEvents.partId,
       })
       .from(scanEvents)
       .where(
@@ -714,6 +729,16 @@ export class NgService {
       )
       .orderBy(desc(scanEvents.scannedAt))
       .limit(1);
+
+    /*
+     * QR yang sama dibawa dari Casting sampai FG dengan nomor part yang berganti,
+     * jadi part milik scan yang dibalik itulah yang benar, bukan tebakan dari QR.
+     */
+    const [dariScan] =
+      scanProduksi?.partId && scanProduksi.partId !== dikenali.id
+        ? await this.db.select().from(parts).where(eq(parts.id, scanProduksi.partId)).limit(1)
+        : [];
+    const part = dariScan ?? dikenali;
 
     return {
       part,

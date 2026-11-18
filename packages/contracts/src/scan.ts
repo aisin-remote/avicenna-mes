@@ -80,6 +80,8 @@ export const stationResultSchema = z.object({
    * sebelum meminta kartu. Hanya terisi pada ACCEPTED.
    */
   qtyPerKanban: z.number().nullable().optional(),
+  /** Metode part ini di work center ini. Hanya terisi pada ACCEPTED. */
+  scanMode: z.string().optional(),
   /** Pemilik kartu yang ditempel: INTERNAL, atau CUSTOMER untuk direct kanban. */
   kanbanOwner: z.enum(['INTERNAL', 'CUSTOMER']).nullable().optional(),
   /**
@@ -117,6 +119,53 @@ export const stationResultSchema = z.object({
 });
 export type StationResult = z.infer<typeof stationResultSchema>;
 
+/** Satu input scanner pada stasiun mold: tag mold, kanban, atau NPK pembuka lock. */
+export const moldScanInputSchema = z
+  .object({
+    lineCode: z.string().trim().min(1).max(32),
+    code: z.string().trim().min(1).max(2048),
+    clientRef: z.string().trim().min(1).max(64),
+  })
+  .strict();
+export type MoldScanInput = z.infer<typeof moldScanInputSchema>;
+
+export type MoldScanStatus = 'WAITING_MOLD' | 'COLLECTING' | 'LOCKED';
+
+export interface MoldMemberProgress {
+  partId: number;
+  partNumber: string;
+  backNumber: string | null;
+  partName: string;
+  scanned: boolean;
+  kanbanSerial: string | null;
+  qty: number | null;
+}
+
+/**
+ * Keadaan persisten stasiun mold.
+ *
+ * Satu putaran baru boleh mengulang anggota pertama setelah seluruh anggota
+ * pada putaran sebelumnya selesai. `completedCycle` hanya terisi pada jawaban
+ * scan terakhir agar layar sempat memberi konfirmasi sebelum mulai putaran baru.
+ */
+export interface MoldScanBoard {
+  status: MoldScanStatus;
+  lineCode: string;
+  cycleNo: number;
+  mold: { id: number; code: string; name: string } | null;
+  members: MoldMemberProgress[];
+  lock: { reason: string; lockedAt: string } | null;
+  message: {
+    status: 'READY' | 'SUCCESS' | 'ERROR' | 'LOCKED';
+    text: string;
+  };
+  lastResult: StationResult | null;
+  completedCycle: {
+    cycleNo: number;
+    members: MoldMemberProgress[];
+  } | null;
+}
+
 export interface StationSummary {
   line: {
     code: string;
@@ -133,8 +182,10 @@ export interface StationSummary {
     processGroup: string | null;
     plantCode: string | null;
     plantName: string | null;
-    /** PER_PIECE: scan part per barang. PER_KANBAN: master sample lalu kanban per box. */
+    /** Metode efektif setelah penimpa line/rute diterapkan; layar memilih alurnya dari nilai ini. */
     scanMode: ScanMode;
+    /** Ada part di line ini yang ditutup kartu, walau bawaan line-nya tidak. */
+    menerimaKartu: boolean;
   };
   counterToday: number;
   pcsToday: number;
@@ -181,8 +232,8 @@ export interface SampleCheck {
    * box, karena barangnya tidak berseri dan kartu baru discan setelah box penuh.
    */
   photoPath: string | null;
-  /** false = part ini belum punya rute sama sekali, jadi lininya tidak bisa diperiksa. */
-  ruteDiperiksa: boolean;
+  /** true = part ini tidak terdaftar di work center ini. Scan tetap jalan, dokumen SAP ditahan. */
+  diLuarRute: boolean;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

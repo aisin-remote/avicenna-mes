@@ -22,9 +22,10 @@ export const MASTER_ENTITIES = [
   'suppliers',
   'machines',
   'toolings',
+  'tooling-parts',
   'locations',
   'ng-masters',
-  'bom',
+  'part-pairings',
   'part-processes',
   'route-processes',
   'process-types',
@@ -236,6 +237,17 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       { name: 'code', label: 'Kode', kind: 'text', required: true, max: 32, inList: true },
       { name: 'name', label: 'Nama', kind: 'text', required: true, max: 128, inList: true },
       {
+        name: 'sapWorkCenter',
+        label: 'Work Center SAP',
+        kind: 'text',
+        max: 10,
+        inList: true,
+        hint:
+          'Enam karakter tanpa pemisah, mis. DCAA01 — itulah yang dikenal SAP. ' +
+          'KOSONG berarti hasil produksi lini ini DITAHAN, tidak terkirim: kode lini kita ' +
+          'tidak pernah dikenal SAP, dan mengirimnya membuat barisnya tersaring tanpa jejak.',
+      },
+      {
         name: 'processType',
         label: 'Proses',
         kind: 'select',
@@ -251,9 +263,8 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         optionLabels: SCAN_MODE_LABELS,
         inList: true,
         hint:
-          'Kosongkan untuk mengikuti master Rute Proses. Isi hanya bila lini ini berbeda ' +
-          'dari lini lain pada proses yang sama — mis. injection (tag mold) dan assembling ' +
-          'BODY (papan dandori) di pabrik yang sama.',
+          'Kosongkan untuk mengikuti master Jenis Proses. Isi hanya bila lini ini berbeda ' +
+          'dari lini lain pada proses yang sama.',
       },
       {
         name: 'inputLocationId',
@@ -318,7 +329,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         options: PART_TYPES,
         required: true,
         inList: true,
-        hint: 'Posisi part di rantai pasok. Raw material tidak punya BOM; barang jadi tidak dibeli.',
+        hint: 'Posisi part di rantai pasok. Raw material tidak punya pasangan; barang jadi tidak dibeli.',
       },
       {
         name: 'sourceType',
@@ -515,6 +526,36 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         inList: true,
       },
       activeField,
+    ],
+  },
+
+  'tooling-parts': {
+    key: 'tooling-parts',
+    label: 'Anggota Tooling',
+    singular: 'Anggota Tooling',
+    icon: 'Boxes',
+    description:
+      'Part anggota mold, dies, atau jig; mode mold memakai daftar ini sebagai satu set scan',
+    searchFields: [],
+    defaultSort: 'id',
+    fields: [
+      plantRef,
+      {
+        name: 'toolingId',
+        label: 'Tooling',
+        kind: 'reference',
+        refEntity: 'toolings',
+        required: true,
+        inList: true,
+      },
+      {
+        name: 'partId',
+        label: 'Part Anggota',
+        kind: 'reference',
+        refEntity: 'parts',
+        required: true,
+        inList: true,
+      },
     ],
   },
 
@@ -719,14 +760,17 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
       },
       {
         name: 'scanMode',
-        label: 'Metode Scan Bawaan',
+        label: 'Metode Scan',
         kind: 'select',
         options: SCAN_MODES,
         optionLabels: SCAN_MODE_LABELS,
         required: true,
         defaultValue: 'PART_SAJA',
         inList: true,
-        hint: 'Bawaan untuk lini proses ini. Rute Proses per pabrik boleh menimpanya.',
+        hint:
+          'Menentukan seluruh syarat scan di lini proses ini: wajib kanban atau tidak, ' +
+          'unit ditempel ke kartu atau tidak, dan jumlah diambil dari kartu atau dari barcode. ' +
+          'Master Line boleh menimpanya per lini.',
       },
       {
         name: 'sortOrder',
@@ -767,19 +811,6 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         inList: true,
       },
       {
-        name: 'scanMode',
-        label: 'Metode Scan',
-        kind: 'select',
-        options: SCAN_MODES,
-        optionLabels: SCAN_MODE_LABELS,
-        required: true,
-        defaultValue: 'PART_SAJA',
-        inList: true,
-        hint:
-          'Menentukan seluruh syarat scan di lini ini: wajib kanban atau tidak, ' +
-          'unit ditempel ke kartu atau tidak, dan jumlah diambil dari kartu atau dari barcode.',
-      },
-      {
         name: 'inputLocationId',
         label: 'SLOC Masuk',
         kind: 'reference',
@@ -811,7 +842,7 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         inList: true,
         hint:
           'Scan produksi di proses ini hanya menerima kartu FG yang sudah dicocokkan ' +
-          'dengan kartu WIP-nya di stasiun Belanja. Butuh BOM part-nya terisi.',
+          'dengan kartu WIP-nya di stasiun Belanja. Butuh Part Pairing-nya terisi.',
       },
       {
         name: 'sapProductionEnabled',
@@ -929,22 +960,72 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
   'part-processes': {
     key: 'part-processes',
     /*
-     * JUNCTION: part ini lewat proses apa, urutan ke berapa. Tidak lebih.
-     * SLOC dan bendera SAP-nya ada di 'route-processes', per proses.
+     * Rute per work center: part ini dikerjakan di mana, dari SLOC mana ke mana,
+     * dengan metode apa. Production Version sengaja tidak ditawarkan di sini
+     * selama belum dipakai; kolomnya tetap ada dan akan diisi tarik SAP.
      */
     label: 'Rute Proses per Part',
     singular: 'Langkah Rute Part',
     icon: 'Route',
-    description: 'Proses yang dilalui tiap part, beserta urutannya',
+    description: 'Work center yang dilalui tiap part, beserta SLOC, urutan, dan metode scannya',
     searchFields: [],
     defaultSort: 'partId',
     fields: [
       plantRef,
       {
         name: 'partId',
-        label: 'Part',
+        label: 'Part Number',
         kind: 'reference',
         refEntity: 'parts',
+        required: true,
+        inList: true,
+      },
+      {
+        name: 'lineId',
+        label: 'Work Center',
+        kind: 'reference',
+        refEntity: 'lines',
+        inList: true,
+        hint: 'Boleh kosong hanya untuk Delivery.',
+      },
+      {
+        name: 'sapProductionEnabled',
+        label: 'SAP',
+        kind: 'boolean',
+        inList: true,
+        defaultValue: false,
+        hint: 'Hasil produksi langkah ini dikirim ke SAP. Nonaktif = tidak dikirim.',
+      },
+      {
+        name: 'inputLocationId',
+        label: 'Asal',
+        kind: 'reference',
+        refEntity: 'locations',
+        inList: true,
+        hint: 'SLOC asal barang.',
+      },
+      {
+        name: 'outputLocationId',
+        label: 'Tujuan',
+        kind: 'reference',
+        refEntity: 'locations',
+        inList: true,
+        hint: 'SLOC tujuan hasil produksi.',
+      },
+      {
+        name: 'seqNo',
+        label: 'Sequence',
+        kind: 'number',
+        required: true,
+        inList: true,
+        hint: 'Beri jarak (10, 20, 30) supaya langkah baru bisa disisipkan tanpa menomori ulang.',
+      },
+      {
+        name: 'scanMode',
+        label: 'Mode',
+        kind: 'select',
+        options: SCAN_MODES,
+        optionLabels: SCAN_MODE_LABELS,
         required: true,
         inList: true,
       },
@@ -953,36 +1034,55 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         label: 'Proses',
         kind: 'select',
         optionsFrom: 'process-types',
-        required: true,
         inList: true,
+        hint: 'Kosongkan supaya dihitung dari Work Center dan Tujuan. Wajib diisi bila Work Center kosong.',
       },
       {
-        name: 'seqNo',
-        label: 'Urutan',
-        kind: 'number',
-        required: true,
+        name: 'isPrimary',
+        label: 'Utama',
+        kind: 'boolean',
         inList: true,
-        hint: 'Beri jarak (10, 20, 30) supaya langkah baru bisa disisipkan tanpa menomori ulang.',
+        defaultValue: false,
+        hint: 'Work center yang tercetak di QR kanban. Satu per part.',
       },
       {
-        name: 'lineId',
-        label: 'Line',
+        name: 'transferLocationId',
+        label: 'SLOC Transfer',
         kind: 'reference',
-        refEntity: 'lines',
-        inList: true,
-        hint: 'Boleh kosong bila prosesnya dikerjakan beberapa line yang setara.',
+        refEntity: 'locations',
+        hint: 'Isi hanya bila hasil dipindah lagi setelah produksi.',
       },
-
+      {
+        name: 'sapTransferEnabled',
+        label: 'SAP Transfer',
+        kind: 'boolean',
+        defaultValue: false,
+        hint: 'Butuh SLOC Transfer terisi. Dokumen transfer menunggu dokumen produksinya lebih dulu.',
+      },
+      {
+        name: 'sapTransferMovementType',
+        label: 'Movement Type Transfer',
+        kind: 'text',
+        max: 3,
+        hint: 'Tiga digit, mis. 311.',
+      },
+      {
+        name: 'requirePairing',
+        label: 'Wajib Belanja',
+        kind: 'boolean',
+        defaultValue: false,
+        hint: 'Kartu harus melewati stasiun belanja sebelum boleh discan di sini.',
+      },
       activeField,
     ],
   },
 
-  bom: {
-    key: 'bom',
-    label: 'BOM',
-    singular: 'Baris BOM',
+  'part-pairings': {
+    key: 'part-pairings',
+    label: 'Part Pairing',
+    singular: 'Pasangan Part',
     icon: 'Network',
-    description: 'Komposisi part — apa membutuhkan apa',
+    description: 'Part mana berpasangan dengan part mana — dipakai stasiun Belanja',
     searchFields: ['note'],
     defaultSort: 'parentPartId',
     fields: [
@@ -1003,7 +1103,9 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         refEntity: 'parts',
         required: true,
         inList: true,
-        hint: 'Part yang dibutuhkan untuk membuat induk.',
+        hint:
+          'Part yang harus ada untuk membuat induk. Yang berarti di sini hanya ' +
+          'part BERKARTU — part beli datang lewat kartu ARES dan tidak ditembak di Belanja.',
       },
       {
         name: 'qtyPer',
@@ -1031,7 +1133,9 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         kind: 'date',
         required: true,
         inList: true,
-        hint: 'BOM berversi: telusur produksi lama tetap memakai komposisi yang berlaku saat itu.',
+        hint:
+          'Pasangan berversi: telusur produksi lama tetap memakai pasangan yang berlaku saat itu. ' +
+          'Mengubah pasangan berarti menutup baris lama dan membuat baris baru, bukan menyuntingnya.',
       },
       {
         name: 'effectiveTo',

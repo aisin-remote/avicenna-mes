@@ -1,9 +1,32 @@
 /**
- * Penguraian BOM: dari satu part jadi, hitung seluruh kebutuhan sampai ke
+ * Penguraian berantai: dari satu part jadi, hitung seluruh kebutuhan sampai ke
  * raw material.
  *
  * Fungsi murni tanpa database, supaya bisa diuji lengkap termasuk kasus yang
- * sulit dibuat di data nyata — terutama BOM melingkar.
+ * sulit dibuat di data nyata — terutama rantai melingkar.
+ *
+ * ── Kenapa berkas ini masih berkosakata "BOM" ───────────────────────────────
+ *
+ * Tabelnya sudah bernama TM_PART_PAIRING, dan namanya diganti dengan sengaja:
+ * yang dibutuhkan sistem ini adalah PASANGAN KARTU satu tingkat, bukan BOM
+ * lengkap — BOM yang sebenarnya ada di SAP, dan yang kita kirim ke sana cuma
+ * production version yang menunjuk ke BOM mana yang SAP pakai.
+ *
+ * Yang di berkas ini berbeda: ia menguraikan rantai sampai habis dan
+ * mengalikan sepanjang jalur. Itu memang perhitungan BOM, dan satu-satunya
+ * pemakainya adalah BackflushService — pembukuan material avicenna sendiri.
+ *
+ * ── Keputusan yang belum diambil ────────────────────────────────────────────
+ *
+ * Pembukuan itu MASIH KOSONG: TT_CONSUMPTION, TT_GENEALOGY, dan TT_LOT nol
+ * baris sejak awal. SAP sudah membukukan konsumsi komponen sendiri dari BOM-nya
+ * lewat production version yang kita kirim, dan perpindahan komponen pun
+ * dibentuk dari kartu ARES yang discan — bukan dari menguraikan tabel ini.
+ *
+ * Jadi backflush avicenna hanya perlu ada bila AIIA menuntut TELUSUR SAMPAI
+ * LOT material, yang memang tidak bisa dijawab SAP. Sampai itu diputuskan,
+ * berkas ini dibiarkan utuh: menghapusnya lebih mahal daripada membiarkannya,
+ * dan menguraikan pasangan satu tingkat pun tetap benar memakai fungsi ini.
  */
 
 export interface BomLine {

@@ -14,6 +14,8 @@ export * from './warna';
 export * from './komponen';
 export * from './belanja';
 export * from './kanban-cetak';
+export * from './rute-part';
+export * from './bom-sap';
 export * from './setting';
 export * from './master/registry';
 export * from './master/import';

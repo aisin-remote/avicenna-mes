@@ -15,13 +15,13 @@ import {
   type Database,
 } from '@avicenna/db';
 import {
-  bomLines,
+  partPairings,
   kanbanEvents,
   kanbanPairings,
   kanbans,
   parts,
   plants,
-  routeProcesses,
+  partProcesses,
 } from '@avicenna/db';
 import {
   bacaKanban,
@@ -76,7 +76,7 @@ type Pencarian =
 /**
  * ─── STASIUN BELANJA ────────────────────────────────────────────────────────
  *
- * Mencocokkan satu kartu FG dengan kartu-kartu WIP yang isinya sesuai BOM.
+ * Mencocokkan satu kartu FG dengan kartu WIP yang isinya sesuai Part Pairing.
  * Setelah cocok, kartu FG berstatus SHOPPED dan scan produksi di proses yang
  * mewajibkan belanja baru menerimanya. Lihat `periksaBelanja` di @avicenna/domain
  * untuk aturan jumlahnya, dan FLG_REQUIRE_PAIRING di TM_ROUTE_PROCESS untuk
@@ -160,7 +160,7 @@ export class BelanjaService {
   }
 
   /**
-   * Komponen BOM yang ikut diperiksa saat belanja.
+   * Komponen yang ikut diperiksa saat belanja, menurut Part Pairing.
    *
    * Disaring dua kali, dan keduanya perlu:
    *
@@ -175,7 +175,7 @@ export class BelanjaService {
    * yang tidak punya kartu — dan belanja menjadi mustahil diselesaikan. Tanpa
    * penyaring kedua, hal yang sama terjadi pada part WIP antar-proses.
    */
-  private async komponenBelanja(plantId: number, fgPartId: number): Promise<KomponenBelanja[]> {
+  private async komponenBelanja(fgPartId: number): Promise<KomponenBelanja[]> {
     const hariIni = toLocalDateKey(new Date());
 
     const rows = await this.db
@@ -183,22 +183,17 @@ export class BelanjaService {
         partId: parts.id,
         partNumber: parts.partNumber,
         partName: parts.name,
-        qtyPer: bomLines.qtyPer,
+        qtyPer: partPairings.qtyPer,
         sourceType: parts.sourceType,
         processType: parts.processType,
-        modeProses: routeProcesses.scanMode,
       })
-      .from(bomLines)
-      .innerJoin(parts, eq(parts.id, bomLines.componentPartId))
-      .leftJoin(
-        routeProcesses,
-        and(eq(routeProcesses.plantId, plantId), eq(routeProcesses.processType, parts.processType)),
-      )
+      .from(partPairings)
+      .innerJoin(parts, eq(parts.id, partPairings.componentPartId))
       .where(
         and(
-          eq(bomLines.parentPartId, fgPartId),
-          lte(bomLines.effectiveFrom, hariIni),
-          or(isNull(bomLines.effectiveTo), gte(bomLines.effectiveTo, hariIni)),
+          eq(partPairings.parentPartId, fgPartId),
+          lte(partPairings.effectiveFrom, hariIni),
+          or(isNull(partPairings.effectiveTo), gte(partPairings.effectiveTo, hariIni)),
         ),
       );
 
@@ -206,7 +201,7 @@ export class BelanjaService {
     const dipakai: KomponenBelanja[] = [];
     for (const r of rows) {
       if (r.sourceType !== 'MANUFACTURED') continue;
-      const mode = modeScanBerlaku(katalog, { modeProses: r.modeProses, proses: r.processType });
+      const mode = modeScanBerlaku(katalog, { proses: r.processType });
       if (!syaratScan(katalog, mode, r.processType).kanbanWajib) continue;
       dipakai.push({
         partId: r.partId,
@@ -242,7 +237,7 @@ export class BelanjaService {
   /** Menyusun keadaan sesi dari kartu FG dan daftar id kartu WIP. */
   private async sesi(plantId: number, fg: KartuDb, wipIds: number[]): Promise<SesiBelanja> {
     const kartuWip = wipIds.length > 0 ? await this.kartuPerId(this.db, plantId, wipIds) : [];
-    const komponen = await this.komponenBelanja(plantId, fg.partId);
+    const komponen = await this.komponenBelanja(fg.partId);
     const hasil = periksaBelanja({
       kartuFg: this.kartuBelanja(fg),
       komponen,
@@ -307,9 +302,15 @@ export class BelanjaService {
     const pabrik = await this.pabrikDari(plantCode);
 
     const wajib = await this.db
-      .select({ processType: routeProcesses.processType })
-      .from(routeProcesses)
-      .where(and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.requirePairing, true)));
+      .selectDistinct({ processType: partProcesses.processType })
+      .from(partProcesses)
+      .where(
+        and(
+          eq(partProcesses.plantId, pabrik.id),
+          eq(partProcesses.requirePairing, true),
+          eq(partProcesses.isActive, true),
+        ),
+      );
 
     const menunggu = await this.db
       .select({
@@ -378,18 +379,18 @@ export class BelanjaService {
      * Kartu tanpa komponen yang bisa dibelanjakan ditolak di sini, bukan
      * dibiarkan membuka sesi yang mustahil disimpan.
      *
-     * Dua sebabnya berbeda dan keduanya disebutkan: BOM-nya memang belum
+     * Dua sebabnya berbeda dan keduanya disebutkan: pasangannya memang belum
      * diisi, atau seluruh komponennya tidak berkartu (part beli lewat ARES).
      * Operator tidak bisa membedakannya sendiri, dan yang harus memperbaiki
      * keduanya bukan dia.
      */
-    const komponen = await this.komponenBelanja(plantId, kartu.partId);
+    const komponen = await this.komponenBelanja(kartu.partId);
     if (komponen.length === 0) {
       return {
         hasil: 'DITOLAK',
         pesan:
-          `${kartu.partNumber} tidak punya komponen berkartu di BOM-nya, jadi tidak ada yang ` +
-          'bisa dibelanjakan. Periksa BOM-nya di Master Data.',
+          `${kartu.partNumber} tidak punya komponen berkartu, jadi tidak ada yang bisa ` +
+          'dibelanjakan. Periksa Master Data › Part Pairing.',
         rawCode: raw,
         sisi: 'FG',
         sesi: null,
@@ -476,7 +477,7 @@ export class BelanjaService {
     if (bukan) {
       return {
         hasil: 'DITOLAK',
-        pesan: `${kartu.partNumber} bukan komponen ${fg.partNumber} menurut BOM.`,
+        pesan: `${kartu.partNumber} bukan komponen ${fg.partNumber} menurut Part Pairing.`,
         rawCode: input.rawCode,
         sisi: 'WIP',
         sesi: await this.sesi(plantId, fg, sudah),
@@ -554,7 +555,7 @@ export class BelanjaService {
           }
         }
 
-        const komponen = await this.komponenBelanja(pabrik.id, fgKartu.partId);
+        const komponen = await this.komponenBelanja(fgKartu.partId);
         const hasil = periksaBelanja({
           kartuFg: this.kartuBelanja(fgKartu),
           komponen,
@@ -857,22 +858,22 @@ export class BelanjaService {
   async menungguBelanjaHilir(plantId: number, partId: number): Promise<boolean> {
     const hariIni = toLocalDateKey(new Date());
     const [induk] = await this.db
-      .select({ id: bomLines.id })
-      .from(bomLines)
-      .innerJoin(parts, eq(parts.id, bomLines.parentPartId))
+      .select({ id: partPairings.id })
+      .from(partPairings)
       .innerJoin(
-        routeProcesses,
+        partProcesses,
         and(
-          eq(routeProcesses.plantId, plantId),
-          eq(routeProcesses.processType, parts.processType),
-          eq(routeProcesses.requirePairing, true),
+          eq(partProcesses.plantId, plantId),
+          eq(partProcesses.partId, partPairings.parentPartId),
+          eq(partProcesses.requirePairing, true),
+          eq(partProcesses.isActive, true),
         ),
       )
       .where(
         and(
-          eq(bomLines.componentPartId, partId),
-          lte(bomLines.effectiveFrom, hariIni),
-          or(isNull(bomLines.effectiveTo), gte(bomLines.effectiveTo, hariIni)),
+          eq(partPairings.componentPartId, partId),
+          lte(partPairings.effectiveFrom, hariIni),
+          or(isNull(partPairings.effectiveTo), gte(partPairings.effectiveTo, hariIni)),
         ),
       )
       .limit(1);

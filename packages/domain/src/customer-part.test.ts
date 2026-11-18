@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { convertCustomerPartNumber } from './customer-part';
+import { convertCustomerPartNumber, normalkanNomorPart, nomorPartSama } from './customer-part';
 
 describe('convertCustomerPartNumber — 12 karakter (TMMIN)', () => {
   it('menyisipkan dua tanda hubung bila dua digit akhir bukan 00', () => {
@@ -60,5 +60,36 @@ describe('convertCustomerPartNumber — panjang lain', () => {
 
   it('kode kosong dikembalikan kosong', () => {
     expect(convertCustomerPartNumber('   ', 'TMMIN')).toBe('');
+  });
+});
+
+describe('normalkanNomorPart — bentuk SAP vs bentuk Gentani', () => {
+  it('membuang tanda hubung dan membesarkan huruf', () => {
+    expect(normalkanNomorPart('212110-34010')).toBe('21211034010');
+    expect(normalkanNomorPart('212111-31900-04')).toBe('2121113190004');
+    expect(normalkanNomorPart('219999-34300-blk')).toBe('21999934300BLK');
+  });
+
+  it('nomor yang sudah berbentuk SAP tidak berubah', () => {
+    // Idempoten: tarik master SAP mengisi bentuk tanpa strip, dan menormalkan
+    // ulang nilai yang sudah baku tidak boleh mengubahnya.
+    expect(normalkanNomorPart('41111310110G0')).toBe('41111310110G0');
+  });
+
+  it('kartu lama dan master baru dianggap part yang sama', () => {
+    /*
+     * Inilah gunanya: kartu kanban tercetak membawa `212110-34010` di QR-nya,
+     * sedangkan master sudah beralih ke `21211034010`. Tanpa pembandingan
+     * baku, kartu sah ditolak "bukan untuk part tersebut".
+     */
+    expect(nomorPartSama('212110-34010', '21211034010')).toBe(true);
+    expect(nomorPartSama('212110-34010', '212110-34011')).toBe(false);
+  });
+
+  it('nomor kosong TIDAK dianggap sama', () => {
+    // Dua ketiadaan bukan kecocokan: itu akan membuat kartu tanpa nomor part
+    // lolos pada part apa pun.
+    expect(nomorPartSama(null, null)).toBe(false);
+    expect(nomorPartSama('', '')).toBe(false);
   });
 });

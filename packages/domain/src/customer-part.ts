@@ -71,3 +71,39 @@ export function convertCustomerPartNumber(
 
   return code;
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * NOMOR PART INTERNAL: BENTUK SAP vs BENTUK GENTANI
+ *
+ * SAP AIIA menyimpan nomor material TANPA tanda hubung: `32119242010`,
+ * `41111310110G0`. Gentani — dan karena itu master kita — memakai bentuk
+ * berstrip: `212110-34010`, `212111-31900-04`.
+ *
+ * Keduanya nomor yang SAMA. Staging pun memperlakukannya begitu:
+ * TT_GOODS_MOVEMENT_L punya `CHR_PART_NO` dan `CHR_PART_NO_DASH` berdampingan.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Bentuk baku nomor part untuk DIBANDINGKAN dan DIKIRIM ke SAP.
+ *
+ * Tanda hubung dibuang, huruf dibesarkan. Transformasinya diperiksa terhadap
+ * seluruh 100 part di master: tidak ada dua part yang bertabrakan, dan panjang
+ * hasilnya (11 atau 13 karakter) sama dengan sebaran nomor material SAP.
+ *
+ * ── Kenapa perlu dibandingkan dalam bentuk baku ─────────────────────────────
+ *
+ * Kartu kanban dan label part yang SUDAH TERCETAK membawa bentuk berstrip di
+ * dalam barcodenya. Begitu master beralih ke bentuk SAP, kartu-kartu itu akan
+ * ditolak "bukan untuk part tersebut" — padahal part-nya persis sama. Dengan
+ * dibandingkan dalam bentuk baku, kartu generasi lama dan baru dua-duanya
+ * terbaca, dan peralihannya tidak terasa di lantai.
+ */
+export function normalkanNomorPart(nomor: string): string {
+  return nomor.trim().replace(/-/g, '').toUpperCase();
+}
+
+/** Apakah dua nomor part menunjuk part yang sama, lepas dari tanda hubungnya. */
+export function nomorPartSama(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  return normalkanNomorPart(a) === normalkanNomorPart(b);
+}

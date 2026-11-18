@@ -536,6 +536,113 @@ export function kodeKetikKanban(kartu: { backNumber: string; serialNumber: strin
   return `${back}|${seri}`;
 }
 
+/** Panjang isi QR kartu kanban format AIGSYS, termasuk spasi di belakang. */
+export const PANJANG_KANBAN_AIGSYS = 230;
+
+/**
+ * Seri terbesar yang muat di kartu AIGSYS. Kolom serinya empat digit, dan
+ * sistem lama mengambil tepat empat karakter mulai posisi 123.
+ */
+export const SERI_KANBAN_AIGSYS_MAKS = 9999;
+
+/**
+ * Menyusun isi QR kartu kanban yang dicetak — format AIGSYS 230 karakter,
+ * sama persis dengan kartu sistem lama (`AIGSYSGJ922 ...`).
+ *
+ * ── Kenapa ikut format lama, bukan AVK1 ────────────────────────────────────
+ *
+ * Kartu yang beredar di lantai berformat ini, dan sistem lama (Laravel)
+ * membacanya dari POSISI, bukan dari pemisah: `substr($kode, 123, 4)` untuk
+ * seri. Kartu yang kita cetak harus terbaca di sana juga selama keduanya
+ * masih berjalan, jadi setiap kolom berada tepat di posisinya:
+ *
+ *     0  AIGSYSGJ922        tetap
+ *    14  JE10               tetap
+ *    20  JE + kode line     work center SAP lini yang memproduksi, mis. AS0547
+ *    31  JE                 tetap
+ *    40  0 + nomor part     nol di depan, seperti kartu lama
+ *    63  SLOC + 000         SLOC tujuan, mis. SE1C000
+ *    72  JE                 tetap
+ *    81  XXX                tetap
+ *    92  0                  tetap
+ *   100  back number        empat karakter
+ *   105  qty(7) + 0×11 + seri(4) — seri jatuh di posisi 123
+ *   159  0                  tetap
+ *   190  qty(7)             isi per box
+ *   215  PCS                tetap
+ *
+ * Pembacanya di sistem ini ATURAN_KANBAN_AIGSYS (scan per box) dan
+ * ATURAN_KANBAN_BERSPASI (yang lain); keduanya diuji terhadap hasil fungsi ini.
+ *
+ * ── Kenapa yang tidak muat DITOLAK, bukan dipotong ─────────────────────────
+ *
+ * Kolom yang kepanjangan akan menggeser atau menimpa kolom sesudahnya, dan
+ * sistem lama tetap membaca posisi 123 — kartunya terbaca sebagai seri lain
+ * tanpa galat apa pun. Kolom kosong lebih buruk lagi: pembaca berspasi
+ * menghitung KOLOM, jadi satu kolom hilang menggeser back number dan seri.
+ */
+export function susunKanbanAigsys(kartu: {
+  /** Work center SAP lini yang memproduksi part ini, tanpa "JE". */
+  workCenter: string;
+  partNumber: string;
+  /** SLOC tujuan, empat karakter. */
+  sloc: string;
+  backNumber: string;
+  serialNumber: string;
+  qtyPerBox: number;
+}): string {
+  const wc = ruasBersih(kartu.workCenter);
+  const part = ruasBersih(kartu.partNumber);
+  const sloc = ruasBersih(kartu.sloc);
+  const back = ruasBersih(kartu.backNumber);
+  const seri = ruasBersih(kartu.serialNumber);
+
+  if (!wc) throw new Error('Kartu kanban tidak bisa dicetak tanpa kode line (work center SAP)');
+  if (!part) throw new Error('Kartu kanban tidak bisa dicetak tanpa nomor part');
+  if (!sloc) throw new Error('Kartu kanban tidak bisa dicetak tanpa SLOC tujuan');
+  if (!back) throw new Error('Kartu kanban tidak bisa dicetak tanpa back number');
+  if (!seri) throw new Error('Kartu kanban tidak bisa dicetak tanpa nomor seri');
+  if (!Number.isInteger(kartu.qtyPerBox) || kartu.qtyPerBox <= 0) {
+    throw new Error('Kartu kanban tidak bisa dicetak tanpa isi box yang wajar');
+  }
+
+  /*
+   * Batas tiap kolom diambil dari pembaca sistem lama, bukan dari lebar
+   * kolomnya saja: ATURAN_KANBAN_BODY membaca nomor part 19 karakter mulai
+   * posisi 41 dan back number 4 karakter mulai posisi 100.
+   */
+  if (wc.length > 8) throw new Error(`Kode line "${wc}" lebih dari 8 karakter`);
+  if (part.length > 19) throw new Error(`Nomor part "${part}" lebih dari 19 karakter`);
+  if (sloc.length > 4) throw new Error(`SLOC tujuan "${sloc}" lebih dari 4 karakter`);
+  if (back.length > 4) throw new Error(`Back number "${back}" lebih dari 4 karakter`);
+  if (!/^\d{4}$/.test(seri)) {
+    throw new Error(`Nomor seri "${seri}" harus empat digit (paling besar ${SERI_KANBAN_AIGSYS_MAKS})`);
+  }
+  if (kartu.qtyPerBox > 9_999_999) throw new Error('Isi box lebih dari tujuh digit');
+
+  const qty = String(kartu.qtyPerBox).padStart(7, '0');
+  const kolom: [number, string][] = [
+    [0, 'AIGSYSGJ922'],
+    [14, 'JE10'],
+    [20, `JE${wc}`],
+    [31, 'JE'],
+    [40, `0${part}`],
+    [63, `${sloc}000`],
+    [72, 'JE'],
+    [81, 'XXX'],
+    [92, '0'],
+    [100, back],
+    [105, `${qty}${'0'.repeat(11)}${seri}`],
+    [159, '0'],
+    [190, qty],
+    [215, 'PCS'],
+  ];
+
+  let teks = '';
+  for (const [posisi, isi] of kolom) teks = teks.padEnd(posisi) + isi;
+  return teks.padEnd(PANJANG_KANBAN_AIGSYS);
+}
+
 /**
  * Daftar aturan kanban, berurutan.
  *

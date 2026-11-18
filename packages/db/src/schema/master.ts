@@ -1,5 +1,5 @@
 import { boolean, index, integer, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   PART_TYPES,
   SOURCE_TYPES,
@@ -30,7 +30,7 @@ export const lines = masterSchema.table(
       .references(() => processTypes.code)
       .notNull(),
     /**
-     * Penimpa METODE SCAN untuk lini ini. Kosong = ikut master Rute Proses.
+     * Penimpa METODE SCAN untuk lini ini. Kosong = ikut master Jenis Proses.
      *
      * Injection dan assembling BODY ada di pabrik yang sama tetapi caranya
      * berbeda: yang satu mulai dari tag mold, yang lain dari papan dandori.
@@ -38,6 +38,27 @@ export const lines = masterSchema.table(
      * cocok untuk salah satunya.
      */
     scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM),
+    /**
+     * Work center SAP untuk lini ini. Kosong = hasil produksinya DITAHAN.
+     *
+     * ── Kenapa kolom sendiri, bukan memakai CHR_CODE ────────────────────────
+     *
+     * Dulu push hasil produksi mengirim `CHR_CODE` lini sebagai
+     * CHR_WORK_CENTER. Kode kita berbentuk lain — `AS-02`, `INJ-01`, `MC-01` —
+     * sedangkan SAP memakai enam karakter tanpa pemisah: `DCAA01`, `ASDL01`,
+     * `GIIH01`. Tidak satu pun kode berstrip kita dikenal di sana, jadi setiap
+     * dokumen produksi membawa work center yang tidak ada.
+     *
+     * Dipisah karena keduanya milik pihak berbeda: kode lini muncul di alamat
+     * halaman dan bookmark layar lantai, sedangkan work center milik SAP dan
+     * bisa berubah tanpa lini kita berganti nama.
+     *
+     * KOSONG BERARTI DITAHAN, bukan ditebak. Lini yang belum punya padanan di
+     * SAP memunculkan dokumen HELD dengan sebab tertulis — satu-satunya
+     * kegagalan yang bisa dilihat orang. Menebak dari kode lini berarti
+     * barisnya tersaring penjemput SAP tanpa jejak sama sekali.
+     */
+    sapWorkCenter: varchar('CHR_SAP_WORK_CENTER', { length: 10 }),
     /*
      * SLOC asal dan tujuan line ini.
      *
@@ -235,7 +256,7 @@ export const parts = masterSchema.table(
  *
  *   CHR_SAP_CLASS    menentukan SLOC hasil DAN dokumen SAP-nya
  *   CHR_PROCESS_GROUP  lingkup role — siapa boleh men-scan di lini ini
- *   CHR_SCAN_MODE    metode scan bawaan; rute per pabrik boleh menimpanya
+ *   CHR_SCAN_MODE    metode scan; master Line boleh menimpanya per lini
  *
  * ── Kodenya, bukan id-nya, yang disimpan di tabel lain ──────────────────────
  *
@@ -255,7 +276,7 @@ export const processTypes = masterSchema.table(
     label: varchar('CHR_LABEL', { length: 64 }).notNull(),
     processGroup: enumCol('CHR_PROCESS_GROUP', PROCESS_GROUPS).notNull(),
     sapClass: enumCol('CHR_SAP_CLASS', SAP_CLASSES).notNull(),
-    /** Metode scan bawaan. TM_ROUTE_PROCESS boleh menimpanya per pabrik. */
+    /** Metode scan proses ini. TM_LINE boleh menimpanya per lini. */
     scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM).notNull(),
     /**
      * Urutan kolom di matriks rute.
@@ -318,49 +339,99 @@ export const partProcesses = masterSchema.table(
       .references(() => processTypes.code)
       .notNull(),
     /**
-     * Urutan dalam rute part ini. Bukan urutan global.
+     * Urutan dalam rangkaian produksi. Bukan urutan global.
      *
-     * Dipakai menentukan proses sebelumnya saat memvalidasi scan: yang dicari
-     * adalah seqNo terbesar yang lebih kecil dari seqNo proses sekarang, DI
-     * DALAM rute part itu sendiri.
+     * Part number berubah di tiap tahap, jadi urutan ini tidak dipakai memeriksa
+     * tahap sebelumnya saat scan. Work center alternatif berbagi nilai yang sama.
      */
     seqNo: integer('INT_SEQ_NO').notNull(),
     /**
-     * Lini yang mengerjakannya, bila sudah pasti satu.
+     * Work center yang mengerjakannya. Work center alternatif memakai baris sendiri.
      *
-     * Boleh kosong: sebuah proses bisa dikerjakan beberapa lini yang setara, dan
-     * memaksa satu lini di sini akan menolak scan dari lini kembarannya.
+     * Baris tanpa line masih berlaku untuk scan di line berproses sama, supaya
+     * rute lama yang belum dilengkapi tidak berubah perilakunya.
      */
     lineId: fk('INT_LINE_ID').references(() => lines.id),
+    /**
+     * Production Version SAP untuk LANGKAH ini. Kosong = ikut TM_PARTS.
+     *
+     * ── Kenapa di sini, bukan di part ───────────────────────────────────────
+     *
+     * PV adalah pasangan (alternatif BOM + routing) untuk satu material, dan
+     * di SAP ia berkunci (nomor part + PV) — satu baris per langkah proses.
+     * Terbukti dari staging: part `-3121104010B1` punya ENAM PV, masing-masing
+     * terikat work center, dan tiga di antaranya berbagi work center yang sama.
+     *
+     * `TM_PARTS.CHR_PRODUCTION_VERSION` menyimpan satu nilai per part, jadi
+     * part yang lewat casting lalu machining lalu assembly hanya bisa membawa
+     * satu dari tiga versinya. Itulah sebabnya kolom itu masih kosong pada 89
+     * dari 92 part UNIT: tidak ada satu nilai yang benar untuk diisi.
+     *
+     * Yang di TM_PARTS dibiarkan sebagai cadangan selama peralihan — bukan
+     * sumber kedua. Begitu tarik SAP mengisi kolom ini untuk seluruh langkah,
+     * kolom di part tidak dipakai lagi.
+     */
+    productionVersion: varchar('CHR_PRODUCTION_VERSION', { length: 8 }),
+    /*
+     * ── Rute per work center ────────────────────────────────────────────────
+     *
+     * Part menempel pada work center: satu baris di sini menjawab sendiri SLOC,
+     * metode scan, dan izin SAP untuk part di work center itu. Line DCAA08
+     * mengerjakan part WIP dan FG sekaligus, jadi jawabannya tidak bisa
+     * disimpan per line maupun per jenis proses.
+     *
+     * Kosong berarti memakai milik line saat scan.
+     */
+    /** SLOC asal. */
+    inputLocationId: fk('INT_INPUT_LOCATION_ID'),
+    /** SLOC tujuan. */
+    outputLocationId: fk('INT_OUTPUT_LOCATION_ID'),
+    /** Metode scan part ini di work center ini. */
+    scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM),
+    /** Izin membuat dokumen produksi ke staging SAP. Nonaktif = dokumen ditahan (HELD). */
+    sapProductionEnabled: boolean('FLG_SAP_PRODUCTION_ENABLED').notNull().default(false),
+    /**
+     * Work center yang tercetak di QR kartu kanban.
+     *
+     * Part yang punya work center alternatif tetap hanya punya satu kartu, jadi
+     * satu baris harus ditunjuk. Paling banyak satu per part; dijaga indeks di
+     * bawah, bukan oleh layar.
+     */
+    isPrimary: boolean('FLG_IS_PRIMARY').notNull().default(false),
+    /** SLOC tempat hasil dipindah setelah produksi. Kosong = tidak dipindah lagi. */
+    transferLocationId: fk('INT_TRANSFER_LOCATION_ID'),
+    /** Izin membuat dokumen transfer ke staging SAP. */
+    sapTransferEnabled: boolean('FLG_SAP_TRANSFER_ENABLED').notNull().default(false),
+    sapTransferMovementType: varchar('CHR_SAP_TRANSFER_MVT', { length: 3 }),
+    /** Kartu harus melewati stasiun belanja sebelum boleh discan di sini. */
+    requirePairing: boolean('FLG_REQUIRE_PAIRING').notNull().default(false),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },
   (t) => [
-    // Satu part tidak melewati proses yang sama dua kali. Kalau suatu saat itu
-    // terjadi (mis. dua kali painting), yang berubah adalah kunci ini — dan
-    // perubahannya akan terlihat, bukan diam-diam menimpa baris lama.
-    uniqueIndex('TM_PROCESS_PARTS_PART_PROCESS_UNIQUE').on(t.partId, t.processType),
-    uniqueIndex('TM_PROCESS_PARTS_PART_SEQ_UNIQUE').on(t.partId, t.seqNo),
+    /*
+     * Satu part hanya sekali di satu work center. Work center alternatif memakai
+     * baris sendiri dan boleh berbagi proses maupun sequence, jadi keduanya
+     * tidak lagi unik per part. Baris tanpa line (Delivery) tetap unik per proses.
+     */
+    uniqueIndex('TM_PROCESS_PARTS_PART_LINE_UNIQUE')
+      .on(t.partId, t.lineId)
+      .where(sql`${t.lineId} is not null`),
+    uniqueIndex('TM_PROCESS_PARTS_PART_PROCESS_NOLINE_UNIQUE')
+      .on(t.partId, t.processType)
+      .where(sql`${t.lineId} is null`),
     index('TM_PROCESS_PARTS_PLANT_PROCESS_IDX').on(t.plantId, t.processType),
+    uniqueIndex('TM_PROCESS_PARTS_PART_PRIMARY_UNIQUE').on(t.partId).where(sql`${t.isPrimary}`),
+    daftarNilai('TM_PROCESS_PARTS_CHR_SCAN_MODE_CHK', t.scanMode, SCAN_MODE_ENUM),
   ],
 );
 
 /**
- * ─── Pengaturan stok & SAP PER PROSES ───────────────────────────────────────
+ * ─── Pengaturan stok & SAP per proses (lama) ────────────────────────────────
  *
- * Satu baris per jenis proses per pabrik: SLOC masuk/keluar/transfer dan izin
- * push ke staging SAP. Berlaku untuk SEMUA part yang melewati proses itu.
- *
- * ── Kenapa per proses, bukan per part × proses ──────────────────────────────
- *
- * Sempat diletakkan di TM_PROCESS_PARTS (per langkah tiap part). Dengan 13
- * part × ~4 langkah itu berarti 50-an baris pengaturan yang isinya nyaris
- * sama, dirawat satu per satu, dan satu yang terlewat membuat satu part diam-
- * diam tidak pernah sampai ke SAP. Di pabrik ini SLOC memang ditentukan oleh
- * PROSESNYA — semua hasil casting masuk gudang yang sama — bukan oleh partnya.
- *
- * Kosong berarti memakai SLOC milik lini saat scan. TM_PROCESS_PARTS kini
- * murni menjawab "part ini lewat proses apa, urutan ke berapa".
+ * Tidak dibaca lagi sejak scan, cetak kanban, dan belanja memakai rute per work
+ * center (TM_PROCESS_PARTS). Tabelnya dibiarkan sampai peralihan terbukti
+ * berjalan, supaya masih ada jalan kembali.
  */
 export const routeProcesses = masterSchema.table(
   'TM_ROUTE_PROCESS',
@@ -373,15 +444,6 @@ export const routeProcesses = masterSchema.table(
       .$type<ProcessType>()
       .references(() => processTypes.code)
       .notNull(),
-    /**
-     * METODE SCAN lini ini — lihat SCAN_MODES di contracts.
-     *
-     * Sifat proses, bukan pabrik: assy 660A yang berinterlock dan injection
-     * biasa boleh berbeda dalam satu pabrik. Enumnya memuat nilai LAMA
-     * (PER_PIECE/PER_KANBAN) supaya baris dan snapshot yang sudah ada tetap
-     * sah; nilai itu tidak pernah ditawarkan lagi di formulir.
-     */
-    scanMode: enumCol('CHR_SCAN_MODE', SCAN_MODE_ENUM).notNull().default('PART_SAJA'),
     /**
      * Scan produksi di proses ini WAJIB didahului belanja.
      *
@@ -417,7 +479,6 @@ export const routeProcesses = masterSchema.table(
   },
   (t) => [
     uniqueIndex('TM_ROUTE_PROCESS_PLANT_PROCESS_UNIQUE').on(t.plantId, t.processType),
-    daftarNilai('TM_ROUTE_PROCESS_CHR_SCAN_MODE_CHK', t.scanMode, SCAN_MODE_ENUM),
   ],
 );
 
@@ -551,6 +612,9 @@ export const toolingParts = masterSchema.table(
   'TM_TOOLING_PARTS',
   {
     id: pk(),
+    plantId: fk('INT_PLANT_ID')
+      .notNull()
+      .references(() => plants.id),
     toolingId: fk('INT_TOOLING_ID')
       .notNull()
       .references(() => toolings.id, { onDelete: 'cascade' }),
@@ -559,7 +623,10 @@ export const toolingParts = masterSchema.table(
       .references(() => parts.id, { onDelete: 'cascade' }),
     ...timestamps,
   },
-  (t) => [uniqueIndex('TM_TOOLING_PARTS_UNIQUE').on(t.toolingId, t.partId)],
+  (t) => [
+    uniqueIndex('TM_TOOLING_PARTS_UNIQUE').on(t.toolingId, t.partId),
+    index('TM_TOOLING_PARTS_PLANT_IDX').on(t.plantId),
+  ],
 );
 
 export const linesRelations = relations(lines, ({ one, many }) => ({

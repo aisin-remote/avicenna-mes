@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getStationSummary } from '@/lib/scan-api';
+import { getMoldScanBoard, getStationSummary } from '@/lib/scan-api';
 import { getSessionUser } from '@/lib/session';
 import { StationBar } from '@/components/scan/station-bar';
 import { ScanStation } from '@/components/scan/scan-station';
@@ -30,6 +30,7 @@ export default async function ScanStationPage({ params }: PageProps) {
     // Line yang tidak dikenal berarti alamatnya salah, bukan kegagalan server.
     notFound();
   }
+  const mold = summary.line.scanMode === 'KANBAN_MOLD' ? await getMoldScanBoard(code) : null;
 
   return (
     /*
@@ -50,7 +51,7 @@ export default async function ScanStationPage({ params }: PageProps) {
         npk={user?.npk ?? '—'}
       />
       <main className="min-h-0 flex-1 overflow-hidden p-4">
-        <ScanStation summary={summary} />
+        <ScanStation summary={summary} initialMold={mold} />
       </main>
     </div>
   );

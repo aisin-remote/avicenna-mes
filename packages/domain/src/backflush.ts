@@ -46,8 +46,8 @@ export interface BackflushPlan {
    * penerimaan barang atau data masternya tertinggal.
    */
   shortages: Shortage[];
-  /** Benar bila part yang diproduksi tidak punya BOM aktif. */
-  noBom: boolean;
+  /** Benar bila part yang diproduksi tidak punya pasangan part yang aktif. */
+  tanpaPasangan: boolean;
 }
 
 /**
@@ -61,19 +61,19 @@ export interface BackflushPlan {
 export function planBackflush(input: {
   producedPartId: number;
   qty: number;
-  bomLines: readonly BomLine[];
+  partPairings: readonly BomLine[];
   onDate: string;
   /** Lot tersedia per komponen. Kosongkan untuk komponen non-lot. */
   availableLots?: readonly AvailableLot[];
 }): BackflushPlan {
-  const { producedPartId, qty, bomLines, onDate } = input;
+  const { producedPartId, qty, partPairings, onDate } = input;
 
-  const direct = bomLines.filter(
+  const direct = partPairings.filter(
     (l) => l.parentPartId === producedPartId && isEffective(l, onDate),
   );
 
   if (direct.length === 0) {
-    return { consumptions: [], shortages: [], noBom: true };
+    return { consumptions: [], shortages: [], tanpaPasangan: true };
   }
 
   const consumptions: PlannedConsumption[] = [];
@@ -130,7 +130,7 @@ export function planBackflush(input: {
     }
   }
 
-  return { consumptions, shortages, noBom: false };
+  return { consumptions, shortages, tanpaPasangan: false };
 }
 
 /**

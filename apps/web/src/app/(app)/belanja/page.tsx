@@ -24,7 +24,7 @@ export default async function BelanjaIndexPage() {
       <PageHeader
         crumbs={[{ label: 'Produksi' }, { label: 'Scan Belanja' }]}
         title="Scan Belanja"
-        description="Cocokkan kartu FG dengan kartu WIP yang isinya sesuai BOM"
+        description="Cocokkan kartu FG dengan kartu WIP yang isinya sesuai Part Pairing"
       />
 
       {area.length === 0 ? (

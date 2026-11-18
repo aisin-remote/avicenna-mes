@@ -26,6 +26,7 @@ import { SapModule } from './sap/sap.module';
 import { StagingModule } from './staging/staging.module';
 import { PreparationModule } from './preparation/preparation.module';
 import { RoutingModule } from './routing/routing.module';
+import { BomModule } from './bom/bom.module';
 import { MqttModule } from './mqtt/mqtt.module';
 import { SyncModule } from './sync/sync.module';
 import { HealthController } from './health/health.controller';
@@ -62,6 +63,7 @@ import { loadEnv } from './config/env';
     StagingModule,
     PreparationModule,
     RoutingModule,
+    BomModule,
     MqttModule,
     SyncModule,
   ],

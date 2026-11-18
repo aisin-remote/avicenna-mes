@@ -299,7 +299,7 @@ async function main() {
    *
    * AIIA memberi nomor part berbeda untuk setiap tahap (-02 melting, -04 die
    * casting, tanpa sufiks machining), jadi satu part memang hanya melewati satu
-   * proses. Rantainya adalah konsumsi BOM antar part, dan BOM belum diisi —
+   * proses. Rantainya adalah pasangan part, dan Part Pairing belum diisi —
    * lihat data/gentani-unit.ts.
    */
   for (const p of GENTANI_UNIT) {

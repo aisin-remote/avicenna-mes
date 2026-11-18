@@ -1,14 +1,19 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UsePipes } from '@nestjs/common';
 import type { Request } from 'express';
-import { scanInputSchema, scanBatchSchema,
+import {
+  scanInputSchema,
+  scanBatchSchema,
+  moldScanInputSchema,
   mulaiBerhentiSchema,
   selesaiBerhentiSchema,
   type MulaiBerhentiInput,
   type SelesaiBerhentiInput,
+  type MoldScanInput,
 } from '@avicenna/contracts';
 import type { ScanInput, ScanBatchInput } from '@avicenna/contracts';
 import { ScanService } from './scan.service';
 import { PapanService } from './papan.service';
+import { MoldScanService } from './mold-scan.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 
 @Controller('scan')
@@ -16,7 +21,23 @@ export class ScanController {
   constructor(
     private readonly scan: ScanService,
     private readonly papanService: PapanService,
+    private readonly moldService: MoldScanService,
   ) {}
+
+  /** Keadaan putaran dan interlock mold pada lini. */
+  @Get('mold')
+  moldBoard(@Query('line') line: string, @Req() req: Request) {
+    return this.moldService.board(String(line ?? ''), req.principal);
+  }
+
+  /** Tag mold, kanban anggota, dan NPK pembuka lock masuk lewat kotak yang sama. */
+  @Post('mold')
+  scanMold(
+    @Body(new ZodValidationPipe(moldScanInputSchema)) body: MoldScanInput,
+    @Req() req: Request,
+  ) {
+    return this.moldService.scan(body, req.principal);
+  }
 
   /** Lini pada sebuah grup proses — isi modal pemilih lini. */
   @Get('proses/:grup/lines')
@@ -26,11 +47,7 @@ export class ScanController {
 
   /** Membuka lini dari barcode yang discan operator. */
   @Post('proses/:grup/open')
-  bukaLini(
-    @Param('grup') grup: string,
-    @Body() body: { code?: string },
-    @Req() req: Request,
-  ) {
+  bukaLini(@Param('grup') grup: string, @Body() body: { code?: string }, @Req() req: Request) {
     return this.scan.bukaLini(String(body?.code ?? ''), grup, req.principal);
   }
 

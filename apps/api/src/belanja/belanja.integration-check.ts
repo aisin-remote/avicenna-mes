@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import {
   and,
-  bomLines,
+  partPairings,
   closeDb,
   eq,
   getDb,
@@ -12,7 +12,7 @@ import {
   kanbans,
   parts,
   plants,
-  routeProcesses,
+  partProcesses,
   type Database,
 } from '@avicenna/db';
 import { susunKodeKartuKanban } from '@avicenna/domain';
@@ -84,7 +84,7 @@ async function main() {
         })
         .returning({ id: parts.id });
 
-      // Komponen beli: ikut di BOM, TIDAK boleh ikut diperiksa saat belanja.
+      // Komponen beli: ikut di Part Pairing, TIDAK boleh ikut diperiksa saat belanja.
       const [partBeli] = await tx
         .insert(parts)
         .values({
@@ -100,7 +100,7 @@ async function main() {
         .returning({ id: parts.id });
 
       const kemarin = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-      await tx.insert(bomLines).values([
+      await tx.insert(partPairings).values([
         {
           plantId: pabrik.id,
           parentPartId: partFg!.id,
@@ -144,15 +144,13 @@ async function main() {
         )
         .returning({ id: kanbans.id, serialNumber: kanbans.serialNumber });
 
-      await tx
-        .update(routeProcesses)
-        .set({ requirePairing: true })
-        .where(
-          and(
-            eq(routeProcesses.plantId, pabrik.id),
-            eq(routeProcesses.processType, 'ASSEMBLING_BODY_FG'),
-          ),
-        );
+      await tx.insert(partProcesses).values({
+        plantId: pabrik.id,
+        partId: partFg!.id,
+        processType: 'ASSEMBLING_BODY_FG',
+        seqNo: 10,
+        requirePairing: true,
+      });
 
       /* ── 1. Membuka sesi dengan kartu FG ───────────────────────────────── */
       const buka = await belanja.scan({
@@ -414,12 +412,13 @@ async function main() {
       catat('scan produksi induk menutup pasangan dan mengosongkan daftar tunggu');
 
       /* ── 9. Berjenjang: painting juga wajib belanja ──────────────────── */
-      await tx
-        .update(routeProcesses)
-        .set({ requirePairing: true })
-        .where(
-          and(eq(routeProcesses.plantId, pabrik.id), eq(routeProcesses.processType, 'PAINTING_FG')),
-        );
+      await tx.insert(partProcesses).values({
+        plantId: pabrik.id,
+        partId: partWip!.id,
+        processType: 'PAINTING_FG',
+        seqNo: 10,
+        requirePairing: true,
+      });
 
       const [partInj] = await tx
         .insert(parts)
@@ -435,7 +434,7 @@ async function main() {
         })
         .returning({ id: parts.id });
 
-      await tx.insert(bomLines).values({
+      await tx.insert(partPairings).values({
         plantId: pabrik.id,
         parentPartId: partWip!.id,
         componentPartId: partInj!.id,
@@ -466,7 +465,7 @@ async function main() {
       assert.equal(belanjaPainting.hasil, 'DITERIMA', belanjaPainting.pesan);
       assert.equal(belanjaPainting.sesi?.komponen[0]?.partNumber, 'UJI-INJ-660A');
       assert.equal(belanjaPainting.sesi?.komponen[0]?.dibutuhkan, 50);
-      catat('kartu painting kini jadi INDUK: meminta kartu injection sesuai BOM-nya');
+      catat('kartu painting kini jadi INDUK: meminta kartu injection sesuai pasangannya');
 
       const paintingId = belanjaPainting.sesi!.fg.kanbanId;
       const simpanPainting = await belanja.simpan({

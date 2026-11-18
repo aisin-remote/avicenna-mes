@@ -1,0 +1,2 @@
+ALTER TABLE "master"."TM_LINE" ADD COLUMN "CHR_SAP_WORK_CENTER" varchar(10);--> statement-breakpoint
+ALTER TABLE "master"."TM_PROCESS_PARTS" ADD COLUMN "CHR_PRODUCTION_VERSION" varchar(8);

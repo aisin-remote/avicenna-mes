@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { eq, and, sql, desc, count, inArray, type Database } from '@avicenna/db';
+import { eq, and, or, isNull, sql, desc, count, inArray, type Database } from '@avicenna/db';
 import {
   sapOutbox,
   deliveries,
@@ -11,6 +11,7 @@ import {
   lots,
   scanEvents,
   lines,
+  partProcesses,
   users,
   ngRecords,
 } from '@avicenna/db';
@@ -23,6 +24,7 @@ import {
   kelasHasilSap,
   periksaHasilProduksi,
   periksaTransferSloc,
+  transferMenunggu,
 } from '@avicenna/domain';
 import type { LocationKind } from '@avicenna/contracts';
 import { InjectDb } from '../db/db.module';
@@ -33,6 +35,12 @@ import { FINISH_PULLING_GI } from '../staging/delivery-gi-gate';
 
 /** Jeda sebelum sebuah dokumen dianggap lengkap. Lihat catatan di collect(). */
 const SETTLE_SECONDS = 60;
+
+/**
+ * Awal alasan dokumen yang ditahan karena part-nya di luar rute work center.
+ * releaseHeld() mengenalinya dari sini dan melepasnya begitu rutenya didaftarkan.
+ */
+const TAHAN_DI_LUAR_RUTE = 'di luar rute: ';
 
 /** Berapa dokumen dikumpulkan sekali jalan. */
 const BATCH = 200;
@@ -220,16 +228,46 @@ export class SapOutboxService {
             .select({
               meta: scanEvents.meta,
               processType: scanEvents.processType,
-              lineCode: lines.code,
+              /*
+               * Work center SAP milik lini, BUKAN kode lini kita.
+               *
+               * Kode kita berbentuk `AS-02`/`MC-01`; SAP memakai enam karakter
+               * tanpa pemisah. Lini yang belum punya padanan mengembalikan
+               * kosong, dan dokumennya ditahan dengan sebab tertulis — lihat
+               * CHR_SAP_WORK_CENTER di TM_LINE.
+               */
+              lineCode: lines.sapWorkCenter,
               backNumber: parts.backNumber,
               partName: parts.name,
-              productionVersion: parts.productionVersion,
+              /*
+               * PV dari LANGKAH yang discan, dengan TM_PARTS sebagai cadangan.
+               *
+               * PV adalah pasangan BOM + routing, dan di SAP ia berkunci
+               * (part + PV) — satu baris per langkah. Satu nilai di part tidak
+               * bisa benar untuk part yang lewat tiga proses. Cadangan di part
+               * dipertahankan selama peralihan supaya part yang sudah terisi
+               * tidak berhenti terkirim.
+               */
+              productionVersion: sql<string | null>`coalesce(${partProcesses.productionVersion}, ${parts.productionVersion})`,
               serialNumber: scanEvents.serialNumber,
               npk: users.npk,
             })
             .from(scanEvents)
             .leftJoin(lines, eq(scanEvents.lineId, lines.id))
             .leftJoin(parts, eq(scanEvents.partId, parts.id))
+            .leftJoin(
+              partProcesses,
+              and(
+                eq(partProcesses.partId, scanEvents.partId),
+                or(
+                  eq(partProcesses.lineId, scanEvents.lineId),
+                  and(
+                    isNull(partProcesses.lineId),
+                    eq(partProcesses.processType, scanEvents.processType),
+                  ),
+                ),
+              ),
+            )
             .leftJoin(users, eq(scanEvents.userId, users.id))
             .where(eq(scanEvents.id, sourceId))
             .limit(1)
@@ -240,6 +278,7 @@ export class SapOutboxService {
         productionEnabled?: boolean;
         transferEnabled?: boolean;
         transferMovementType?: string | null;
+        diLuarRute?: boolean;
       };
     } | null;
     const kebijakan = metaScan?.sapRoute;
@@ -293,7 +332,7 @@ export class SapOutboxService {
       }
 
       // Job backflush bisa tertunda lebih dari jeda kolektor. Produksi baru
-      // boleh masuk outbox setelah konsumsi komponennya selesai atau BOM
+      // boleh masuk outbox setelah konsumsi komponennya selesai atau pasangan
       // dipastikan kosong. Transfer SLOC tetap boleh berjalan terpisah.
       if (
         docType === 'PRODUCTION' &&
@@ -501,28 +540,33 @@ export class SapOutboxService {
         })),
       );
 
+      /*
+       * Work center SAP kosong = lini itu belum dipetakan ke SAP.
+       *
+       * Dulu kolomnya diisi kode lini kita, jadi keadaan ini tidak pernah
+       * terjadi — dan dokumennya terkirim membawa work center yang tidak
+       * dikenal SAP, lalu tersaring penjemput tanpa jejak.
+       */
       const kurangKonteks =
         docType === 'PRODUCTION' && sourceTable === 'TT_HISTORY_SCAN' && !scan?.lineCode;
       let menungguProduksi: string | null = null;
       if (docType === 'TRANSFER' && sourceTable === 'TT_HISTORY_SCAN') {
-        if (!kebijakan?.productionEnabled) {
-          menungguProduksi = 'push hasil produksi tidak aktif untuk rute ini';
-        } else {
-          const [produksi] = await this.db
-            .select({ status: sapOutbox.status })
-            .from(sapOutbox)
-            .where(
-              and(
-                eq(sapOutbox.sourceTable, sourceTable),
-                eq(sapOutbox.sourceId, sourceId),
-                eq(sapOutbox.docType, 'PRODUCTION'),
-              ),
-            )
-            .limit(1);
-          if (produksi?.status !== 'CONFIRMED') {
-            menungguProduksi = 'menunggu hasil produksi dikonfirmasi SAP';
-          }
-        }
+        const [produksi] = await this.db
+          .select({ status: sapOutbox.status })
+          .from(sapOutbox)
+          .where(
+            and(
+              eq(sapOutbox.sourceTable, sourceTable),
+              eq(sapOutbox.sourceId, sourceId),
+              eq(sapOutbox.docType, 'PRODUCTION'),
+            ),
+          )
+          .limit(1);
+        menungguProduksi = transferMenunggu({
+          jenis: jenisScan,
+          productionEnabled: kebijakan?.productionEnabled,
+          statusProduksi: produksi?.status,
+        });
       }
       const lengkap =
         siap &&
@@ -530,13 +574,20 @@ export class SapOutboxService {
         !kurangKonteks &&
         !menungguProduksi &&
         !receivingHold &&
-        !transferTakSah;
+        !transferTakSah &&
+        !kebijakan?.diLuarRute;
       const alasanTahan = [
+        kebijakan?.diLuarRute
+          ? `${TAHAN_DI_LUAR_RUTE}part ini tidak terdaftar di work center scan-nya — ` +
+            'daftarkan di Master Data › Rute Proses per Part dengan SAP aktif'
+          : null,
         receivingHold,
         transferTakSah?.alasan ?? null,
         siap ? null : `movement type belum diputuskan untuk: ${belum.join(', ')}`,
         kurangSloc.length > 0 ? kurangSloc.join('; ') : null,
-        kurangKonteks ? 'work center dari line scan kosong' : null,
+        kurangKonteks
+          ? 'lini scan ini belum punya work center SAP — isi di Master Data › Line'
+          : null,
         menungguProduksi,
       ]
         .filter(Boolean)
@@ -635,12 +686,15 @@ export class SapOutboxService {
   /** Melepas dokumen yang tertahan, setelah movement type-nya diputuskan. */
   async releaseHeld(): Promise<{ dilepas: number }> {
     const tertahan = await this.db.select().from(sapOutbox).where(eq(sapOutbox.status, 'HELD'));
+    const katalog = await this.processTypes.katalog();
 
     let dilepas = 0;
     for (const row of tertahan) {
       if (row.docType === FINISH_PULLING_GI) continue;
       if (row.sourceTable === 'TT_DELIVERY_ORDER' || row.sourceTable === 'TT_DELIVERY') continue;
       if (row.lastError?.startsWith('pendorong untuk ')) continue;
+      if (row.lastError?.startsWith(TAHAN_DI_LUAR_RUTE) && !(await this.ruteSudahTerdaftar(row.sourceId)))
+        continue;
       const payload = row.payload as {
         lines?: Array<{
           mutationType: string;
@@ -695,7 +749,18 @@ export class SapOutboxService {
             ),
           )
           .limit(1);
-        if (produksi?.status !== 'CONFIRMED') continue;
+        const [scan] = await this.db
+          .select({ processType: scanEvents.processType, meta: scanEvents.meta })
+          .from(scanEvents)
+          .where(eq(scanEvents.id, row.sourceId))
+          .limit(1);
+        const menunggu = transferMenunggu({
+          jenis: katalog.cari(scan?.processType),
+          productionEnabled: (scan?.meta as { sapRoute?: { productionEnabled?: boolean } } | null)
+            ?.sapRoute?.productionEnabled,
+          statusProduksi: produksi?.status,
+        });
+        if (menunggu) continue;
       }
       if (row.docType === 'PRODUCTION' && !('lineCode' in payload && payload.lineCode)) continue;
       const jenis = lines.map((l) => l.mutationType);
@@ -733,6 +798,25 @@ export class SapOutboxService {
     }
     if (dilepas > 0) this.logger.log(`${dilepas} dokumen tertahan dilepas ke antrean kirim`);
     return { dilepas };
+  }
+
+  /** Apakah part scan ini kini terdaftar di work center scan-nya, dengan SAP aktif. */
+  private async ruteSudahTerdaftar(scanEventId: number): Promise<boolean> {
+    const [baris] = await this.db
+      .select({ id: partProcesses.id })
+      .from(scanEvents)
+      .innerJoin(
+        partProcesses,
+        and(
+          eq(partProcesses.partId, scanEvents.partId),
+          eq(partProcesses.lineId, scanEvents.lineId),
+          eq(partProcesses.isActive, true),
+          eq(partProcesses.sapProductionEnabled, true),
+        ),
+      )
+      .where(eq(scanEvents.id, scanEventId))
+      .limit(1);
+    return Boolean(baris);
   }
 
   /**
