@@ -259,8 +259,53 @@ export const ATURAN_KANBAN_ARES: AturanBarcode = {
   },
 };
 
+/**
+ * Label kanban supplier komponen Electric — dipisah spasi, contoh Handika
+ * 17 Nov 2026:
+ *
+ *   3N1 955124-00110 2000 0000 261111 261111121358 1 B6TCA2
+ *   │   │            │    │    │      │            │ └ alamat + back number (…TCA2)
+ *   │   │            │    │    │      │            └ ?
+ *   │   │            │    │    │      └ stempel waktu yyMMddHHmmss
+ *   │   │            │    │    └ tanggal yyMMdd
+ *   │   │            │    └ ?
+ *   │   │            └ isi box (pcs)
+ *   │   └ nomor part AISIN berstrip
+ *   └ kode supplier/area
+ *
+ * Dibaca di line receiving, sama perannya dengan kanban ARES: memindah
+ * komponen beli dari gudang ke WIP. Seri = gabungan stempel waktu dan ruas
+ * pembeda di belakang nomor part, sehingga label yang sama tertolak sebagai
+ * box dobel — ruas yang artinya belum pasti ikut masuk supaya dua box berbeda
+ * tidak pernah dianggap sama.
+ */
+const POLA_KANBAN_SUPPLIER_ELC =
+  /^([0-9A-Z]{2,8})\s+([0-9A-Z]+(?:-[0-9A-Z]+)+)\s+(\d+)\s+(\d{4})\s+(\d{6})\s+(\d{12})\s+(\d+)\s+([0-9A-Z]+)$/i;
+
+export function sepertiKanbanSupplierElc(raw: string): boolean {
+  return POLA_KANBAN_SUPPLIER_ELC.test(raw.trim());
+}
+
+export const ATURAN_KANBAN_SUPPLIER_ELC: AturanBarcode = {
+  nama: 'KANBAN_SUPPLIER_ELC',
+  keterangan: 'label supplier komponen Electric bertoken spasi (line receiving)',
+  khususPenerimaan: true,
+  cocok: (raw) => POLA_KANBAN_SUPPLIER_ELC.test(raw.trim()),
+  baca(raw) {
+    const t = POLA_KANBAN_SUPPLIER_ELC.exec(raw.trim())!;
+    const qty = Number.parseInt(t[3]!, 10);
+    return {
+      raw,
+      partNumber: t[2]!.toUpperCase(),
+      qty: Number.isFinite(qty) && qty > 0 ? qty : undefined,
+      serialNumber: `${t[6]}-${t[4]}-${t[7]}-${t[8]!.toUpperCase()}`,
+    };
+  },
+};
+
 export const DAFTAR_ATURAN: AturanBarcode[] = [
   ATURAN_KANBAN_ARES,
+  ATURAN_KANBAN_SUPPLIER_ELC,
   ATURAN_BERPEMISAH,
   ATURAN_PROGRAM_15,
   ATURAN_NOMOR_PART,

@@ -866,6 +866,11 @@ export class SapOutboxService {
           eq(sapOutbox.sourceTable, 'TT_HISTORY_SCAN'),
           eq(sapOutbox.docType, 'PRODUCTION'),
           inArray(sapOutbox.status, ['SENT', 'CONFIRMED']),
+          /*
+           * NG yang ikut di baris produksinya sendiri (kasus B, diisi saat
+           * didorong) sudah sampai ke SAP — bukan pekerjaan koreksi.
+           */
+          sql`NOT coalesce(${sapOutbox.payload} -> 'ngTermasuk' @> to_jsonb(${ngRecords.id}), false)`,
         ),
       )
       .orderBy(desc(ngRecords.occurredAt))
@@ -874,8 +879,9 @@ export class SapOutboxService {
     return {
       jumlah: rows.length,
       catatan:
-        'Hasil produksi barang ini sudah dikonfirmasi ke SAP, sedangkan NG-nya belum. ' +
-        'Koreksi lewat PP-PE-06 Cancel Production Booking di SAP.',
+        'Baris OK barang ini sudah terdorong ke SAP sebelum NG-nya tercatat, jadi NG-nya belum ' +
+        'sampai. Penanganannya (revisi CHR_STATUS = R pada baris aslinya) menunggu konfirmasi ' +
+        'tim SAP; sementara itu koreksi di SAP.',
       data: rows,
     };
   }

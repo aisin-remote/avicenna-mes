@@ -13,6 +13,7 @@ import { parts, lines, machines, processGroups, processTypes } from './master';
 import { kanbans } from './kanban';
 import { scanEvents } from './production';
 import { plants, users } from './org';
+import { sapOutbox } from './sap';
 
 /**
  * Master jenis NG (defect). Gabungan avi_trace_ng_master + master_item_checks bella.
@@ -221,6 +222,62 @@ export const ngRecords = qualitySchema.table(
     index('TT_NG_KANBAN_IDX').on(t.kanbanId),
     daftarNilai('TT_NG_CHR_ORIGIN_CHK', t.origin, NG_ORIGINS),
     daftarNilai('TT_NG_CHR_SOURCE_CHK', t.source, NG_SOURCES),
+  ],
+);
+
+/**
+ * ─── KOREKSI NG ─────────────────────────────────────────────────────────────
+ *
+ * Satu baris = satu koreksi atas catatan NG oleh leader/QC (Handika, 19 Nov
+ * 2026): qty atau jenis NG diubah, atau NG dibatalkan (qty baru 0). Catatan
+ * NG-nya sendiri ikut diperbarui; baris ini yang menyimpan nilai lama, siapa,
+ * kapan, dan kenapa — tidak ada yang ditimpa tanpa jejak.
+ *
+ * ── Status SAP ──────────────────────────────────────────────────────────────
+ *
+ *   TIDAK_PERLU  NG-nya belum sampai di SAP (atau memang tidak dikirim):
+ *                nilai baru ikut saat baris produksinya didorong.
+ *   MENUNGGU     NG-nya sudah di staging; revisi didorong begitu baris
+ *                aslinya selesai diproses SAP.
+ *   TERKIRIM     baris staging aslinya sudah diberi CHR_STATUS_NG = 'R' dan
+ *                INT_TOTAL_NG_REV; menunggu penjemput memposting ulang.
+ *   DITERIMA / DITOLAK  balasan SAP atas revisi itu.
+ */
+export const NG_REVISION_SAP_STATUSES = [
+  'TIDAK_PERLU',
+  'MENUNGGU',
+  'TERKIRIM',
+  'DITERIMA',
+  'DITOLAK',
+] as const;
+
+export const ngRevisions = qualitySchema.table(
+  'TT_NG_REVISION',
+  {
+    id: pk(),
+    ngId: fk('INT_NG_ID')
+      .notNull()
+      .references(() => ngRecords.id),
+    qtyLama: integer('INT_QTY_OLD').notNull(),
+    qtyBaru: integer('INT_QTY_NEW').notNull(),
+    ngMasterLamaId: fk('INT_NG_MASTER_OLD_ID').references(() => ngMasters.id),
+    ngMasterBaruId: fk('INT_NG_MASTER_NEW_ID').references(() => ngMasters.id),
+    alasan: varchar('CHR_REASON', { length: 255 }).notNull(),
+    userId: fk('INT_USER_ID').references(() => users.id),
+    npk: varchar('CHR_NPK', { length: 32 }),
+    /** Dokumen outbox yang membawa NG ini ke SAP, bila ada. */
+    outboxId: fk('INT_OUTBOX_ID').references(() => sapOutbox.id),
+    sapStatus: enumCol('CHR_SAP_STATUS', NG_REVISION_SAP_STATUSES).notNull().default('TIDAK_PERLU'),
+    /** INT_TOTAL_NG_REV yang ditulis ke staging. */
+    sapRev: integer('INT_SAP_REV'),
+    sapPesan: varchar('CHR_SAP_MESSAGE', { length: 520 }),
+    terkirimAt: timestamp('DTM_SENT_AT', { withTimezone: true, mode: 'date' }),
+    ...timestamps,
+  },
+  (t) => [
+    index('TT_NG_REVISION_NG_IDX').on(t.ngId),
+    index('TT_NG_REVISION_SAP_IDX').on(t.sapStatus, t.outboxId),
+    daftarNilai('TT_NG_REVISION_CHR_SAP_STATUS_CHK', t.sapStatus, NG_REVISION_SAP_STATUSES),
   ],
 );
 

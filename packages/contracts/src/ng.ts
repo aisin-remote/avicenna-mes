@@ -100,6 +100,68 @@ export const ngCancelInputSchema = z.object({
 });
 export type NgCancelInput = z.infer<typeof ngCancelInputSchema>;
 
+/**
+ * Koreksi NG oleh leader/QC (Handika, 19 Nov 2026): ubah qty, ubah jenis, atau
+ * batalkan (qty 0). Alasan WAJIB — koreksi tanpa alasan tidak bisa diaudit.
+ */
+export const ngKoreksiInputSchema = z.object({
+  qty: z.coerce.number().int().min(0, 'Qty tidak boleh minus').max(100000),
+  ngMasterId: z.coerce.number().int().positive().optional(),
+  alasan: z.string().trim().min(3, 'Alasan koreksi wajib diisi').max(255),
+});
+export type NgKoreksiInput = z.infer<typeof ngKoreksiInputSchema>;
+
+/** Status pengiriman koreksi ke SAP — lihat TT_NG_REVISION. */
+export type NgRevisiSapStatus = 'TIDAK_PERLU' | 'MENUNGGU' | 'TERKIRIM' | 'DITERIMA' | 'DITOLAK';
+
+/** Status NG di SAP, untuk layar koreksi. */
+export type NgSapKeadaan =
+  | 'TIDAK_DIKIRIM'
+  | 'BELUM_TERKIRIM'
+  | 'DI_STAGING'
+  | 'DITERIMA_SAP'
+  | 'DITOLAK_SAP'
+  | 'PERLU_KOREKSI';
+
+export interface NgRevisiRingkas {
+  id: number;
+  qtyLama: number;
+  qtyBaru: number;
+  jenisLama: string | null;
+  jenisBaru: string | null;
+  alasan: string;
+  npk: string | null;
+  sapStatus: NgRevisiSapStatus;
+  sapPesan: string | null;
+  createdAt: string;
+}
+
+export interface NgKoreksiBaris {
+  id: number;
+  occurredAt: string;
+  plantCode: string | null;
+  lineCode: string | null;
+  partNumber: string | null;
+  backNumber: string | null;
+  partName: string | null;
+  serialNumber: string | null;
+  ngMasterId: number;
+  ngCode: string | null;
+  ngName: string | null;
+  qty: number;
+  origin: string;
+  npk: string | null;
+  dibatalkan: boolean;
+  sap: NgSapKeadaan;
+  sapDokumen: string | null;
+  revisi: NgRevisiRingkas[];
+}
+
+export interface NgKoreksiDaftar {
+  data: NgKoreksiBaris[];
+  boleh: boolean;
+}
+
 /** Satu catatan NG yang sedang berlaku pada sebuah barang. */
 export const ngOnUnitSchema = z.object({
   id: z.number(),

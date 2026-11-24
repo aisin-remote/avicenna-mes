@@ -119,3 +119,39 @@ export function pilihPartTahap(
   const pilihan = [...new Set(cocok.filter((t) => t.kedalaman === terdekat).map((t) => t.partId))];
   return pilihan.length === 1 ? { partId: pilihan[0]! } : { ambigu: pilihan };
 }
+
+/**
+ * Tahap sebelumnya yang benar-benar DI-SCAN, untuk pemeriksaan QR casting.
+ *
+ * Komponen langsung (dibuat sendiri, dilacak per seri) adalah tahap
+ * sebelumnya — kecuali ia tidak punya rute di line mana pun. Part seperti itu
+ * phantom di BOM SAP dan tidak pernah di-scan, jadi pemeriksaannya menembus ke
+ * komponennya sendiri sampai ketemu tahap yang ber-rute.
+ *
+ * Contoh OPN 889F (Handika, 24 Nov 2026): EI11 (MA0006) → 24321210980
+ * (phantom, tanpa rute) → EG11 (DCAA04). Tanpa tembusan ini setiap scan EI11
+ * di MA0006 ditolak "belum discan sebagai 24321210980". TCC tidak berubah:
+ * CI11 → CH11 (MA0001, ber-rute) berhenti di CH11.
+ *
+ * Part phantomnya ikut dikembalikan — seandainya suatu hari ia di-scan, itu
+ * tetap bukti yang sah. `kedalamanMaks` menjaga data pasangan yang melingkar.
+ */
+export function tahapSebelumnyaDiscan(
+  langsung: readonly number[],
+  komponenSeri: (partId: number) => readonly number[],
+  berRute: (partId: number) => boolean,
+  kedalamanMaks = 10,
+): number[] {
+  const hasil = new Set<number>();
+  let lapis = [...langsung];
+  for (let d = 0; d < kedalamanMaks && lapis.length > 0; d++) {
+    const berikut: number[] = [];
+    for (const id of lapis) {
+      if (hasil.has(id)) continue;
+      hasil.add(id);
+      if (!berRute(id)) berikut.push(...komponenSeri(id));
+    }
+    lapis = berikut;
+  }
+  return [...hasil];
+}

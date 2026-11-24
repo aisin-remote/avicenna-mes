@@ -184,12 +184,9 @@ export const PRODUCTION_RESULT = {
     qtyTotal: 'INT_TOTAL_QTY',
     qtyActual: 'INT_ACTUAL',
     /*
-     * Keenam kolom NG. Pada data AII SEMUANYA bernilai 0 — bukan NULL — jadi
-     * keenamnya kita tulis 0 juga: baris kita sebaiknya tidak bisa dibedakan
-     * dari baris mereka, dan nilai 0 tidak pernah mengejutkan penjumlahan di
-     * layar siapa pun seperti NULL bisa.
-     *
-     * Yang DIBACA penjemput hanya INT_TOTAL_NG; rinciannya milik MES.
+     * Keenam kolom NG. Yang DIBACA penjemput hanya INT_TOTAL_NG (diisi qty NG
+     * sejak 18 Nov 2026, lihat dorongProduksi); kelima rinciannya milik MES dan
+     * ditulis 0 — bukan NULL — seperti baris AII dan baris uji SIT tim SAP.
      */
     ngProcess: 'INT_NG_PRC',
     ngBrokenTest: 'INT_NG_BRKNTEST',

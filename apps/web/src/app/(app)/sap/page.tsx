@@ -10,7 +10,7 @@ import {
   XCircle,
   Hourglass,
 } from 'lucide-react';
-import { getSapSummary, getStagingStatus, listSapOutbox } from '@/lib/sap-api';
+import { getNgPerluKoreksi, getSapSummary, getStagingStatus, listSapOutbox } from '@/lib/sap-api';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Table, Th, Td, Tr, EmptyState } from '@/components/ui/table';
@@ -63,10 +63,12 @@ export default async function SapPage({
   const page = Math.max(1, Number(sp.page ?? 1) || 1);
   const status = sp.status ?? 'ALL';
 
-  const [ringkas, jembatan, { data, meta }] = await Promise.all([
+  const [ringkas, jembatan, { data, meta }, ngKoreksi] = await Promise.all([
     getSapSummary(),
     getStagingStatus(),
     listSapOutbox(page, 25, status),
+    // Daftar ini pelengkap: gagal dibaca tidak boleh menjatuhkan seluruh halaman.
+    getNgPerluKoreksi().catch(() => null),
   ]);
   const cfg = jembatan.sambungan.config;
 
@@ -172,6 +174,59 @@ export default async function SapPage({
           <div className="mb-5">
             <MasterPullActions berkalaAktif={cfg.tarikBerkalaAktif} />
           </div>
+        </Reveal>
+      ) : null}
+
+      {/* NG yang belum sampai ke SAP karena baris OK-nya terdorong lebih dulu
+          (kasus C). Hanya tampil bila ada: selain itu NG ikut baris produksinya. */}
+      {ngKoreksi && ngKoreksi.jumlah > 0 ? (
+        <Reveal>
+          <Card className="mb-5">
+            <CardHeader
+              icon={AlertTriangle}
+              title="NG perlu koreksi di SAP"
+              subtitle={`${ngKoreksi.jumlah} catatan NG — ${ngKoreksi.catatan}`}
+            />
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Waktu NG</Th>
+                  <Th>Part</Th>
+                  <Th>Seri</Th>
+                  <Th>Line</Th>
+                  <Th>Qty</Th>
+                  <Th>Baris staging</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {ngKoreksi.data.map((n) => (
+                  <Tr key={n.ngId}>
+                    <Td className="tabular whitespace-nowrap">
+                      {new Date(n.occurredAt).toLocaleString('id-ID', {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </Td>
+                    <Td strong className="tabular">
+                      {n.partNumber ?? '—'}
+                      {n.partName ? (
+                        <span className="block text-[12px] font-normal text-ink-muted">{n.partName}</span>
+                      ) : null}
+                    </Td>
+                    <Td className="tabular">{n.serialNumber ?? '—'}</Td>
+                    <Td>{n.lineCode ?? '—'}</Td>
+                    <Td className="tabular">{n.qty}</Td>
+                    <Td className="tabular text-[13px] text-ink-muted">
+                      {n.stagingNumber ? `INT_NUMBER ${n.stagingNumber}` : '—'} ·{' '}
+                      {STATUS_LABEL[n.outboxStatus] ?? n.outboxStatus}
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card>
         </Reveal>
       ) : null}
 

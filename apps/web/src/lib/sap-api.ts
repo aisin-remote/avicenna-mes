@@ -79,3 +79,29 @@ export function getStagingStatus(): Promise<StagingStatus> {
 export function listSapOutbox(page = 1, perPage = 25, status = 'ALL'): Promise<SapOutboxList> {
   return apiFetch<SapOutboxList>(`/sap/outbox?page=${page}&perPage=${perPage}&status=${status}`);
 }
+
+/**
+ * NG yang baris OK-nya sudah terdorong ke SAP sebelum NG-nya tercatat (kasus C).
+ * NG yang ikut di baris produksinya sendiri (kasus A/B) tidak muncul di sini.
+ */
+export interface NgPerluKoreksi {
+  jumlah: number;
+  catatan: string;
+  data: Array<{
+    ngId: number;
+    occurredAt: string;
+    qty: number;
+    partNumber: string | null;
+    partName: string | null;
+    serialNumber: string | null;
+    lineCode: string | null;
+    processType: string | null;
+    outboxId: number;
+    outboxStatus: string;
+    stagingNumber: number | null;
+  }>;
+}
+
+export function getNgPerluKoreksi(): Promise<NgPerluKoreksi> {
+  return apiFetch<NgPerluKoreksi>('/sap/ng-perlu-koreksi?limit=100');
+}

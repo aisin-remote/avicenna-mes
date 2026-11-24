@@ -19,6 +19,7 @@
     "test:receiving-trial": "tsx src/receiving/receiving.integration-check.ts",
     "test:preparation": "tsx src/preparation/preparation.integration-check.ts",
     "test:staging-trial": "tsx src/staging/staging.integration-check.ts",
+    "test:ng": "tsx src/ng/ng-sap.integration-check.ts",
     "test:belanja": "tsx src/belanja/belanja.integration-check.ts",
     "test:cetak-kanban": "tsx src/kanban/kanban-cetak.integration-check.ts",
     "typecheck": "tsc --noEmit"

@@ -20,7 +20,7 @@ import { cn } from '../ui/cn';
 const RIWAYAT_MAKS = 15;
 
 /**
- * Stasiun kanban — kartu komponen ARES, scanner genggam 375×667 tegak.
+ * Stasiun kanban — kartu komponen ARES atau label supplier Electric, scanner genggam 375×667 tegak.
  *
  * ── Kenapa tata letaknya begini ─────────────────────────────────────────────
  *
@@ -204,7 +204,7 @@ export function StasiunKanban({ awal, npk }: { awal: StasiunKomponen; npk: strin
                 <div className="text-[24px] font-extrabold leading-tight text-ink-muted">
                   SCAN KARTU
                 </div>
-                <p className="text-[12px] text-ink-muted">Kartu komponen terbitan ARES</p>
+                <p className="text-[12px] text-ink-muted">Kanban ARES atau label supplier</p>
               </>
             ) : diterima ? (
               <>

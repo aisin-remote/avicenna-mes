@@ -504,8 +504,14 @@ export async function stockMonitor(params: StockMonitorParams) {
       fromName = lokasi;
       toName = 'Customer';
     } else if (jenis === 'NG') {
-      fromName = lokasi;
-      toName = 'Area NG';
+      // NG bertanda positif = barang NG masuk SLOC reject (RE70/80/90).
+      if (Number(m.qty) > 0) {
+        fromName = 'Barang NG';
+        toName = lokasi;
+      } else {
+        fromName = lokasi;
+        toName = 'SLOC reject';
+      }
     } else if (jenis === 'STOCK_TAKE') {
       fromName = 'Saldo sistem';
       toName = 'Hasil hitung fisik';

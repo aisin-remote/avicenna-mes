@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, count, desc, eq, gte, type Database } from '@avicenna/db';
 import { lines, locations, parts, plants, scanEvents } from '@avicenna/db';
-import { productionDayWindow } from '@avicenna/domain';
+import { productionDayWindow, sepertiKanbanSupplierElc } from '@avicenna/domain';
 import type {
   RiwayatKomponen,
   ScanKomponenInput,
@@ -14,6 +14,12 @@ import { ProcessTypeService } from '../master/process-type.service';
 import { ScanService } from '../scan/scan.service';
 
 const RIWAYAT_MAKS = 15;
+
+/** Jenis kartu dari isi barcodenya — hanya untuk tampilan. */
+function jenisKartu(raw: string): 'ARES' | 'SUPPLIER' | null {
+  if (/^ARES:/i.test(raw)) return 'ARES';
+  return sepertiKanbanSupplierElc(raw) ? 'SUPPLIER' : null;
+}
 
 /**
  * Stasiun komponen — layar genggam untuk work center receiving pabrik.
@@ -40,7 +46,7 @@ export class KomponenService {
   private tolak(pesan: string, raw: string): ScanKomponenResult {
     return {
       hasil: 'DITOLAK',
-      jenisKartu: /^ARES:/i.test(raw) ? 'ARES' : null,
+      jenisKartu: jenisKartu(raw),
       pesan,
       rawCode: raw,
       partNumber: null,
@@ -146,7 +152,7 @@ export class KomponenService {
     return rows.map((r) => ({
       id: r.id,
       rawCode: r.rawCode ?? '',
-      jenisKartu: /^ARES:/i.test(r.rawCode ?? '') ? ('ARES' as const) : null,
+      jenisKartu: jenisKartu(r.rawCode ?? ''),
       partNumber: r.partNumber ?? null,
       backNumber: r.backNumber ?? null,
       qty: r.qty ?? null,
@@ -169,7 +175,7 @@ export class KomponenService {
         kind: 'PRODUCTION',
         lineCode: line.code,
         rawCode: input.rawCode,
-        // Diganti isi box dari kanban ARES saat barcode dibaca.
+        // Diganti isi box dari kanban (ARES / label supplier) saat barcode dibaca.
         qty: 1,
         clientRef: input.clientRef,
       },
@@ -187,7 +193,7 @@ export class KomponenService {
 
     return {
       hasil: 'DITERIMA',
-      jenisKartu: 'ARES',
+      jenisKartu: jenisKartu(input.rawCode),
       pesan: `${hasil.qty} pcs dipindah ke ${line.wip ?? '-'}`,
       rawCode: input.rawCode,
       partNumber: hasil.partNumber,

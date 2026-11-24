@@ -1,4 +1,11 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { MENU_KOREKSI_NG } from '@avicenna/contracts';
 import {
   eq,
   and,
@@ -9,6 +16,9 @@ import {
   lt,
   count,
   inArray,
+  or,
+  sql,
+  ne,
   type Database,
 } from '@avicenna/db';
 import {
@@ -19,9 +29,16 @@ import {
   parts,
   plants,
   mutations,
+  locations,
   kanbans,
   kanbanItems,
   kanbanEvents,
+  partProcesses,
+  sapOutbox,
+  ngRevisions,
+  users,
+  menus,
+  roleMenus,
 } from '@avicenna/db';
 import { galatDuplikat } from '@avicenna/db';
 import {
@@ -42,6 +59,10 @@ import {
   type NgRejectReason,
 } from '@avicenna/domain';
 import type {
+  NgKoreksiInput,
+  NgKoreksiBaris,
+  NgKoreksiDaftar,
+  NgSapKeadaan,
   NgInlineInput,
   NgOutlineInput,
   NgCancelInput,
@@ -460,6 +481,47 @@ export class NgService {
 
         dicatat += 1;
 
+        /*
+         * Kasus A — NG pada barang yang TIDAK pernah tercatat produksi.
+         *
+         * Tidak ada baris OK di SAP untuk barang ini, jadi NG-nya dikirim
+         * sebagai baris hasil produksi sendiri (OK 0, NG = qty); FM
+         * ZFM_WDE_PROD_RESULT_NG membukukannya ke SLOC reject dari PV.
+         * Barang yang PERNAH diproduksi ikut baris produksinya (kasus B) atau
+         * masuk daftar koreksi (kasus C) — lihat StagingPushService.
+         */
+        const rejek = await this.slocReject(tx, k.plantId);
+        const catatMasukRe = async () => {
+          if (!rejek) return;
+          await tx.insert(mutations).values({
+            plantId: k.plantId,
+            partId: k.part.id,
+            lineId: k.lineId,
+            locationId: rejek,
+            /*
+             * NG_OUT bertanda POSITIF: barang NG masuk SLOC reject.
+             *
+             * Sengaja bukan TRANSFER_IN/ADJUSTMENT — keduanya dipetakan ke
+             * dokumen SAP (311/309), padahal SAP sendiri yang membukukan RE
+             * dari INT_TOTAL_NG. NG_OUT dipetakan ke SCRAP yang tidak dikirim.
+             */
+            type: 'NG_OUT',
+            qty: String(k.qtyPerUnit),
+            sourceTable: 'TT_NG',
+            sourceId: ngId,
+            npk,
+            userId,
+            occurredAt: k.waktu,
+            note: `NG ${k.jenisNg.code} masuk SLOC reject`,
+          });
+        };
+
+        if (s.scanEventId == null) {
+          const kirim = await this.outboxNgTanpaProduksi(tx, { ...k, ngId, serialNumber: s.serialNumber });
+          // Kasus A: barang belum pernah tercatat di stok — hanya masuk RE.
+          if (kirim) await catatMasukRe();
+        }
+
         if (balik) {
           /*
            * SLOC-nya diambil dari lini tempat scan produksinya terjadi, bukan
@@ -483,6 +545,8 @@ export class NgService {
             occurredAt: k.waktu,
             note: `NG ${k.jenisNg.code} — ${k.jenisNg.name}`,
           });
+          // Pindah, bukan hilang: yang keluar dari SLOC hasil masuk SLOC reject.
+          await catatMasukRe();
           dibalik += k.qtyPerUnit;
         }
       }
@@ -544,58 +608,370 @@ export class NgService {
    * salah tekan tidak meninggalkan jejak sama sekali dan angka NG kemarin bisa
    * berubah tanpa ada yang tahu. Di sini barisnya tetap ada, hanya ditandai.
    *
-   * Pembalikan stoknya ikut dibatalkan dengan mutasi baru bertanda sebaliknya,
-   * bukan dengan menghapus mutasi lama — buku besar tidak pernah dihapus.
+   * Sejak 19 Nov 2026 pembatalan = koreksi ke qty 0: stok dan SAP-nya
+   * ditangani jalur yang sama dengan koreksi leader/QC, dan tercatat di
+   * TT_NG_REVISION. Operator tetap boleh membatalkan NG yang ia catat.
    */
   async batal(input: NgCancelInput, principal?: Principal) {
-    const [row] = await this.db.select().from(ngRecords).where(eq(ngRecords.id, input.id)).limit(1);
-
-    if (!row) throw new NotFoundException(NG_REJECT_MESSAGES.NOT_FOUND);
-    if (row.cancelledAt) {
-      throw new BadRequestException(NG_REJECT_MESSAGES.ALREADY_CANCELLED);
-    }
-
-    const userId = principal?.kind === 'user' ? principal.sub : null;
-    const waktu = new Date();
-
-    await this.db.transaction(async (tx) => {
-      await tx
-        .update(ngRecords)
-        .set({
-          cancelledAt: waktu,
-          cancelledById: userId,
-          cancelReason: input.reason ?? null,
-          // Dikosongkan supaya barang yang sama bisa dicatat NG lagi — inilah
-          // yang membuat unique index "unik selama aktif" bekerja.
-          activeKey: null,
-        })
-        .where(eq(ngRecords.id, row.id));
-
-      if (row.scanEventId) {
-        const lokasi = await this.slocHasilScan(tx, row.scanEventId, row.lineId);
-        await tx.insert(mutations).values({
-          plantId: row.plantId,
-          partId: row.partId,
-          lineId: row.lineId,
-          locationId: lokasi,
-          type: 'ADJUSTMENT',
-          // Kebalikan dari NG_OUT: barang yang dikira rusak ternyata baik.
-          qty: String(row.qty),
-          sourceTable: 'TT_NG',
-          sourceId: row.id,
-          npk: principal?.kind === 'user' ? principal.npk : null,
-          userId,
-          occurredAt: waktu,
-          note: `Pembatalan NG #${row.id}${input.reason ? ` — ${input.reason}` : ''}`,
-        });
-      }
-    });
-
+    const row = await this.ngAktif(input.id);
+    await this.terapkanKoreksi(row, { qty: 0, alasan: input.reason?.trim() || 'Dibatalkan' }, principal);
     return {
       id: row.id,
-      cancelledAt: waktu.toISOString(),
+      cancelledAt: new Date().toISOString(),
       ngAktif: await this.ngPadaUnit(row.serialNumber ?? row.rawCode),
     };
+  }
+
+  /**
+   * Koreksi NG oleh leader/QC: ubah qty, ubah jenis, atau batalkan (qty 0).
+   *
+   * Hak diberikan lewat menu "Koreksi NG" di Role (MENU_KOREKSI_NG), bukan
+   * nama role — role leader yang dibuat nanti cukup dicentang.
+   */
+  async koreksi(id: number, input: NgKoreksiInput, principal?: Principal) {
+    if (!(await this.bolehKoreksi(principal))) {
+      throw new ForbiddenException('Koreksi NG hanya untuk leader dan QC (menu Koreksi NG di Role).');
+    }
+    const row = await this.ngAktif(id);
+    await this.terapkanKoreksi(row, input, principal);
+    const [hasil] = (await this.daftarKoreksi({ id }, principal)).data;
+    return hasil;
+  }
+
+  private async ngAktif(id: number) {
+    const [row] = await this.db.select().from(ngRecords).where(eq(ngRecords.id, id)).limit(1);
+    if (!row) throw new NotFoundException(NG_REJECT_MESSAGES.NOT_FOUND);
+    if (row.cancelledAt) throw new BadRequestException(NG_REJECT_MESSAGES.ALREADY_CANCELLED);
+    return row;
+  }
+
+  /** ADMIN, atau role yang diberi menu Koreksi NG. */
+  async bolehKoreksi(principal?: Principal): Promise<boolean> {
+    if (principal?.kind !== 'user') return false;
+    if (principal.roleKind === 'ADMIN') return true;
+    const [ada] = await this.db
+      .select({ id: menus.id })
+      .from(users)
+      .innerJoin(roleMenus, eq(roleMenus.roleId, users.roleId))
+      .innerJoin(menus, eq(menus.id, roleMenus.menuId))
+      .where(and(eq(users.id, principal.sub), eq(menus.key, MENU_KOREKSI_NG)))
+      .limit(1);
+    return Boolean(ada);
+  }
+
+  /**
+   * Menerapkan satu koreksi: stok, catatan NG, jejak revisi, dan nasib SAP-nya.
+   *
+   * ── Stok ────────────────────────────────────────────────────────────────────
+   * Mutasi milik NG ini (keluar dari SLOC hasil, masuk SLOC reject) diskalakan
+   * ke qty baru dengan mutasi selisih — buku besar tidak pernah ditimpa. Qty 0
+   * berarti seluruhnya dikembalikan. Jenisnya tetap NG_OUT: tidak terkirim ke
+   * SAP (SAP mengoreksi lewat INT_TOTAL_NG_REV, bukan dokumen tersendiri).
+   *
+   * ── SAP ─────────────────────────────────────────────────────────────────────
+   * Dokumen yang membawa NG ini belum terdorong → tidak perlu apa-apa, nilai
+   * baru ikut saat didorong. Sudah di staging / diterima → revisi MENUNGGU,
+   * didorong StagingPushService.dorongRevisiNg() sebagai CHR_STATUS_NG = 'R'.
+   */
+  private async terapkanKoreksi(
+    row: typeof ngRecords.$inferSelect,
+    input: { qty: number; ngMasterId?: number; alasan: string },
+    principal?: Principal,
+  ): Promise<void> {
+    const userId = principal?.kind === 'user' ? principal.sub : null;
+    const npk = principal?.kind === 'user' ? principal.npk : null;
+    const waktu = new Date();
+    const masterBaru = input.ngMasterId ?? Number(row.ngMasterId);
+    const masterBerubah = masterBaru !== Number(row.ngMasterId);
+
+    if (input.qty === row.qty && !masterBerubah) {
+      throw new BadRequestException('Tidak ada yang berubah.');
+    }
+    if (masterBerubah) {
+      const [m] = await this.db
+        .select({ id: ngMasters.id, plantId: ngMasters.plantId })
+        .from(ngMasters)
+        .where(eq(ngMasters.id, masterBaru))
+        .limit(1);
+      if (!m || Number(m.plantId) !== Number(row.plantId)) {
+        throw new BadRequestException('Jenis NG tidak dikenal untuk pabrik ini.');
+      }
+    }
+
+    await this.db.transaction(async (tx) => {
+      /* ── Stok: skalakan mutasi milik NG ini ke qty baru ─────────────────── */
+      const milik = await tx
+        .select()
+        .from(mutations)
+        .where(and(eq(mutations.sourceTable, 'TT_NG'), eq(mutations.sourceId, row.id)));
+      const neto = new Map<string, { contoh: (typeof milik)[number]; qty: number }>();
+      for (const m of milik) {
+        const k = `${m.locationId}|${m.partId}|${m.lineId}`;
+        const ada = neto.get(k);
+        neto.set(k, { contoh: ada?.contoh ?? m, qty: (ada?.qty ?? 0) + Number(m.qty) });
+      }
+      for (const { contoh, qty } of neto.values()) {
+        if (qty === 0 || row.qty === 0) continue;
+        const selisih = (qty * input.qty) / row.qty - qty;
+        if (selisih === 0) continue;
+        await tx.insert(mutations).values({
+          plantId: contoh.plantId,
+          partId: contoh.partId,
+          lineId: contoh.lineId,
+          locationId: contoh.locationId,
+          type: 'NG_OUT',
+          qty: String(selisih),
+          sourceTable: 'TT_NG',
+          sourceId: row.id,
+          npk,
+          userId,
+          occurredAt: waktu,
+          note: `Koreksi NG #${row.id}: qty ${row.qty} → ${input.qty} — ${input.alasan}`,
+        });
+      }
+
+      /* ── Catatan NG ────────────────────────────────────────────────────── */
+      const set: Partial<typeof ngRecords.$inferInsert> = { qty: input.qty, ngMasterId: masterBaru };
+      if (input.qty === 0) {
+        Object.assign(set, {
+          cancelledAt: waktu,
+          cancelledById: userId,
+          cancelReason: input.alasan,
+          // Dikosongkan supaya barang yang sama bisa dicatat NG lagi.
+          activeKey: null,
+        });
+      } else if (masterBerubah) {
+        set.activeKey = kunciNgAktif(row.serialNumber ?? row.rawCode, masterBaru);
+      }
+      try {
+        await tx.update(ngRecords).set(set).where(eq(ngRecords.id, row.id));
+      } catch (err) {
+        if (isDuplicateKey(err)) {
+          throw new NgRejected('ALREADY_NG', NG_REJECT_MESSAGES.ALREADY_NG);
+        }
+        throw err;
+      }
+
+      /* ── Jejak dan nasib SAP ───────────────────────────────────────────── */
+      const dok = await this.dokumenSapNg(tx as unknown as Database, row);
+      const sudahDiSap = dok?.status === 'SENT' || dok?.status === 'CONFIRMED';
+      await tx.insert(ngRevisions).values({
+        ngId: row.id,
+        qtyLama: row.qty,
+        qtyBaru: input.qty,
+        ngMasterLamaId: row.ngMasterId,
+        ngMasterBaruId: masterBaru,
+        alasan: input.alasan,
+        userId,
+        npk,
+        outboxId: dok?.id ?? null,
+        sapStatus: sudahDiSap ? 'MENUNGGU' : 'TIDAK_PERLU',
+      });
+    });
+  }
+
+  /**
+   * Dokumen outbox yang MEMBAWA NG ini ke SAP, bila ada.
+   *
+   *   Kasus A  dokumen PRODUCTION bersumber TT_NG milik NG ini.
+   *   Kasus B  dokumen PRODUCTION scan-nya yang sudah memasukkan NG ini
+   *            (payload.ngTermasuk, diisi saat didorong).
+   *
+   * Dokumen scan yang belum memasukkannya (belum didorong, atau kasus C)
+   * bukan pembawa — nilai NG terbaru ikut saat didorong, atau tidak pernah.
+   */
+  private async dokumenSapNg(db: Database, row: typeof ngRecords.$inferSelect) {
+    const [a] = await db
+      .select({ id: sapOutbox.id, status: sapOutbox.status, stagingNumber: sapOutbox.stagingNumber })
+      .from(sapOutbox)
+      .where(
+        and(
+          eq(sapOutbox.sourceTable, 'TT_NG'),
+          eq(sapOutbox.sourceId, row.id),
+          eq(sapOutbox.docType, 'PRODUCTION'),
+        ),
+      )
+      .limit(1);
+    if (a) return a;
+    if (!row.scanEventId) return null;
+    const [b] = await db
+      .select({ id: sapOutbox.id, status: sapOutbox.status, stagingNumber: sapOutbox.stagingNumber })
+      .from(sapOutbox)
+      .where(
+        and(
+          eq(sapOutbox.sourceTable, 'TT_HISTORY_SCAN'),
+          eq(sapOutbox.sourceId, row.scanEventId),
+          eq(sapOutbox.docType, 'PRODUCTION'),
+          sql`coalesce(${sapOutbox.payload} -> 'ngTermasuk' @> to_jsonb(${row.id}::bigint), false)`,
+        ),
+      )
+      .limit(1);
+    return b ?? null;
+  }
+
+  /**
+   * Daftar NG untuk layar Koreksi NG — terbaru dulu, beserta keadaan SAP dan
+   * riwayat koreksinya.
+   */
+  async daftarKoreksi(
+    params: { q?: string; id?: number; batas?: number },
+    principal?: Principal,
+  ): Promise<NgKoreksiDaftar> {
+    const cari = params.q?.trim();
+    const rows = await this.db
+      .select({
+        id: ngRecords.id,
+        occurredAt: ngRecords.occurredAt,
+        plantCode: plants.code,
+        lineCode: lines.code,
+        partNumber: parts.partNumber,
+        backNumber: parts.backNumber,
+        partName: parts.name,
+        serialNumber: ngRecords.serialNumber,
+        ngMasterId: ngRecords.ngMasterId,
+        ngCode: ngMasters.code,
+        ngName: ngMasters.name,
+        qty: ngRecords.qty,
+        origin: ngRecords.origin,
+        npk: ngRecords.npk,
+        cancelledAt: ngRecords.cancelledAt,
+        scanEventId: ngRecords.scanEventId,
+      })
+      .from(ngRecords)
+      .leftJoin(plants, eq(plants.id, ngRecords.plantId))
+      .leftJoin(lines, eq(lines.id, ngRecords.lineId))
+      .leftJoin(parts, eq(parts.id, ngRecords.partId))
+      .leftJoin(ngMasters, eq(ngMasters.id, ngRecords.ngMasterId))
+      .where(
+        and(
+          params.id ? eq(ngRecords.id, params.id) : undefined,
+          principal?.plantId ? eq(ngRecords.plantId, principal.plantId) : undefined,
+          cari
+            ? or(
+                sql`${ngRecords.serialNumber} ILIKE ${'%' + cari + '%'}`,
+                sql`${parts.partNumber} ILIKE ${'%' + cari + '%'}`,
+                sql`${parts.backNumber} ILIKE ${'%' + cari + '%'}`,
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(ngRecords.occurredAt))
+      .limit(Math.min(params.batas ?? 100, 300));
+
+    const ids = rows.map((r) => r.id);
+    const scanIds = rows.map((r) => r.scanEventId).filter((v): v is number => v != null);
+    const [dokNg, dokScan, revisi] = await Promise.all([
+      ids.length
+        ? this.db
+            .select({ sourceId: sapOutbox.sourceId, status: sapOutbox.status, doc: sapOutbox.sapDocNumber })
+            .from(sapOutbox)
+            .where(
+              and(
+                eq(sapOutbox.sourceTable, 'TT_NG'),
+                eq(sapOutbox.docType, 'PRODUCTION'),
+                inArray(sapOutbox.sourceId, ids),
+              ),
+            )
+        : [],
+      scanIds.length
+        ? this.db
+            .select({
+              sourceId: sapOutbox.sourceId,
+              status: sapOutbox.status,
+              doc: sapOutbox.sapDocNumber,
+              ngTermasuk: sql<number[] | null>`${sapOutbox.payload} -> 'ngTermasuk'`,
+            })
+            .from(sapOutbox)
+            .where(
+              and(
+                eq(sapOutbox.sourceTable, 'TT_HISTORY_SCAN'),
+                eq(sapOutbox.docType, 'PRODUCTION'),
+                inArray(sapOutbox.sourceId, scanIds),
+              ),
+            )
+        : [],
+      ids.length
+        ? this.db
+            .select({
+              id: ngRevisions.id,
+              ngId: ngRevisions.ngId,
+              qtyLama: ngRevisions.qtyLama,
+              qtyBaru: ngRevisions.qtyBaru,
+              jenisLama: sql<string | null>`(SELECT m."CHR_CODE" FROM ${ngMasters} m WHERE m."INT_ID" = ${ngRevisions.ngMasterLamaId})`,
+              jenisBaru: sql<string | null>`(SELECT m."CHR_CODE" FROM ${ngMasters} m WHERE m."INT_ID" = ${ngRevisions.ngMasterBaruId})`,
+              alasan: ngRevisions.alasan,
+              npk: ngRevisions.npk,
+              sapStatus: ngRevisions.sapStatus,
+              sapPesan: ngRevisions.sapPesan,
+              createdAt: ngRevisions.createdAt,
+            })
+            .from(ngRevisions)
+            .where(inArray(ngRevisions.ngId, ids))
+            .orderBy(desc(ngRevisions.id))
+        : [],
+    ]);
+
+    const keadaan = (status: string): NgSapKeadaan =>
+      status === 'CONFIRMED'
+        ? 'DITERIMA_SAP'
+        : status === 'SENT'
+          ? 'DI_STAGING'
+          : status === 'REJECTED'
+            ? 'DITOLAK_SAP'
+            : status === 'SKIPPED'
+              ? 'TIDAK_DIKIRIM'
+              : 'BELUM_TERKIRIM';
+
+    const data: NgKoreksiBaris[] = rows.map((r) => {
+      let sap: NgSapKeadaan = 'TIDAK_DIKIRIM';
+      let sapDokumen: string | null = null;
+      const a = dokNg.find((d) => Number(d.sourceId) === Number(r.id));
+      const b = dokScan.find((d) => Number(d.sourceId) === Number(r.scanEventId));
+      if (a) {
+        sap = keadaan(a.status);
+        sapDokumen = a.doc;
+      } else if (b) {
+        const ikut = Array.isArray(b.ngTermasuk) && b.ngTermasuk.map(Number).includes(Number(r.id));
+        const terdorong = b.status === 'SENT' || b.status === 'CONFIRMED';
+        sap = ikut ? keadaan(b.status) : terdorong ? 'PERLU_KOREKSI' : keadaan(b.status);
+        sapDokumen = ikut ? b.doc : null;
+      }
+      return {
+        id: Number(r.id),
+        occurredAt: r.occurredAt.toISOString(),
+        plantCode: r.plantCode,
+        lineCode: r.lineCode,
+        partNumber: r.partNumber,
+        backNumber: r.backNumber,
+        partName: r.partName,
+        serialNumber: r.serialNumber,
+        ngMasterId: Number(r.ngMasterId),
+        ngCode: r.ngCode,
+        ngName: r.ngName,
+        qty: r.qty,
+        origin: r.origin,
+        npk: r.npk,
+        dibatalkan: r.cancelledAt != null,
+        sap,
+        sapDokumen,
+        revisi: revisi
+          .filter((v) => Number(v.ngId) === Number(r.id))
+          .map((v) => ({
+            id: Number(v.id),
+            qtyLama: v.qtyLama,
+            qtyBaru: v.qtyBaru,
+            jenisLama: v.jenisLama,
+            jenisBaru: v.jenisBaru,
+            alasan: v.alasan,
+            npk: v.npk,
+            sapStatus: v.sapStatus,
+            sapPesan: v.sapPesan,
+            createdAt: v.createdAt.toISOString(),
+          })),
+      };
+    });
+
+    return { data, boleh: await this.bolehKoreksi(principal) };
   }
 
   /* ──────────────────────────────────────────────────────────────────────────
@@ -837,6 +1213,133 @@ export class NgService {
   }
 
   /** Setelah transfer otomatis, barang ada di tujuan transfer, bukan output lini. */
+  /**
+   * Dokumen PRODUCTION bersumber TT_NG untuk NG tanpa scan produksi (kasus A).
+   *
+   * Work center dan PV dari rute part di lini tempat NG ditemukan — sama
+   * dengan yang akan dipakai baris OK-nya seandainya barang itu lolos. Tanpa
+   * lini (NG outline tanpa lini) tidak ada work center untuk SAP, jadi tidak
+   * dikirim. Unit yang sudah punya NG lain tidak dikirim lagi: satu barang
+   * hanya sekali dibuang, berapa pun jenis cacatnya.
+   */
+  private async outboxNgTanpaProduksi(
+    tx: Database,
+    k: {
+      plantId: number;
+      part: typeof parts.$inferSelect;
+      lineId: number | null;
+      processType: ProcessType | null;
+      qtyPerUnit: number;
+      waktu: Date;
+      ngId: number;
+      serialNumber: string;
+    },
+  ): Promise<boolean> {
+    const [lain] = await tx
+      .select({ id: ngRecords.id })
+      .from(ngRecords)
+      .where(
+        and(
+          eq(ngRecords.serialNumber, k.serialNumber),
+          isNull(ngRecords.cancelledAt),
+          ne(ngRecords.id, k.ngId),
+        ),
+      )
+      .limit(1);
+    // Barang yang sudah NG tidak dihitung dua kali — tidak ke SAP, tidak ke RE.
+    if (lain) return false;
+    // Tanpa lini tidak ada work center untuk SAP; stok RE tetap dicatat.
+    if (!k.lineId) return true;
+
+    const [line] = await tx
+      .select({ sapWorkCenter: lines.sapWorkCenter, code: lines.code })
+      .from(lines)
+      .where(eq(lines.id, k.lineId))
+      .limit(1);
+    const [rute] = await tx
+      .select({ pv: partProcesses.productionVersion, sap: partProcesses.sapProductionEnabled })
+      .from(partProcesses)
+      .where(
+        and(
+          eq(partProcesses.partId, k.part.id),
+          eq(partProcesses.isActive, true),
+          or(
+            eq(partProcesses.lineId, k.lineId),
+            and(isNull(partProcesses.lineId), eq(partProcesses.processType, k.processType ?? '')),
+          ),
+        ),
+      )
+      .limit(1);
+
+    const dasar = {
+      plantId: k.plantId,
+      sourceTable: 'TT_NG',
+      sourceId: k.ngId,
+      docType: 'PRODUCTION',
+      movementType: '101',
+      idempotencyKey: `TT_NG:${k.ngId}:PRODUCTION`,
+      occurredAt: k.waktu,
+    };
+    // Rute yang push produksinya dimatikan juga tidak mengirim NG-nya.
+    if (!rute?.sap) {
+      await tx.insert(sapOutbox).values({
+        ...dasar,
+        status: 'SKIPPED',
+        lastError: rute
+          ? 'push staging SAP dimatikan untuk langkah rute ini'
+          : `part ${k.part.partNumber} tidak punya rute di ${line?.code ?? 'lini ini'}`,
+        payload: { docType: 'PRODUCTION', lines: [] },
+      });
+      return true;
+    }
+    await tx.insert(sapOutbox).values({
+      ...dasar,
+      status: 'PENDING',
+      payload: {
+        docType: 'PRODUCTION',
+        movementType: '101',
+        plantId: k.plantId,
+        sourceTable: 'TT_NG',
+        sourceId: k.ngId,
+        occurredAt: k.waktu,
+        lineCode: line?.sapWorkCenter ?? null,
+        backNumber: k.part.backNumber,
+        partName: k.part.name,
+        productionVersion: rute.pv ?? k.part.productionVersion ?? null,
+        serialNumber: k.serialNumber,
+        ngQty: k.qtyPerUnit,
+        lines: [
+          {
+            mutationId: null,
+            mutationType: 'NG_OUT',
+            movementType: null,
+            partNumber: k.part.partNumber,
+            uom: k.part.uom,
+            sloc: null,
+            slocFrom: null,
+            slocTo: null,
+            qty: -k.qtyPerUnit,
+            qtyAbsolute: k.qtyPerUnit,
+            lotNumber: null,
+            note: 'NG tanpa scan produksi',
+          },
+        ],
+      },
+    });
+    return true;
+  }
+
+  /** SLOC reject pabrik ini (RE70 Body, RE80 Unit, RE90 Electric). */
+  private async slocReject(tx: Database, plantId: number): Promise<number | null> {
+    const [lokasi] = await tx
+      .select({ id: locations.id })
+      .from(locations)
+      .where(and(eq(locations.plantId, plantId), eq(locations.kind, 'NG')))
+      .orderBy(locations.code)
+      .limit(1);
+    return lokasi?.id ?? null;
+  }
+
   private async slocHasilScan(
     tx: Database,
     scanEventId: number | null,

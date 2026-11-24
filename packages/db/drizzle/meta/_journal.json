@@ -218,6 +218,13 @@
       "when": 1794880019007,
       "tag": "0030_label_customer_direct_pulling",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795062173388,
+      "tag": "0031_koreksi_ng",
+      "breakpoints": true
     }
   ]
 }

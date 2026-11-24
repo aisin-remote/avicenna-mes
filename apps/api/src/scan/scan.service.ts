@@ -55,6 +55,7 @@ import {
   statusLini,
   pilihBarisRute,
   pilihPartTahap,
+  tahapSebelumnyaDiscan,
   toLocalDateKey,
   grupProses,
   prosesDalamGrup,
@@ -274,7 +275,8 @@ export class ScanService {
     const konteksBarcode = {
       processType: prosesAwal,
       scanMode: modeAwal,
-      // Line receiving hanya membaca kanban ARES; lihat ATURAN_KANBAN_ARES.
+      // Line receiving hanya membaca kanban supplier: ARES, atau label supplier
+      // Electric (ATURAN_KANBAN_SUPPLIER_ELC).
       penerimaan:
         normalized.kind === 'PRODUCTION' &&
         (await this.processTypes.katalog()).grup(prosesAwal) === 'RECEIVING',
@@ -288,7 +290,7 @@ export class ScanService {
           'BARCODE_UNREADABLE',
           konteksBarcode.penerimaan
             ? `${REJECT_MESSAGES.BARCODE_UNREADABLE} (${line?.code} hanya menerima kanban ARES ` +
-              'ARES:K:<id>|<nomor part>|<qty>)'
+              'ARES:K:<id>|<nomor part>|<qty> atau label supplier Electric)'
             : REJECT_MESSAGES.BARCODE_UNREADABLE,
         );
       }
@@ -1774,20 +1776,49 @@ export class ScanService {
     serial: string,
   ): Promise<void> {
     const hariIni = toLocalDateKey(new Date());
-    const sebelumnya = await this.db
-      .select({ id: parts.id, partNumber: parts.partNumber, backNumber: parts.backNumber })
-      .from(partPairings)
-      .innerJoin(parts, eq(parts.id, partPairings.componentPartId))
-      .where(
-        and(
-          eq(partPairings.parentPartId, part.id),
-          lte(partPairings.effectiveFrom, hariIni),
-          or(isNull(partPairings.effectiveTo), gte(partPairings.effectiveTo, hariIni)),
-          eq(parts.trackingMode, 'SERIAL'),
-          eq(parts.sourceType, 'MANUFACTURED'),
-        ),
-      );
-    if (sebelumnya.length === 0) return;
+    /*
+     * Seluruh rantai komponen dibuat-sendiri per seri di bawah part ini, sekali
+     * ambil. Dibutuhkan lebih dari satu tingkat: komponen langsung yang phantom
+     * (tanpa rute, mis. 24321210980 di bawah EI11) tidak pernah di-scan, jadi
+     * pemeriksaan menembus ke komponennya — lihat tahapSebelumnyaDiscan().
+     */
+    const rantai = await this.db.execute<{ induk: string; komponen: string }>(sql`
+      WITH RECURSIVE r(induk, komponen, d) AS (
+        SELECT pp."INT_PARENT_PART_ID", pp."INT_COMPONENT_PART_ID", 1
+        FROM ${partPairings} pp
+        JOIN ${parts} c ON c."INT_ID" = pp."INT_COMPONENT_PART_ID"
+        WHERE pp."INT_PARENT_PART_ID" = ${part.id}
+          AND c."CHR_TRACKING_MODE" = 'SERIAL' AND c."CHR_SOURCE_TYPE" = 'MANUFACTURED'
+          AND pp."DTM_EFFECTIVE_FROM" <= ${hariIni}
+          AND (pp."DTM_EFFECTIVE_TO" IS NULL OR pp."DTM_EFFECTIVE_TO" >= ${hariIni})
+        UNION
+        SELECT pp."INT_PARENT_PART_ID", pp."INT_COMPONENT_PART_ID", r.d + 1
+        FROM ${partPairings} pp
+        JOIN r ON pp."INT_PARENT_PART_ID" = r.komponen
+        JOIN ${parts} c ON c."INT_ID" = pp."INT_COMPONENT_PART_ID"
+        WHERE r.d < 10
+          AND c."CHR_TRACKING_MODE" = 'SERIAL' AND c."CHR_SOURCE_TYPE" = 'MANUFACTURED'
+          AND pp."DTM_EFFECTIVE_FROM" <= ${hariIni}
+          AND (pp."DTM_EFFECTIVE_TO" IS NULL OR pp."DTM_EFFECTIVE_TO" >= ${hariIni})
+      )
+      SELECT DISTINCT induk, komponen FROM r
+    `);
+    const pasangan = rantai.rows.map((x) => ({ induk: Number(x.induk), komponen: Number(x.komponen) }));
+    const langsung = pasangan.filter((x) => x.induk === part.id).map((x) => x.komponen);
+    if (langsung.length === 0) return;
+
+    const semua = [...new Set(pasangan.map((x) => x.komponen))];
+    const rute = await this.db
+      .select({ partId: partProcesses.partId, line: lines.code })
+      .from(partProcesses)
+      .innerJoin(lines, eq(lines.id, partProcesses.lineId))
+      .where(and(inArray(partProcesses.partId, semua), eq(partProcesses.isActive, true)));
+    const berRute = (id: number) => rute.some((r) => Number(r.partId) === id);
+    const tahap = tahapSebelumnyaDiscan(
+      langsung,
+      (id) => pasangan.filter((x) => x.induk === id).map((x) => x.komponen),
+      berRute,
+    );
 
     const [sudah] = await this.db
       .select({ id: scanEvents.id })
@@ -1796,33 +1827,21 @@ export class ScanService {
         and(
           eq(scanEvents.kind, 'PRODUCTION'),
           eq(scanEvents.serialNumber, serial),
-          inArray(
-            scanEvents.partId,
-            sebelumnya.map((p) => p.id),
-          ),
+          inArray(scanEvents.partId, tahap),
         ),
       )
       .limit(1);
     if (sudah) return;
 
-    const rute = await this.db
-      .select({ partId: partProcesses.partId, line: lines.code })
-      .from(partProcesses)
-      .innerJoin(lines, eq(lines.id, partProcesses.lineId))
-      .where(
-        and(
-          inArray(
-            partProcesses.partId,
-            sebelumnya.map((p) => p.id),
-          ),
-          eq(partProcesses.isActive, true),
-        ),
-      );
-    // Yang disebut hanya komponen ber-rute — itulah tahap yang memang di-scan.
-    const berRute = sebelumnya.filter((p) => rute.some((r) => r.partId === p.id));
-    const sebut = (berRute.length ? berRute : sebelumnya)
+    const info = await this.db
+      .select({ id: parts.id, partNumber: parts.partNumber, backNumber: parts.backNumber })
+      .from(parts)
+      .where(inArray(parts.id, tahap));
+    // Yang disebut hanya tahap ber-rute — itulah yang memang di-scan operator.
+    const disebut = info.filter((p) => berRute(Number(p.id)));
+    const sebut = (disebut.length ? disebut : info)
       .map((p) => {
-        const wc = rute.filter((r) => r.partId === p.id).map((r) => r.line);
+        const wc = rute.filter((r) => Number(r.partId) === Number(p.id)).map((r) => r.line);
         return `${p.partNumber}${p.backNumber ? ` (${p.backNumber})` : ''}${wc.length ? ` di ${wc.join('/')}` : ''}`;
       })
       .join(' atau ');

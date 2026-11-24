@@ -30,7 +30,8 @@ export type HasilKartu = 'DITERIMA' | 'DITOLAK';
 export interface ScanKomponenResult {
   hasil: HasilKartu;
   /** Terisi hanya bila yang terbaca memang kartu ARES. */
-  jenisKartu: 'ARES' | null;
+  /** ARES, atau label supplier Electric yang bertoken spasi. */
+  jenisKartu: 'ARES' | 'SUPPLIER' | null;
   pesan: string;
   rawCode: string;
 
@@ -51,7 +52,8 @@ export interface ScanKomponenResult {
 export interface RiwayatKomponen {
   id: number;
   rawCode: string;
-  jenisKartu: 'ARES' | null;
+  /** ARES, atau label supplier Electric yang bertoken spasi. */
+  jenisKartu: 'ARES' | 'SUPPLIER' | null;
   partNumber: string | null;
   backNumber: string | null;
   qty: number | null;

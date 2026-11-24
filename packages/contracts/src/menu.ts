@@ -20,6 +20,9 @@ import { MASTER_ENTITIES, ENTITY_DEFS, type MasterEntity } from './master/regist
  * tanpa deploy. Menu baru datang bersama halamannya.
  */
 
+/** Menu sekaligus hak koreksi NG — dibaca NgService.bolehKoreksi(). */
+export const MENU_KOREKSI_NG = 'produksi.koreksi-ng';
+
 export const MENU_GROUPS = [
   'Produksi',
   'Logistik',
@@ -120,6 +123,19 @@ const MENU_TETAP: MenuDef[] = [
     icon: 'TriangleAlert',
     group: 'Produksi',
     sortOrder: 40,
+  },
+  {
+    /*
+     * Koreksi NG oleh leader/QC (Handika, 19 Nov 2026). Kuncinya juga HAK di
+     * API (MENU_KOREKSI_NG): yang boleh mengoreksi adalah role yang diberi
+     * menu ini, bukan role bernama tertentu.
+     */
+    key: 'produksi.koreksi-ng',
+    label: 'Koreksi NG',
+    href: '/koreksi-ng',
+    icon: 'ClipboardCheck',
+    group: 'Produksi',
+    sortOrder: 41,
   },
 
   {

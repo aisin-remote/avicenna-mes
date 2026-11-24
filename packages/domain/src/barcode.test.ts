@@ -125,9 +125,10 @@ describe('pemilihan aturan', () => {
     // Di proses per barang, aturan nomor-part polos TIDAK berlaku, dan kanban
     // ARES hanya milik line receiving; sisanya berlaku di mana saja.
     const diCasting = aturanBerlaku({ processType: 'CASTING_WIP', scanMode: 'PART_SAJA' });
-    expect(diCasting.length).toBe(DAFTAR_ATURAN.length - 2);
+    expect(diCasting.length).toBe(DAFTAR_ATURAN.length - 3);
     expect(diCasting.map((a) => a.nama)).not.toContain('NOMOR_PART');
     expect(diCasting.map((a) => a.nama)).not.toContain('KANBAN_ARES');
+    expect(diCasting.map((a) => a.nama)).not.toContain('KANBAN_SUPPLIER_ELC');
     expect(aturanBerlaku({ scanMode: 'KANBAN_BOX' }).map((a) => a.nama)).toContain('NOMOR_PART');
     // Nilai lama tetap diterima: snapshot scan yang sudah ada memakainya.
     expect(aturanBerlaku({ scanMode: 'PER_KANBAN' }).map((a) => a.nama)).toContain('NOMOR_PART');
@@ -156,6 +157,36 @@ describe('kanban ARES — hanya di line receiving', () => {
 
   it('di line lain kanban ARES tidak terbaca sebagai kanban ARES', () => {
     expect(bacaBarcode(ares, { processType: 'CASTING_WIP' }).aturan).not.toBe('KANBAN_ARES');
+  });
+});
+
+describe('label supplier Electric — hanya di line receiving', () => {
+  const receiving = { processType: 'RECEIVING', scanMode: 'PART_SAJA', penerimaan: true } as const;
+  /* Contoh Handika, 17 Nov 2026 (spasi di ujung ikut tertembak scanner). */
+  const label = [
+    '3N1 955124-00110 2000 0000 261111 261111121358 1 B6TCA2            ',
+    '3N1 953027-71302 500 0000 261111 261111100310 1 B1TC7H             ',
+    '3N1 961068-35200 5000 0000 261103 261103113334 1 A94TC99',
+  ];
+
+  it('membaca nomor part, isi box, dan seri', () => {
+    expect(bacaBarcode(label[0]!, receiving)).toMatchObject({
+      aturan: 'KANBAN_SUPPLIER_ELC',
+      partNumber: '955124-00110',
+      qty: 2000,
+      serialNumber: '261111121358-0000-1-B6TCA2',
+    });
+    expect(bacaBarcode(label[1]!, receiving)).toMatchObject({ partNumber: '953027-71302', qty: 500 });
+    expect(bacaBarcode(label[2]!, receiving)).toMatchObject({ partNumber: '961068-35200', qty: 5000 });
+  });
+
+  it('tiap label punya seri sendiri', () => {
+    const seri = label.map((l) => bacaBarcode(l, receiving).serialNumber);
+    expect(new Set(seri).size).toBe(3);
+  });
+
+  it('di line produksi tidak terbaca sebagai label supplier', () => {
+    expect(bacaBarcode(label[0]!, { processType: 'CASTING_WIP' }).aturan).not.toBe('KANBAN_SUPPLIER_ELC');
   });
 });
 

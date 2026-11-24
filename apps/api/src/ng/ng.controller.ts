@@ -1,11 +1,13 @@
 import {
-  Body, Controller, Get, Post, Query, Req, UsePipes, BadRequestException,
+  Body, Controller, Get, Param, ParseIntPipe, Post, Query, Req, UsePipes, BadRequestException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import {
-  ngInlineInputSchema, ngOutlineInputSchema, ngCancelInputSchema,
+  ngInlineInputSchema, ngOutlineInputSchema, ngCancelInputSchema, ngKoreksiInputSchema,
 } from '@avicenna/contracts';
-import type { NgInlineInput, NgOutlineInput, NgCancelInput, NgResult } from '@avicenna/contracts';
+import type {
+  NgInlineInput, NgOutlineInput, NgCancelInput, NgResult, NgKoreksiInput,
+} from '@avicenna/contracts';
 import { NgService, NgRejected } from './ng.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 
@@ -59,8 +61,32 @@ export class NgController {
   /** Membatalkan catatan NG. Barisnya tidak dihapus, hanya ditandai. */
   @Post('batal')
   @UsePipes(new ZodValidationPipe(ngCancelInputSchema))
-  batal(@Body() body: NgCancelInput, @Req() req: Request) {
-    return this.ng.batal(body, req.principal);
+  async batal(@Body() body: NgCancelInput, @Req() req: Request) {
+    try {
+      return await this.ng.batal(body, req.principal);
+    } catch (err) {
+      throw petakan(err);
+    }
+  }
+
+  /** Daftar NG untuk layar Koreksi NG, beserta keadaan SAP dan riwayatnya. */
+  @Get('koreksi')
+  koreksiDaftar(@Query('q') q: string | undefined, @Req() req: Request) {
+    return this.ng.daftarKoreksi({ q }, req.principal);
+  }
+
+  /** Koreksi qty/jenis NG, atau batalkan (qty 0). Hak: menu Koreksi NG. */
+  @Post(':id/koreksi')
+  async koreksi(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ZodValidationPipe(ngKoreksiInputSchema)) body: NgKoreksiInput,
+    @Req() req: Request,
+  ) {
+    try {
+      return await this.ng.koreksi(id, body, req.principal);
+    } catch (err) {
+      throw petakan(err);
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { eq, and, lt, inArray, asc, type Database } from '@avicenna/db';
-import { sapOutbox, plants } from '@avicenna/db';
+import { eq, and, lt, inArray, asc, isNull, isNotNull, sql, type Database } from '@avicenna/db';
+import { sapOutbox, plants, ngRecords, ngRevisions } from '@avicenna/db';
 import { InjectDb } from '../db/db.module';
 import { StagingDbService } from './staging-db.service';
 import { StagingSchemaService } from './staging-schema.service';
@@ -56,6 +56,10 @@ interface PayloadDokumen {
   serialNumber?: string | null;
   npk?: string | null;
   lines: BarisPayload[];
+  /** Dokumen NG tanpa scan produksi (kasus A): qty NG yang dilaporkan. */
+  ngQty?: number;
+  /** Id TT_NG yang qty-nya sudah ikut di baris ini — diisi saat didorong. */
+  ngTermasuk?: number[];
 }
 
 /** Menolak nama kolom/tabel yang tidak berbentuk identifier. Dirangkai ke SQL, jadi diperiksa. */
@@ -242,8 +246,17 @@ export class StagingPushService {
       }
 
       try {
-        if (row.docType === 'PRODUCTION') await this.dorongProduksi(row, kodePabrik);
-        else await this.dorongSatu(row, kodePabrik);
+        if (row.docType === 'PRODUCTION') {
+          const lewati = await this.dorongProduksi(row, kodePabrik);
+          if (lewati) {
+            await this.db
+              .update(sapOutbox)
+              .set({ status: 'SKIPPED', lastError: lewati, attempts: row.attempts + 1 })
+              .where(eq(sapOutbox.id, row.id));
+            ditahan++;
+            continue;
+          }
+        } else await this.dorongSatu(row, kodePabrik);
         await this.db
           .update(sapOutbox)
           .set({
@@ -272,17 +285,150 @@ export class StagingPushService {
         `dorong ke staging: ${terkirim} berhasil, ${gagal} gagal, ${ditahan} ditahan (jenis belum didukung)`,
       );
     }
+    try {
+      await this.dorongRevisiNg();
+    } catch (err) {
+      this.logger.warn(`revisi NG gagal didorong: ${err instanceof Error ? err.message : String(err)}`);
+    }
     return { terkirim, gagal, dilewati: ditahan };
   }
 
-  /** Satu scan hasil produksi menjadi satu baris pada TT_PRODUCTION_RESULT. */
+  /**
+   * Koreksi NG yang NG-nya sudah diterima SAP → revisi pada baris staging aslinya.
+   *
+   * Mengikuti penjemput AII (VB_MFBF/Form1.vb) dan baris uji revisi tim SAP
+   * (`reverse`, `TestingOKNG`): baris yang ber-CHR_STATUS_NG = 'R' diposting
+   * ulang dengan qty = INT_TOTAL_NG − INT_TOTAL_NG_REV. Jadi INT_TOTAL_NG
+   * dibiarkan (yang dulu terkirim) dan REV = terkirim − NG terbaru; REV negatif
+   * berarti NG bertambah, seperti baris uji `reverse 2`.
+   *
+   * Hanya ditulis bila sisi NG baris itu sudah 'S' — selain itu penjemput
+   * sedang atau akan memprosesnya, dan menimpanya di tengah jalan membuat
+   * hasilnya tidak bisa ditebak. Revisinya menunggu putaran berikutnya.
+   */
+  async dorongRevisiNg(): Promise<number> {
+    if (!this.aktif) return 0;
+    const antre = await this.db
+      .selectDistinct({ outboxId: ngRevisions.outboxId })
+      .from(ngRevisions)
+      .innerJoin(sapOutbox, eq(sapOutbox.id, ngRevisions.outboxId))
+      .where(
+        and(
+          eq(ngRevisions.sapStatus, 'MENUNGGU'),
+          eq(sapOutbox.status, 'CONFIRMED'),
+          isNotNull(sapOutbox.stagingNumber),
+        ),
+      )
+      .limit(BATCH_DORONG);
+    if (antre.length === 0) return 0;
+
+    const C = PRODUCTION_RESULT.kolom;
+    const tabel = tabelAman(PRODUCTION_RESULT.tabel);
+    let terkirim = 0;
+
+    for (const { outboxId } of antre) {
+      if (outboxId == null) continue;
+      const [ob] = await this.db.select().from(sapOutbox).where(eq(sapOutbox.id, outboxId)).limit(1);
+      if (!ob?.stagingNumber) continue;
+      const payload = ob.payload as unknown as PayloadDokumen;
+      const ids =
+        ob.sourceTable === 'TT_NG' ? [Number(ob.sourceId)] : (payload.ngTermasuk ?? []).map(Number);
+      const sekarang = ids.length
+        ? (
+            await this.db
+              .select({ qty: ngRecords.qty })
+              .from(ngRecords)
+              .where(and(inArray(ngRecords.id, ids), isNull(ngRecords.cancelledAt)))
+          ).reduce((t, r) => t + Number(r.qty), 0)
+        : 0;
+
+      const [baris] = await this.staging.query<{
+        total: number | null;
+        rev: number | null;
+        status: string | null;
+      }>(
+        `SELECT ${identifierAman(C.ngTotal)} AS total, ${identifierAman(C.ngTotalRev)} AS rev, ` +
+          `${identifierAman(C.statusNg)} AS status FROM ${tabel} WHERE ${identifierAman(C.nomor)} = @n`,
+        { n: Number(ob.stagingNumber) },
+      );
+      if (!baris) continue;
+      if (tafsirStatus(baris.status) !== 'BERHASIL') continue; // tunggu penjemput selesai
+
+      const rev = Number(baris.total ?? 0) - sekarang;
+      if (rev === Number(baris.rev ?? 0)) {
+        // Koreksi bolak-balik yang berakhir di nilai yang sama: tidak ada yang perlu diposting.
+        await this.db
+          .update(ngRevisions)
+          .set({ sapStatus: 'DITERIMA', sapPesan: 'tidak ada selisih dengan yang sudah diposting' })
+          .where(and(eq(ngRevisions.outboxId, outboxId), eq(ngRevisions.sapStatus, 'MENUNGGU')));
+        continue;
+      }
+
+      await this.staging.query(
+        `UPDATE ${tabel} SET ${identifierAman(C.ngTotalRev)} = @rev, ` +
+          `${identifierAman(C.statusNg)} = 'R', ${identifierAman(C.pesanNg)} = NULL ` +
+          `WHERE ${identifierAman(C.nomor)} = @n AND ${identifierAman(C.statusNg)} = @ok`,
+        { rev, n: Number(ob.stagingNumber), ok: FLAG.berhasil },
+      );
+      const waktu = new Date();
+      await this.db
+        .update(ngRevisions)
+        .set({ sapStatus: 'TERKIRIM', sapRev: rev, terkirimAt: waktu })
+        .where(and(eq(ngRevisions.outboxId, outboxId), eq(ngRevisions.sapStatus, 'MENUNGGU')));
+      // Dibaca ulang ambilBalasan(): hasil posting ulang menentukan status akhirnya.
+      await this.db
+        .update(sapOutbox)
+        .set({ status: 'SENT', confirmedAt: null, lastError: null })
+        .where(eq(sapOutbox.id, outboxId));
+      terkirim++;
+    }
+    if (terkirim > 0) this.logger.log(`revisi NG: ${terkirim} baris staging diberi status R`);
+    return terkirim;
+  }
+
+  /**
+   * Satu scan hasil produksi menjadi satu baris pada TT_PRODUCTION_RESULT.
+   *
+   * ── NG ikut di baris yang sama (Handika + tim SAP, 18 Nov 2026) ───────────
+   *
+   * Penjemput AII (VB_MFBF/Form1.vb) memanggil DUA function module per baris:
+   * ZFM_WDE_PROD_RESULT_OK dari INT_TOTAL_QTY dan ZFM_WDE_PROD_RESULT_NG dari
+   * INT_TOTAL_NG, masing-masing dengan status dan matdoc sendiri. FM NG
+   * membukukan ke SLOC reject (RE70/80/90) dari PV — tanpa kolom SLOC.
+   *
+   *   Kasus A  NG tanpa scan produksi: dokumen bersumber TT_NG, OK 0, NG = qty.
+   *   Kasus B  NG yang membalik scan ini SEBELUM barisnya terdorong: OK
+   *            dikurangi, NG diisi — satu baris, persis desain penjemputnya.
+   *   Kasus C  NG setelah baris terdorong: TIDAK di sini (revisi 'R' menunggu
+   *            konfirmasi tim SAP); muncul di daftar NG perlu koreksi.
+   *
+   * Mengembalikan alasan bila dokumen tidak perlu didorong (NG-nya dibatalkan).
+   */
   private async dorongProduksi(
     row: typeof sapOutbox.$inferSelect,
     kodePabrik: Map<number, string>,
-  ): Promise<void> {
+  ): Promise<string | null> {
     const payload = row.payload as unknown as PayloadDokumen;
-    const hasil = payload.lines.find((b) => b.mutationType === 'PRODUCTION_IN');
+    const dariNg = payload.sourceTable === 'TT_NG';
+    const hasil =
+      payload.lines.find((b) => b.mutationType === 'PRODUCTION_IN') ??
+      payload.lines.find((b) => b.mutationType === 'NG_OUT');
     if (!hasil?.partNumber) throw new Error('hasil produksi tidak punya nomor part');
+
+    // NG yang dilaporkan di baris ini — dibaca SAAT didorong, bukan saat dikumpulkan,
+    // supaya NG yang tercatat di antara keduanya ikut (kasus B).
+    const ng = await this.db
+      .select({ id: ngRecords.id, qty: ngRecords.qty, batal: ngRecords.cancelledAt })
+      .from(ngRecords)
+      .where(
+        dariNg
+          ? eq(ngRecords.id, Number(payload.sourceId))
+          : and(eq(ngRecords.scanEventId, Number(payload.sourceId)), isNull(ngRecords.cancelledAt)),
+      );
+    if (dariNg && (ng.length === 0 || ng[0]!.batal)) return 'NG dibatalkan sebelum terkirim ke SAP';
+    const qtyNg = ng.reduce((t, n) => t + Number(n.qty), 0);
+    const qtyProduksi = dariNg ? 0 : Math.round(hasil.qtyAbsolute);
+    const qtyOk = Math.max(0, qtyProduksi - qtyNg);
     if (!payload.lineCode) throw new Error('work center dari line scan kosong');
     const plant = kodePabrik.get(row.plantId);
     if (!plant || plant.length > LEBAR.produksi.CHR_PLANT)
@@ -322,7 +468,7 @@ export class StagingPushService {
           'tidak bisa dibukukan. Isi PV di rute part + work center (Master › Rute), lalu coba ulang.',
       );
     }
-    if (Math.round(hasil.qtyAbsolute) === 0) {
+    if (qtyOk === 0 && qtyNg === 0) {
       throw new Error(
         'kuantitas hasil produksi 0 — penjemput SAP melewatkan baris seperti ini, ' +
           'jadi dokumennya tidak akan pernah terproses',
@@ -372,38 +518,22 @@ export class StagingPushService {
        * sini supaya pembulatannya terjadi di tempat yang terbaca, bukan diam-
        * diam di sisi SQL Server. Pada data AII ketiganya selalu bernilai sama.
        */
-      [C.qtyOk]: Math.round(hasil.qtyAbsolute),
-      [C.qtyTotal]: Math.round(hasil.qtyAbsolute),
-      [C.qtyActual]: Math.round(hasil.qtyAbsolute),
+      [C.qtyOk]: qtyOk,
+      [C.qtyTotal]: qtyOk,
+      [C.qtyActual]: qtyOk,
       /*
-       * ── Keenam kolom NG, sengaja masih 0 ───────────────────────────────────
+       * ── NG: hanya INT_TOTAL_NG yang dibaca penjemput ──────────────────────
        *
-       * Dua pertanyaan yang dulu menahan pengisiannya sudah TERJAWAB oleh kode
-       * penjemput AII:
-       *
-       *   1. Pembagian INT_NG_PRC vs INT_TOTAL_NG — rinciannya tidak dikirim
-       *      sama sekali. Yang dibaca hanya INT_TOTAL_NG.
-       *   2. Hubungannya dengan INT_QTY_OK/INT_TOTAL_QTY — tidak ada. NG
-       *      dibukukan function module SENDIRI (ZFM_WDE_PROD_RESULT_NG) sebagai
-       *      dokumen material terpisah. Mengisi NG tidak mengurangi goods
-       *      receipt.
-       *
-       * Yang menahan sekarang bukan lagi pertanyaan, melainkan pekerjaan yang
-       * belum dibangun: karena NG dan OK dibukukan terpisah, satu baris outbox
-       * bisa SETENGAH terkonfirmasi — OK berhasil, NG gagal, atau sebaliknya.
-       * Status outbox kita masih satu kolom, dan menuliskan NG sebelum model
-       * itu ada berarti kegagalan sisi NG tidak punya tempat untuk muncul.
-       *
-       * Sampai itu dibangun, NG tetap 0 DAN kesenjangannya ditampilkan — lihat
-       * GET /sap/ng-perlu-koreksi, yang mendaftar NG yang hasil produksinya
-       * sudah dikonfirmasi SAP.
+       * Rinciannya (proses, broken test, setup, trial, lain-lain) milik MES dan
+       * tidak dikirim; baris uji SIT tim SAP (SIT-GR-SFG-RE) juga hanya mengisi
+       * total. 0 berarti FM NG tidak dipanggil untuk baris ini.
        */
       [C.ngProcess]: 0,
       [C.ngBrokenTest]: 0,
       [C.ngSetup]: 0,
       [C.ngTrial]: 0,
       [C.ngOthers]: 0,
-      [C.ngTotal]: 0,
+      [C.ngTotal]: qtyNg,
       [C.tanggalEntry]: keTanggalStaging(sekarang),
       [C.jamEntry]: keJamStaging(sekarang),
       [C.user]: 'AVICENNA',
@@ -449,10 +579,21 @@ export class StagingPushService {
         { ref: `${ref} %` },
       );
 
+    const catatNg = async () => {
+      if (ng.length === 0) return;
+      await this.db
+        .update(sapOutbox)
+        .set({
+          payload: sql`${sapOutbox.payload} || ${JSON.stringify({ ngTermasuk: ng.map((n) => Number(n.id)) })}::jsonb`,
+        })
+        .where(eq(sapOutbox.id, row.id));
+    };
+
     const sudahAda = await cariMilikKita();
     if (sudahAda.length > 0) {
       await this.simpanNomorStaging(row.id, Number(sudahAda[0]!.nomor));
-      return;
+      await catatNg();
+      return null;
     }
 
     const req = (await this.staging.kolam()).request();
@@ -467,6 +608,8 @@ export class StagingPushService {
       throw new Error('staging tidak mengembalikan INT_NUMBER untuk dokumen produksi');
     }
     await this.simpanNomorStaging(row.id, nomorBaru);
+    await catatNg();
+    return null;
   }
 
   /** Mencatat nomor yang diberikan staging; dialah kunci baca balasan nanti. */
@@ -741,11 +884,19 @@ export class StagingPushService {
             ),
           })
           .where(eq(sapOutbox.id, row.id));
+        await this.db
+          .update(ngRevisions)
+          .set({ sapStatus: 'DITOLAK', sapPesan: (pesan || 'ditolak SAP').slice(0, 520) })
+          .where(and(eq(ngRevisions.outboxId, row.id), eq(ngRevisions.sapStatus, 'TERKIRIM')));
         ditolak++;
         continue;
       }
 
-      const dok = baris.map((b) => b.matdoc).find(Boolean) ?? null;
+      // Baris produksi bisa punya dua matdoc (OK dan NG); keduanya disimpan.
+      const dok =
+        row.docType === 'PRODUCTION'
+          ? baris.map((b) => b.matdoc).filter(Boolean).join('+') || null
+          : (baris.map((b) => b.matdoc).find(Boolean) ?? null);
       const tahun = baris.map((b) => b.matdocTahun).find(Boolean) ?? null;
       await this.db
         .update(sapOutbox)
@@ -756,6 +907,10 @@ export class StagingPushService {
           lastError: null,
         })
         .where(eq(sapOutbox.id, row.id));
+      await this.db
+        .update(ngRevisions)
+        .set({ sapStatus: 'DITERIMA', sapPesan: null })
+        .where(and(eq(ngRevisions.outboxId, row.id), eq(ngRevisions.sapStatus, 'TERKIRIM')));
       dikonfirmasi++;
     }
 
@@ -792,21 +947,39 @@ export class StagingPushService {
         status: string | null;
         pesan: string | null;
         matdoc: string | null;
+        qty: number | null;
+        statusNg: string | null;
+        pesanNg: string | null;
+        matdocNg: string | null;
+        qtyNg: number | null;
       }>(
         `SELECT ${identifierAman(C.nomor)} AS nomor, ${identifierAman(C.status)} AS status, ` +
-          `${identifierAman(C.pesan)} AS pesan, ${identifierAman(C.matdoc)} AS matdoc ` +
+          `${identifierAman(C.pesan)} AS pesan, ${identifierAman(C.matdoc)} AS matdoc, ` +
+          `${identifierAman(C.qtyTotal)} AS qty, ${identifierAman(C.statusNg)} AS statusNg, ` +
+          `${identifierAman(C.pesanNg)} AS pesanNg, ${identifierAman(C.matdocNg)} AS matdocNg, ` +
+          `${identifierAman(C.ngTotal)} AS qtyNg ` +
           `FROM ${tabel} WHERE ${identifierAman(C.nomor)} IN (${daftar.join(', ')})`,
         params,
       );
+      /*
+       * Satu baris staging bisa membawa DUA pembukuan (OK dan NG), masing-masing
+       * dengan status sendiri. Hanya sisi yang qty-nya bukan 0 yang ditunggu —
+       * penjemput tidak menyentuh sisi yang 0, jadi statusnya tetap nilai awal.
+       */
       for (const r of rows) {
-        peta.set(Number(r.nomor), [
-          {
-            status: bersih(r.status),
-            pesan: bersih(r.pesan),
-            matdoc: bersih(r.matdoc),
+        const sisi: { status: string | null; pesan: string | null; matdoc: string | null; matdocTahun: string | null }[] = [];
+        if (Number(r.qty ?? 0) !== 0) {
+          sisi.push({ status: bersih(r.status), pesan: bersih(r.pesan), matdoc: bersih(r.matdoc), matdocTahun: null });
+        }
+        if (Number(r.qtyNg ?? 0) !== 0) {
+          sisi.push({
+            status: bersih(r.statusNg),
+            pesan: bersih(r.pesanNg) ? `NG: ${bersih(r.pesanNg)}` : null,
+            matdoc: bersih(r.matdocNg),
             matdocTahun: null,
-          },
-        ]);
+          });
+        }
+        peta.set(Number(r.nomor), sisi);
       }
     }
     return peta;
