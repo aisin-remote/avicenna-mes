@@ -497,6 +497,16 @@ export const ENTITY_DEFS: Record<MasterEntity, EntityDef> = {
         hint: 'Posisi seri label, bila labelnya punya. Seri mencegah label yang sama dicatat dua kali.',
       },
       { name: 'labelSerialLength', label: 'Panjang Seri', kind: 'number', min: 0, numeric: true },
+      {
+        name: 'kanbanBerputar',
+        label: 'Kanban Berputar',
+        kind: 'boolean',
+        defaultValue: false,
+        inList: true,
+        hint:
+          'Nyala bila kanban customer ini kembali dan dipakai lagi (mis. RFID TMMIN): ' +
+          'saat delivery kartunya di-reset ke AVAILABLE. Mati untuk label sekali pakai.',
+      },
       activeField,
     ],
   },

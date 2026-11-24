@@ -155,6 +155,16 @@ export const customers = masterSchema.table(
     labelPartLength: integer('INT_LABEL_PART_LENGTH'),
     labelSerialStart: integer('INT_LABEL_SERIAL_START'),
     labelSerialLength: integer('INT_LABEL_SERIAL_LENGTH'),
+    /**
+     * Kanban customer ini BERPUTAR — kartunya kembali dari customer dan dipakai
+     * lagi, seperti kanban RFID TMMIN (Handika, 24 Nov 2026).
+     *
+     * Mati (bawaan): label sekali pakai (MMKI, Suzuki, label DN) — saat truk
+     * berangkat kartunya DELIVERED dan tidak pernah kembali. Nyala: kartu
+     * di-reset saat delivery seperti kanban internal — AVAILABLE, putaran +1,
+     * serinya tetap — sehingga bisa ditempel lagi di line.
+     */
+    kanbanBerputar: boolean('FLG_KANBAN_RETURNABLE').notNull().default(false),
     isActive: boolean('FLG_IS_ACTIVE').notNull().default(true),
     ...timestamps,
   },

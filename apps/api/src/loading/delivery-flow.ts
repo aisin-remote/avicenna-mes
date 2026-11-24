@@ -6,6 +6,7 @@ import {
   or,
   sql,
   deliveries,
+  customers,
   deliveryLines,
   deliveryOrders,
   deliveryOrderCounters,
@@ -318,7 +319,9 @@ export async function advanceDeliveryOrders(db: Database, now = new Date(), orde
  *
  * Satu scan bisa menyebut DUA kartu sekaligus: kartu internal kita dan kartu
  * customer yang menempel di box yang sama. Keduanya diproses, masing-masing
- * menurut pemiliknya — yang internal kembali, yang customer ikut pergi.
+ * menurut pemiliknya — yang internal kembali, yang customer ikut pergi, KECUALI
+ * kanban customer berputar (FLG_KANBAN_RETURNABLE, mis. RFID TMMIN) yang
+ * di-reset seperti kartu internal supaya bisa dipakai lagi.
  *
  * Dokumen yang memang tidak memakai kartu (part discan tanpa kanban) tidak
  * menghasilkan apa pun di sini, dan itu bukan kesalahan.
@@ -377,6 +380,24 @@ export async function lepaskanKanban(
   }
   if (seri.size === 0) return { dilepas: 0, ikutCustomer: 0 };
 
+  /*
+   * Kartu customer yang didaftarkan line dari label (kanban RFID TMMIN,
+   * label MMKI, ...) berseri `<kode customer>:<seri label>`, sedangkan scan
+   * delivery bisa hanya membawa seri labelnya. Bentuk berawalan kode customer
+   * loading list ini ikut dicari.
+   */
+  const [cust] = await tx
+    .select({ code: customers.code })
+    .from(deliveries)
+    .innerJoin(customers, eq(customers.id, deliveries.customerId))
+    .where(eq(deliveries.id, opsi.deliveryId))
+    .limit(1);
+  const berawalan = (s: string) => (cust?.code ? `${cust.code}:${s}` : null);
+  const dicari = new Set(seri);
+  for (const s of seri) {
+    const b = berawalan(s);
+    if (b) dicari.add(b);
+  }
   const kartuTerdaftar = await tx
     .select({
       id: kanbans.id,
@@ -385,9 +406,12 @@ export async function lepaskanKanban(
       owner: kanbans.owner,
       status: kanbans.status,
       cycleCount: kanbans.cycleCount,
+      // Penanda berputar milik customer pemilik KARTU, bukan tujuan loading list.
+      berputar: sql<boolean>`coalesce(${customers.kanbanBerputar}, false)`,
     })
     .from(kanbans)
-    .where(inArray(kanbans.serialNumber, [...seri]));
+    .leftJoin(customers, eq(customers.id, kanbans.customerId))
+    .where(inArray(kanbans.serialNumber, [...dicari]));
   const perPartSeri = new Map(kartuTerdaftar.map((k) => [`${k.partId}|${k.serialNumber}`, k]));
 
   let dilepas = 0;
@@ -398,7 +422,9 @@ export async function lepaskanKanban(
     const meta = e.meta as MetaScan | null;
     for (const s of [meta?.internalSerial, meta?.customerSerial]) {
       if (!s || e.partId == null) continue;
-      const kartu = perPartSeri.get(`${e.partId}|${s}`);
+      const b = berawalan(s);
+      const kartu =
+        perPartSeri.get(`${e.partId}|${s}`) ?? (b ? perPartSeri.get(`${e.partId}|${b}`) : undefined);
       /*
        * Seri yang tidak terdaftar dilewati tanpa suara. Itu bukan kelalaian:
        * sebagian customer memakai label yang memang bukan kartu kami, dan
@@ -407,7 +433,9 @@ export async function lepaskanKanban(
       if (!kartu || sudahDiproses.has(kartu.id)) continue;
       sudahDiproses.add(kartu.id);
 
-      const keputusan = pelepasanKanban(kartu.owner === 'CUSTOMER' ? 'CUSTOMER' : 'INTERNAL');
+      const keputusan = pelepasanKanban(kartu.owner === 'CUSTOMER' ? 'CUSTOMER' : 'INTERNAL', {
+        berputar: kartu.owner === 'CUSTOMER' && Boolean(kartu.berputar),
+      });
 
       const [isi] = await tx
         .select({ n: count() })

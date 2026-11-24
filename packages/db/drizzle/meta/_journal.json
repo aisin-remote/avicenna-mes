@@ -225,6 +225,13 @@
       "when": 1795062173388,
       "tag": "0031_koreksi_ng",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795485665040,
+      "tag": "0032_kanban_customer_berputar",
+      "breakpoints": true
     }
   ]
 }

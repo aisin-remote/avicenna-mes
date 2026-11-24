@@ -184,7 +184,23 @@ export interface PelepasanKanban {
   alasan: string;
 }
 
-export function pelepasanKanban(owner: 'INTERNAL' | 'CUSTOMER'): PelepasanKanban {
+export function pelepasanKanban(
+  owner: 'INTERNAL' | 'CUSTOMER',
+  opsi: { berputar?: boolean } = {},
+): PelepasanKanban {
+  /*
+   * Kanban customer yang BERPUTAR (mis. RFID TMMIN) kembali dari customer dan
+   * dipakai lagi: di-reset saat delivery seperti kartu internal, serinya tetap.
+   * Penandanya di master Customer (FLG_KANBAN_RETURNABLE).
+   */
+  if (owner === 'CUSTOMER' && opsi.berputar) {
+    return {
+      status: 'AVAILABLE',
+      event: 'RELEASED',
+      hitungSiklus: true,
+      alasan: 'kanban customer berputar di-reset saat delivery dan kembali ke peredaran',
+    };
+  }
   if (owner === 'CUSTOMER') {
     return {
       status: 'DELIVERED',

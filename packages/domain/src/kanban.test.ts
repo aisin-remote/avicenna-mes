@@ -97,6 +97,22 @@ describe('pelepasanKanban', () => {
       expect(p.hitungSiklus).toBe(false);
     });
 
+    it('kanban customer berputar (RFID TMMIN) di-reset seperti kartu internal', () => {
+      const p = pelepasanKanban('CUSTOMER', { berputar: true });
+      expect(p.status).toBe('AVAILABLE');
+      expect(p.event).toBe('RELEASED');
+      expect(p.hitungSiklus).toBe(true);
+      // Tanpa penanda tetap sekali pakai.
+      expect(pelepasanKanban('CUSTOMER', { berputar: false }).status).toBe('DELIVERED');
+    });
+
+    it('reset kanban berputar sah menurut mesin status', () => {
+      for (const dari of ['PRODUCED', 'STORED', 'PULLED', 'LOADED'] as const) {
+        const p = pelepasanKanban('CUSTOMER', { berputar: true });
+        expect(nextKanbanStatus(dari, p.event)).toBe(p.status);
+      }
+    });
+
     /* Keputusannya harus sah menurut mesin status, bukan ditulis terpisah. */
     it('hasilnya sah untuk setiap keadaan kartu yang sedang membawa barang', () => {
       for (const dari of ['PRODUCED', 'STORED', 'PULLED', 'LOADED'] as const) {
