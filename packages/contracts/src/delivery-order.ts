@@ -13,6 +13,11 @@ export interface DeliveryOrderItem {
   stagingLocationId?: number | null;
   plantCode?: string | null;
   stagingLocationCode?: string | null;
+  sapDeliveryNumber?: string | null;
+  sapItemNumber?: string | null;
+  fgPlantCode?: string | null;
+  fgLocationCode?: string | null;
+  fgLocationKind?: string | null;
 }
 
 /** Snapshot penerbitan: cetak ulang tidak membaca master/rencana yang dapat berubah. */

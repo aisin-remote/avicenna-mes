@@ -1,5 +1,9 @@
 # Delivery AIIA → AII → Customer
 
+> Koreksi 3 November 2026: target staging yang benar adalah `A_DB_STG`. Database `aisinbisa_sap_stagging` pada bukti historis di bawah merupakan database trial tim SAP. Sampel status/nomor dokumen dari trial belum menjadi konfirmasi kontrak GI/GR pada target yang benar.
+
+Pemeriksaan metadata read-only ke `A_DB_STG` pada 3 November berhasil: header/item delivery dan goods movement tersedia. Namun `TT_GOODS_MOVEMENT_H.CHR_PLANT_TO` serta keenam kolom `TT_GOODS_MOVEMENT_L.CHR_PGI_DOC/YEAR/STATUS` dan `CHR_GR_DOC/YEAR/STATUS` **tidak ada**. Rancangan balasan per tahap tidak boleh memakai kolom trial tersebut. Rincian koreksi: [pemetaan SD](delivery-sd-vb-mapping.md).
+
 ## Perilaku AVICENNA
 
 1. Scan PPIC di `/delivery-scan` membuka pulling (loading list + kartu customer + kartu internal untuk mode tiga arah). Finish Pulling memindahkan stok fisik FG ke staging.

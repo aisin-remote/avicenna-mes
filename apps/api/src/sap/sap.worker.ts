@@ -7,6 +7,7 @@ import { SapOutboxService } from './sap-outbox.service';
 import { StagingPushService } from '../staging/staging-push.service';
 import { StagingPullService } from '../staging/staging-pull.service';
 import { SettingService } from '../setting/setting.service';
+import { DeliveryGiService } from '../staging/delivery-gi.service';
 
 /** Sesering apa perpindahan barang dikumpulkan, didorong, dan dicek balasannya. */
 const POLA_TRANSAKSI = '* * * * *';
@@ -55,6 +56,7 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
     private readonly push: StagingPushService,
     private readonly pull: StagingPullService,
     private readonly setting: SettingService,
+    private readonly deliveryGi: DeliveryGiService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -73,6 +75,8 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
             return this.push.dorong();
           case JOBS.ACK_SAP_STAGING:
             return this.push.ambilBalasan();
+          case JOBS.CHECK_FINISH_PULLING_GI:
+            return this.deliveryGi.checkPending();
           case JOBS.PULL_SAP_MASTER: {
             /*
              * Dua gerbang, dan keduanya diperiksa SAAT JOB JALAN — bukan saat
@@ -114,7 +118,7 @@ export class SapWorker implements OnModuleInit, OnModuleDestroy {
 
     // upsertJobScheduler bersifat idempoten: restart tidak menghasilkan
     // jadwal kedua yang berjalan paralel.
-    for (const name of [JOBS.COLLECT_SAP_OUTBOX, JOBS.FLUSH_SAP_OUTBOX, JOBS.ACK_SAP_STAGING]) {
+    for (const name of [JOBS.COLLECT_SAP_OUTBOX, JOBS.FLUSH_SAP_OUTBOX, JOBS.ACK_SAP_STAGING, JOBS.CHECK_FINISH_PULLING_GI]) {
       await this.queue.addRepeating(QUEUES.SYNC, name, {}, POLA_TRANSAKSI);
     }
     /*

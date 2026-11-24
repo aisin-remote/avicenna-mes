@@ -25,6 +25,8 @@ import {
 import { deliveryOrderNumber, allocateFifo, pelepasanKanban } from '@avicenna/domain';
 import { DELIVERY_SAP_STAGES, type DeliverySapStage, type DeliveryFlow } from '@avicenna/contracts';
 import type { Principal } from '../auth/auth.types';
+import { queueFinishPullingGi } from './finish-pulling-gi';
+import { finishPullingMovement } from '../staging/finish-pulling-goods-movement';
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Order = typeof deliveryOrders.$inferSelect;
 type Step = typeof sapOutbox.$inferSelect;
@@ -69,6 +71,19 @@ export async function queueDeliveryStage(
       ),
     )
     .limit(1);
+  const isSimulation =
+    !!trial || order.snapshot.documentNumbers.every((number) => number.startsWith('LL-TRIAL-'));
+  let status: 'HELD' | 'PENDING' = 'HELD';
+  let hold: string | null = DELIVERY_STAGING_HOLD;
+  if (stage === 'DELIVERY_GI_AIIA' && !isSimulation) {
+    try {
+      finishPullingMovement(order.snapshot);
+      status = 'PENDING';
+      hold = null;
+    } catch (error) {
+      hold = `Goods Movement Finish Pulling ditahan: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
   await tx
     .insert(sapOutbox)
     .values({
@@ -77,11 +92,10 @@ export async function queueDeliveryStage(
       sourceId: order.id,
       docType: stage,
       idempotencyKey: `delivery-order:${order.id}:${stage}`,
-      status: 'HELD',
-      isSimulation:
-        !!trial || order.snapshot.documentNumbers.every((number) => number.startsWith('LL-TRIAL-')),
-      movementType: null,
-      lastError: DELIVERY_STAGING_HOLD,
+      status,
+      isSimulation,
+      movementType: stage === 'DELIVERY_GI_AIIA' ? '601' : null,
+      lastError: hold,
       occurredAt: now,
       payload: {
         stage,
@@ -94,6 +108,12 @@ export async function queueDeliveryStage(
       },
     })
     .onConflictDoNothing();
+  if (stage === 'DELIVERY_GI_AIIA') {
+    const [source] = await tx.select({ id: sapOutbox.id }).from(sapOutbox).where(
+      eq(sapOutbox.idempotencyKey, `delivery-order:${order.id}:${stage}`),
+    );
+    if (source) await queueFinishPullingGi(tx, source.id);
+  }
 }
 
 async function stepsOf(db: Database | Transaction, id: number) {

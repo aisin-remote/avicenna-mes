@@ -31,6 +31,7 @@ import { InjectDb } from '../db/db.module';
 import { advanceDeliveryOrders } from '../loading/delivery-flow';
 import { DELIVERY_SAP_STAGES } from '@avicenna/contracts';
 import { ProcessTypeService } from '../master/process-type.service';
+import { FINISH_PULLING_GI } from '../staging/delivery-gi-gate';
 
 /** Jeda sebelum sebuah dokumen dianggap lengkap. Lihat catatan di collect(). */
 const SETTLE_SECONDS = 60;
@@ -689,6 +690,7 @@ export class SapOutboxService {
 
     let dilepas = 0;
     for (const row of tertahan) {
+      if (row.docType === FINISH_PULLING_GI) continue;
       if (row.sourceTable === 'TT_DELIVERY_ORDER' || row.sourceTable === 'TT_DELIVERY') continue;
       if (row.lastError?.startsWith('pendorong untuk ')) continue;
       if (row.lastError?.startsWith(TAHAN_DI_LUAR_RUTE) && !(await this.ruteSudahTerdaftar(row.sourceId)))

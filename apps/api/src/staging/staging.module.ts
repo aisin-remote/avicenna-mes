@@ -4,6 +4,7 @@ import { StagingSchemaService } from './staging-schema.service';
 import { StagingPushService } from './staging-push.service';
 import { StagingPullService } from './staging-pull.service';
 import { StagingController } from './staging.controller';
+import { DeliveryGiService } from './delivery-gi.service';
 
 /**
  * Database jembatan antara Avicenna dan SAP.
@@ -20,7 +21,7 @@ import { StagingController } from './staging.controller';
  */
 @Module({
   controllers: [StagingController],
-  providers: [StagingDbService, StagingSchemaService, StagingPushService, StagingPullService],
-  exports: [StagingDbService, StagingSchemaService, StagingPushService, StagingPullService],
+  providers: [StagingDbService, StagingSchemaService, StagingPushService, StagingPullService, DeliveryGiService],
+  exports: [StagingDbService, StagingSchemaService, StagingPushService, StagingPullService, DeliveryGiService],
 })
 export class StagingModule {}

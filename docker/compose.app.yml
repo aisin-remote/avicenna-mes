@@ -188,6 +188,14 @@ services:
       STAGING_DATABASE: ${STAGING_DATABASE:-}
       STAGING_USER: ${STAGING_USER:-}
       STAGING_PASSWORD: ${STAGING_PASSWORD:-}
+      STAGING_ENCRYPT: ${STAGING_ENCRYPT:-false}
+      STAGING_TRUST_CERT: ${STAGING_TRUST_CERT:-true}
+      # Saklar yang BERLAKU ada di tabel pengaturan (layar Pengaturan). Nilai di
+      # sini hanya cadangan untuk saat barisnya belum pernah dibuat orang.
+      STAGING_PUSH_ENABLED: ${STAGING_PUSH_ENABLED:-false}
+      STAGING_PULL_ENABLED: ${STAGING_PULL_ENABLED:-false}
+      # Darurat saja: api menyala tanpa memeriksa skema database.
+      SKIP_MIGRATION_CHECK: ${SKIP_MIGRATION_CHECK:-false}
       MSSQL_SYNC_ENABLED: ${MSSQL_SYNC_ENABLED:-false}
     ports:
       # Hanya localhost server. Browser TIDAK memanggil API langsung, KECUALI

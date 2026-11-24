@@ -17,6 +17,10 @@ import {
 import { deliveryOrderPreview, deliveryOrderQr } from '@avicenna/domain';
 import type { DeliveryOrderSnapshot } from '@avicenna/contracts';
 import { queueDeliveryStage } from './delivery-flow';
+import { alias } from 'drizzle-orm/pg-core';
+
+const fgLocation = alias(locations, 'delivery_fg_location');
+const fgPlant = alias(plants, 'delivery_fg_plant');
 
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -69,6 +73,7 @@ export async function prepareDeliveryOrder(
       qtyPerKanban: deliveryLines.qtyPerKanban,
       pickedKanban: deliveryLines.pickedKanban,
       pickedQty: deliveryLines.pickedQty,
+      sapItemNumber: deliveryLines.sapItemNumber,
     })
     .from(deliveryLines)
     .leftJoin(parts, eq(parts.id, deliveryLines.partId))
@@ -97,10 +102,15 @@ export async function prepareDeliveryOrder(
       deliveryId: deliveries.id,
       plantCode: plants.sapCode,
       stagingLocationCode: locations.code,
+      fgPlantCode: fgPlant.code,
+      fgLocationCode: fgLocation.code,
+      fgLocationKind: fgLocation.kind,
     })
     .from(deliveries)
     .leftJoin(plants, eq(plants.id, deliveries.plantId))
     .leftJoin(locations, eq(locations.id, deliveries.stagingLocationId))
+    .leftJoin(fgLocation, eq(fgLocation.id, deliveries.locationId))
+    .leftJoin(fgPlant, eq(fgPlant.id, fgLocation.plantId))
     .where(
       inArray(
         deliveries.id,
@@ -129,6 +139,7 @@ export async function prepareDeliveryOrder(
           ...l,
           plantId: parent.plantId,
           stagingLocationId: parent.stagingLocationId,
+          sapDeliveryNumber: parent.documentNumber,
           ...context,
         };
       }),
