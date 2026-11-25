@@ -52,10 +52,6 @@ import { usePreferences } from '../shell/preferences-provider';
 import { springSoft, durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
-type Row = StationSummary['recent'][number];
-
-const MAX_RECENT = 12;
-
 /** Satu unit yang sudah diperiksa server dan menunggu kartunya — lini FG per barang. */
 interface UnitDitahan {
   rawCode: string;
@@ -84,7 +80,8 @@ const LABEL_PEMILIK: Record<KanbanOwner, string> = {
  * Layar stasiun scan untuk operator.
  *
  * Tata letaknya mengikuti layar avicenna yang sudah dipakai bertahun-tahun:
- * input di kiri, status besar di tengah, penghitung di kanan, riwayat di bawah.
+ * input di kiri, status besar di tengah, penghitung di kanan. Riwayat scan
+ * sengaja tidak ditampilkan (keputusan Handika, 25 Nov 2026).
  * Menjaga susunan itu disengaja — operator sudah hafal di mana harus melihat,
  * dan mengubahnya berarti melatih ulang orang tanpa alasan yang cukup.
  *
@@ -129,7 +126,6 @@ export function ScanStation({
   const [error, setError] = useState<string | null>(null);
   const [counter, setCounter] = useState(summary.counterToday);
   const [pcs, setPcs] = useState(summary.pcsToday);
-  const [recent, setRecent] = useState<Row[]>(summary.recent.slice(0, MAX_RECENT));
 
   const perKanban = summary.line.scanMode === 'KANBAN_BOX';
   const moldMode = summary.line.scanMode === 'KANBAN_MOLD';
@@ -182,6 +178,8 @@ export function ScanStation({
    * tiap part saat diperiksa, dan part tanpa kartu langsung tercatat.
    */
   const fg = summary.line.menerimaKartu;
+  // Foto part, anggota mold, atau isi box FG — yang mengisi sisa tinggi layar.
+  const adaPanelBawah = perKanban || moldMode || fg;
   /*
    * Unit yang menunggu kartunya. Di memori layar, bukan localStorage — sistem
    * lama menyimpannya di sana dan part yang tertinggal dari shift kemarin ikut
@@ -426,21 +424,6 @@ export function ScanStation({
       // Server menutup berhenti yang terbuka saat scan diterima; layar ikut.
       setBerhenti(null);
       sound.ok();
-      setRecent((prev) =>
-        [
-          {
-            id: Date.now(),
-            kind: 'PRODUCTION',
-            rawCode: res.rawCode,
-            serialNumber: res.serialNumber,
-            qty: res.qty,
-            scannedAt: res.scannedAt,
-            partNumber: res.partNumber,
-            partName: res.partName,
-          },
-          ...prev,
-        ].slice(0, MAX_RECENT),
-      );
     } else {
       sound.reject();
     }
@@ -656,21 +639,6 @@ export function ScanStation({
       if (res.loadingList) setDaftarMuat(res.loadingList);
       sisa = sisa.filter((u) => u.rawCode !== unit.rawCode);
       setDitahan(sisa);
-      setRecent((prev) =>
-        [
-          {
-            id: Date.now(),
-            kind: 'PRODUCTION',
-            rawCode: res.rawCode,
-            serialNumber: res.serialNumber,
-            qty: res.qty,
-            scannedAt: res.scannedAt,
-            partNumber: res.partNumber,
-            partName: res.partName,
-          },
-          ...prev,
-        ].slice(0, MAX_RECENT),
-      );
     }
 
     setCode('');
@@ -779,25 +747,7 @@ export function ScanStation({
     }
 
     sound.ok();
-    if (board.lastResult?.status === 'ACCEPTED') {
-      const accepted = board.lastResult;
-      setBerhenti(null);
-      setRecent((prev) =>
-        [
-          {
-            id: Date.now(),
-            kind: 'PRODUCTION',
-            rawCode: accepted.rawCode,
-            serialNumber: accepted.serialNumber,
-            qty: accepted.qty,
-            scannedAt: accepted.scannedAt,
-            partNumber: accepted.partNumber,
-            partName: accepted.partName,
-          },
-          ...prev,
-        ].slice(0, MAX_RECENT),
-      );
-    }
+    if (board.lastResult?.status === 'ACCEPTED') setBerhenti(null);
   }
 
   /**
@@ -936,7 +886,13 @@ export function ScanStation({
    */
   return cangkang(
     <>
-      <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,260px)]">
+      <div
+        className={cn(
+          'grid shrink-0 gap-3 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,260px)]',
+          // Line tanpa panel bawah: status dan penghitung mengambil seluruh layar.
+          !adaPanelBawah && 'xl:min-h-0 xl:flex-1',
+        )}
+      >
         {/* ── Input ─────────────────────────────────────────────────────── */}
         {/*
           Di lini berfoto, panel ini sengaja diringkas: yang dipandangi operator
@@ -944,7 +900,12 @@ export function ScanStation({
           sudah ia hafal setelah setengah jam. Ruang yang dihemat di sini
           langsung menjadi tinggi foto.
         */}
-        <section className="scroll-slim max-h-[34vh] overflow-y-auto rounded-card border border-line bg-card p-4">
+        <section
+          className={cn(
+            'scroll-slim max-h-[34vh] overflow-y-auto rounded-card border border-line bg-card p-4',
+            !adaPanelBawah && 'xl:max-h-none',
+          )}
+        >
           {/*
             Judul berbagi baris dengan tombol suara: tombol itu disentuh sekali
             seumur shift, dan satu baris sendiri untuknya berarti satu baris
@@ -1391,13 +1352,16 @@ export function ScanStation({
 
       {/*
         ── Sisa tinggi layar ────────────────────────────────────────────────
-        Satu baris yang memuai mengisi apa pun yang tersisa. Isinya berbeda per
-        metode scan, tetapi aturannya sama: yang paling dibutuhkan operator
-        mendapat ruang terbesar, dan riwayat — yang paling tidak mendesak —
-        menempati kolom sempit di sebelahnya serta menggulir di dalam dirinya
-        sendiri.
+        Satu baris yang memuai mengisi apa pun yang tersisa; isinya berbeda per
+        metode scan. Line tanpa panel bawah tidak punya baris ini — bagian atas
+        yang memuai.
       */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+      <div
+        className={cn(
+          'flex min-h-0 flex-1 flex-col gap-3 lg:flex-row',
+          !adaPanelBawah && 'hidden',
+        )}
+      >
         {/* ── Lini per-kanban (BODY): foto part yang sedang dikerjakan ─────
           Slotnya selalu ada, juga saat sample atau fotonya belum ada, supaya
           kekosongannya terlihat sebagai sesuatu yang harus dibereskan. */}
@@ -1594,70 +1558,6 @@ export function ScanStation({
             </section>
           </div>
         ) : null}
-
-        {/* ── Riwayat ──────────────────────────────────────────────────────
-          Paling tidak mendesak, jadi ia yang mengalah: kolom sempit di lini
-          yang punya panel utama, dan menggulir di dalam dirinya sendiri supaya
-          tidak pernah mendorong apa pun keluar layar. */}
-        <section
-          className={cn(
-            'flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-card',
-            perBox || fg ? 'lg:w-[360px] lg:shrink-0' : 'flex-1',
-          )}
-        >
-          <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4">
-            <h2 className="text-[15px] font-bold">
-              {perBox ? 'Kanban terakhir' : 'Scan terakhir'}
-            </h2>
-            <span className="text-[13px] text-ink-muted">{recent.length} terbaru</span>
-          </header>
-
-          {recent.length === 0 ? (
-            <p className="px-5 py-12 text-center text-[14px] text-ink-muted">
-              Belum ada scan pada line ini hari ini.
-            </p>
-          ) : (
-            <ul className="scroll-slim min-h-0 flex-1 divide-y divide-line overflow-y-auto">
-              <AnimatePresence initial={false}>
-                {recent.map((r) => (
-                  <motion.li
-                    key={`${r.id}-${r.rawCode}`}
-                    layout
-                    initial={{ opacity: 0, height: 0, backgroundColor: 'rgba(22,163,74,0.10)' }}
-                    animate={{ opacity: 1, height: 'auto', backgroundColor: 'rgba(22,163,74,0)' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{
-                      layout: springSoft,
-                      height: { duration: durations.base, ease: easeSoft },
-                      opacity: { duration: durations.base, ease: easeSoft },
-                      backgroundColor: { duration: 1.4, ease: easeSoft },
-                    }}
-                    className="overflow-hidden"
-                  >
-                    <div className="flex items-center gap-4 px-5 py-3 text-[14px]">
-                      <span className="tabular w-20 shrink-0 text-[13px] font-medium text-ink-muted">
-                        {new Date(r.scannedAt).toLocaleTimeString('id-ID', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                        })}
-                      </span>
-                      <span className="tabular min-w-0 flex-1 truncate font-semibold">
-                        {perBox ? `Kanban ${r.serialNumber ?? '—'} · ${r.rawCode}` : r.rawCode}
-                      </span>
-                      <span className="hidden min-w-0 flex-1 truncate text-ink-soft sm:block">
-                        {r.partName ?? '—'}
-                      </span>
-                      <span className="tabular w-16 shrink-0 text-right font-semibold">
-                        {r.qty} pcs
-                      </span>
-                    </div>
-                  </motion.li>
-                ))}
-              </AnimatePresence>
-            </ul>
-          )}
-        </section>
       </div>
     </>,
   );
