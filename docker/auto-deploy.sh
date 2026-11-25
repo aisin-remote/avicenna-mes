@@ -92,6 +92,10 @@ rm -f "$GAGAL_FILE"
 # tag, tidak dipakai wadah mana pun) yang dihapus.
 docker image prune -f >/dev/null 2>&1 || true
 
+# Buang build cache Docker yang sudah tidak dipakai (simpan 7 hari terakhir).
+# Tanpa ini, cache BuildKit tumbuh tiap deploy sampai partisi root penuh.
+docker builder prune -f --filter "until=168h" >/dev/null 2>&1 || true
+
 SEHAT=$(curl -s -m 10 http://127.0.0.1:3001/health/ready || true)
 case "$SEHAT" in
   *'"status":"ok"'*) echo "$TAG SELESAI OK di $JAUH" ;;
