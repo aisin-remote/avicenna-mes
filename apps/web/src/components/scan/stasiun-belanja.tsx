@@ -20,7 +20,7 @@ import {
   scanBelanjaAction,
   simpanBelanjaAction,
 } from '@/app/(station)/belanja/actions';
-import { useScanSound } from './use-scan-sound';
+import { galatKoneksi, useScanSound } from './use-scan-sound';
 import { cn } from '../ui/cn';
 
 /**
@@ -80,7 +80,7 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
     fokus();
 
     if ('error' in res) {
-      sound.reject();
+      sound.reject(galatKoneksi(res.error) ? 'koneksi' : 'tolak');
       setPesan({ teks: res.error, buruk: true });
       return;
     }
@@ -111,7 +111,7 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
     fokus();
 
     if ('error' in res) {
-      sound.reject();
+      sound.reject(galatKoneksi(res.error) ? 'koneksi' : 'tolak');
       setPesan({ teks: res.error, buruk: true });
       return;
     }
@@ -154,7 +154,7 @@ export function StasiunBelanjaLayar({ awal, npk }: { awal: StasiunBelanja; npk: 
     setSibuk(false);
     fokus();
     if ('error' in res) {
-      sound.reject();
+      sound.reject(galatKoneksi(res.error) ? 'koneksi' : 'tolak');
       setPesan({ teks: res.error, buruk: true });
       return;
     }

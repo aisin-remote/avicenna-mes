@@ -6,7 +6,7 @@ import { AlertTriangle, Loader2, PackageX, Barcode } from 'lucide-react';
 import type { NgType, NgResult, NgSource } from '@avicenna/contracts';
 import { NG_SOURCE_LABELS } from '@avicenna/contracts';
 import { jenisNgAction, ngOutlineAction } from '@/app/(station)/ng/actions';
-import { useScanSound } from './use-scan-sound';
+import { galatKoneksi, useScanSound } from './use-scan-sound';
 import { springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
@@ -83,7 +83,7 @@ export function NgOutline({ lineCode }: { lineCode?: string }) {
 
     if ('error' in hasil) {
       setGalat(hasil.error);
-      sound.reject();
+      sound.reject(galatKoneksi(hasil.error) ? 'koneksi' : 'tolak');
       return;
     }
 

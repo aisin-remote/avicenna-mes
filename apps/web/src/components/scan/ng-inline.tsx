@@ -11,7 +11,7 @@ import {
   batalNgAction,
   type UnitDiperiksa,
 } from '@/app/(station)/ng/actions';
-import { useScanSound } from './use-scan-sound';
+import { galatKoneksi, useScanSound } from './use-scan-sound';
 import { springSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
 
@@ -94,7 +94,7 @@ export function NgInline({
       setGalat(hasil.error);
       setUnit(null);
       setNgAktif([]);
-      sound.reject();
+      sound.reject(galatKoneksi(hasil.error) ? 'koneksi' : 'tolak');
       fokus();
       return;
     }
@@ -119,7 +119,7 @@ export function NgInline({
 
     if ('error' in hasil) {
       setGalat(hasil.error);
-      sound.reject();
+      sound.reject(galatKoneksi(hasil.error) ? 'koneksi' : 'tolak');
       return;
     }
 
@@ -142,7 +142,7 @@ export function NgInline({
 
     if ('error' in hasil) {
       setGalat(hasil.error);
-      sound.reject();
+      sound.reject(galatKoneksi(hasil.error) ? 'koneksi' : 'tolak');
       return;
     }
     setNgAktif(hasil.ngAktif);

@@ -47,7 +47,7 @@ import { PanelFotoPart } from './panel-foto-part';
 import { urlFotoPart } from '@/lib/foto-part';
 import { keluarStasiunAction } from '@/app/(station)/scan/proses/[grup]/actions';
 import { NgInline } from './ng-inline';
-import { useScanSound } from './use-scan-sound';
+import { galatKoneksi, jenisTolakDariAlasan, useScanSound, type JenisTolak } from './use-scan-sound';
 import { usePreferences } from '../shell/preferences-provider';
 import { springSoft, durations, easeSoft } from '../motion/transitions';
 import { cn } from '../ui/cn';
@@ -242,6 +242,9 @@ export function ScanStation({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const sound = useScanSound(soundOn);
+  /** Suara untuk galat server action: koneksi putus punya rekamannya sendiri. */
+  const jenisGalat = (pesan: string, lain: JenisTolak = 'tolak'): JenisTolak =>
+    galatKoneksi(pesan) ? 'koneksi' : lain;
   const seq = useRef(0);
   /** Sedang keluar karena kartu login discan — layar berpindah ke halaman login. */
   const [sedangKeluar, setKeluar] = useState(false);
@@ -412,7 +415,7 @@ export function ScanStation({
     if ('error' in res) {
       setError(res.error);
       setResult(null);
-      sound.reject();
+      sound.reject(jenisGalat(res.error));
       return;
     }
 
@@ -425,7 +428,7 @@ export function ScanStation({
       setBerhenti(null);
       sound.ok();
     } else {
-      sound.reject();
+      sound.reject(jenisTolakDariAlasan(res.status, res.reason));
     }
   }
 
@@ -460,7 +463,7 @@ export function ScanStation({
     if ('error' in res) {
       setBusy(false);
       setError(res.error);
-      sound.reject();
+      sound.reject(jenisGalat(res.error, 'dandori'));
       focusInput();
       return;
     }
@@ -482,7 +485,12 @@ export function ScanStation({
     focusInput();
     if ('error' in res) {
       setError(res.error);
-      sound.reject();
+      sound.reject(
+        jenisGalat(
+          res.error,
+          dandori?.metode === 'PART_SAMPLE' && dandori.part && !dandori.sampleOk ? 'sample' : 'dandori',
+        ),
+      );
       return;
     }
     setDandori(res);
@@ -496,7 +504,7 @@ export function ScanStation({
     if ('error' in res) {
       setBusy(false);
       setError(res.error);
-      sound.reject();
+      sound.reject(jenisGalat(res.error, 'dandori'));
       focusInput();
       return;
     }
@@ -544,12 +552,12 @@ export function ScanStation({
 
     if ('error' in res) {
       setError(res.error);
-      sound.reject();
+      sound.reject(jenisGalat(res.error));
       return;
     }
     if (res.status !== 'ACCEPTED') {
       setResult(res);
-      sound.reject();
+      sound.reject(jenisTolakDariAlasan(res.status, res.reason));
       return;
     }
 
@@ -652,7 +660,7 @@ export function ScanStation({
         `${gagal.pesan} (unit ${seri})` +
           (masuk > 0 ? ` — ${masuk} unit sudah masuk, ${sisa.length} masih ditahan.` : ''),
       );
-      sound.reject();
+      sound.reject(gagal.res ? jenisTolakDariAlasan(gagal.res.status, gagal.res.reason) : jenisGalat(gagal.pesan));
       return;
     }
 
@@ -699,7 +707,7 @@ export function ScanStation({
     if ('error' in res) {
       setError(res.error);
       setSampleBaru(null);
-      sound.reject();
+      sound.reject(jenisGalat(res.error, 'sample'));
       return;
     }
 
@@ -730,7 +738,7 @@ export function ScanStation({
 
     if ('error' in board) {
       setError(board.error);
-      sound.reject();
+      sound.reject(jenisGalat(board.error));
       return;
     }
 

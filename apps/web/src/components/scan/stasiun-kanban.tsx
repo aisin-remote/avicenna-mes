@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { RiwayatKomponen, ScanKomponenResult, StasiunKomponen } from '@avicenna/contracts';
 import { scanKomponenAction } from '@/app/(station)/komponen/actions';
-import { useScanSound } from './use-scan-sound';
+import { galatKoneksi, useScanSound } from './use-scan-sound';
 import { cn } from '../ui/cn';
 
 const RIWAYAT_MAKS = 15;
@@ -95,7 +95,7 @@ export function StasiunKanban({ awal, npk }: { awal: StasiunKomponen; npk: strin
     fokus();
 
     if ('error' in res) {
-      sound.reject();
+      sound.reject(galatKoneksi(res.error) ? 'koneksi' : 'tolak');
       setHasil({
         hasil: 'DITOLAK',
         jenisKartu: null,
